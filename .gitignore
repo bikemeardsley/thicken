@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+.env
+.env.*
+
+# Generated models and working images
+out/
+*.glb
+*.gltf
