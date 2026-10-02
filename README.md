@@ -1,21 +1,51 @@
 # Thicken
 
-Flat images in, thickness out. Thicken turns photos or scans of flat-ish
-physical objects into 3D assets you can drop into a three.js page or Blender.
+Flat images in, thickness out. Thicken turns photos, scans and flat artwork
+into 3D assets at real-world size that you can drop into a three.js page or
+Blender.
 
-**Status:** not started. This README is the plan.
+**Status:** badge, book and slab work, and Thicken picks between them
+itself. The raw card, slab acrylic and photo straightening are still the plan.
+
+```
+npm install
+node src/cli.ts book-scan.pdf                     # ISBN read off the back cover, size looked up
+node src/cli.ts book cover.heic --isbn 9780061120084
+node src/cli.ts --isbn 9780061120084              # no photo: cover and size from Open Library
+node src/cli.ts slab front.jpg back.jpg --holder bgs
+node src/cli.ts badge badge.png --width 50 --depth 3.5
+npm test
+```
+
+The same as a function: `thicken(files, options)` in `src/thicken.ts`.
 
 ## What it makes
 
+Two families:
+
 | Profile | Input | Output |
 | --- | --- | --- |
-| Graded slab | Front and back scans or photos (PSA, CGC, SGC, BGS, TAG each have their own slab size and label window) | Slab with clear acrylic, inset card and label |
-| Raw card | Front and back | Thin rounded card at 63.5 × 88.9 mm |
-| Book | Cover, spine and back, or just an ISBN (cover, size and page count from Open Library) | Book with cover, spine, back and page-block edges |
-| Badge | A PNG with transparency | The badge's own outline, extruded (the approach in michaelbeardsley-now's `badge-shape.ts`) |
+| **Digital artwork made into an object** | | |
+| Badge | Artwork with transparency | The artwork's own outline, extruded (the approach in michaelbeardsley-now's `badge-shape.ts`) |
+| **A real object rebuilt at its real size** | | |
+| Book | Front cover [back] [spine], or just an ISBN | Box at the book's size: covers, spine, cream page edges |
+| Graded slab | Front [back] | Box at the holder's size, with the photos on its faces and clear-plastic edges |
+| Raw card (planned) | Front and back | Thin rounded card at 63.5 × 88.9 mm |
 
-Every output is a **GLB** at real-world size (millimetres), plus a JSON
-sidecar with dimensions and the source images used.
+Name the profile, or leave it out and Thicken picks one:
+
+- An ISBN barcode on any picture, or `--isbn`, means a **book**.
+- A QR code pointing at a grader's site (psacard.com, beckett.com,
+  cgccards.com, gosgc.com, taggrading.com) means a **slab**, and says whose.
+- Artwork with transparency around a shape that isn't just a rectangle means
+  a **badge**.
+- Anything else is refused with a request to name the profile. Other
+  barcodes don't count: books carry UPCs, QR codes and library stickers.
+
+Every output is a **GLB** at real-world size (glTF's unit is the metre, so a
+50 mm badge is 0.05 across), plus a JSON sidecar. The sidecar holds the
+dimensions in millimetres, where each came from, any warnings, and the
+source images used.
 
 **Motion is not part of the asset.** Sway, spin and hover belong to whatever
 page shows the model, and are optional. Thicken makes the shape.
@@ -26,29 +56,68 @@ images onto it. No point clouds, no neural reconstruction.
 
 ## Inputs
 
-- **Scanner-app images** (iOS Notes, Adobe Scan, Google Drive): already
-  flat and cropped, used as-is.
-- **Handheld photos:** corners found and the image straightened first.
-- **Lookups:** ISBN for books. Grader cert lookups may supply slab images.
-  This is unverified, so check it before building on it.
+JPEG, PNG, HEIC, WebP, AVIF, GIF, TIFF, SVG, or a scanner app's PDF, where
+each page is a picture in order (front, back, spine). Every picture is turned
+upright and scaled to fit 2048 px.
+
+Thicken does no background removal of its own. Both phones already do it
+better:
+
+| You want | iPhone | Android |
+| --- | --- | --- |
+| A badge or object without its background | Long-press the subject in Photos, then Copy or Share (PNG) | Samsung: long-press in Gallery (Image Clipper). Pixel: long-press in Google Photos, Copy sticker |
+| A straight, cropped cover or slab | Notes or Files, Scan Documents (PDF) | Google Drive, Scan (choose JPEG or PDF) |
+| Just a photo | HEIC or JPEG, straight-on, cropped to the object | JPEG, straight-on, cropped to the object |
+
+On Windows, Paint's Remove background does the same as subject lifting. A
+lifted subject is cropped to itself, and its see-through corners are filled
+with its edge colour.
+
+## Dimensions
+
+**Book.** Each of width, height and depth comes from the first source that
+knows it, and the sidecar's `measuredBy` says which:
+
+1. `--size WxHxD` in mm, as measured. Any part can be left out.
+2. Open Library: `physical_dimensions`, page count and format. In a sample
+   of ten ISBNs (2026-10-01), 2 had dimensions and 8 a page count.
+3. Google Books `dimensions`. The keyless quota is shared and often spent,
+   so set `GOOGLE_BOOKS_API_KEY`.
+4. Page count × 0.075 mm (trade paper runs 300–400 pages to the inch), plus
+   4 mm of boards for a hardcover.
+5. The cover's shape, giving one side from the other.
+6. The nearest standard trim size to the cover's shape, flagged as a guess.
+
+The cover photo's shape is checked against the result. A mismatch over 5%
+warns: it means a bad crop or a different edition.
+
+**Slab.** Graders don't publish holder sizes, so the table in `src/slab.ts`
+holds collectors' caliper measurements. Correct it against real holders.
+`--size` overrides it per model. A photo whose shape is off the holder's by
+more than 4% warns.
 
 ## Build plan (kitbash, verified 2026-10-01)
 
 | Part | Verdict | Choice |
 | --- | --- | --- |
-| Straightening handheld photos | Adapt, don't depend | [puffinsoft/jscanify](https://github.com/puffinsoft/jscanify) (MIT): read the corner-ranking approach. Slabs give competing rectangles (acrylic edge, card border, label) and glare. |
 | Triangulating badge outlines | Dependency | [mapbox/earcut](https://github.com/mapbox/earcut) (ISC) |
-| Writing and compressing GLB | Dependency | [donmccurdy/glTF-Transform](https://github.com/donmccurdy/glTF-Transform) (MIT): valid GLB in Node, acrylic transmission material, KTX2/WebP and meshopt |
-| Shape profiles and builders | Write | A dimensions table plus a box or extrusion with UV mapping per profile |
-| CLI and library entry | Write | `thicken slab --front f.jpg --back b.jpg -o card.glb`, and the same as a function |
+| Writing GLB | Dependency | [donmccurdy/glTF-Transform](https://github.com/donmccurdy/glTF-Transform) (MIT) |
+| Decoding HEIC | Dependency | [catdad-experiments/libheif-js](https://github.com/catdad-experiments/libheif-js) (LGPL-3.0, used unmodified). sharp's binaries leave out HEVC. |
+| Reading barcodes | Dependency | [Sec-ant/zxing-wasm](https://github.com/Sec-ant/zxing-wasm) (MIT). Its `.wasm` is loaded from `node_modules`, not its default CDN. |
+| Pictures from scanner PDFs | Dependency | [unjs/unpdf](https://github.com/unjs/unpdf) (MIT, pdf.js inside) |
+| Book dimension sources | Write | Read [palmerabollo/node-isbn](https://github.com/palmerabollo/node-isbn)'s provider fallback. Ours is per dimension, not first-provider-wins. |
+| Profiles, box, classifier, CLI | Write | |
+| Straightening handheld photos (planned) | Adapt, don't depend | [puffinsoft/jscanify](https://github.com/puffinsoft/jscanify) (MIT): read the corner-ranking approach. Slabs give competing rectangles (acrylic edge, card border, label) and glare. |
 
 For refractor and holo effects in a viewer, `simeydotme/pokemon-cards-css` is
 a reference only. It is GPL-3.0, so read it and don't copy it.
 
 ## Stack
 
-TypeScript on Node, `sharp` for images. Private for now; it goes public once
-it is clean and packaged.
+TypeScript on Node 22.18+, run directly (Node strips the types), with `sharp`
+for images. Private for now; it goes public once it is clean and packaged.
+Publishing to npm needs a build step, because Node won't strip types inside
+`node_modules`.
 
 ## Used by
 
