@@ -64,7 +64,7 @@ test('book: a scanned PDF, its ISBN read off the back cover, its size from Open 
     profile: 'book', sources: ['book-scan.pdf'], isbn: '9780140328721', widthMm: 127, heightMm: 203.2, depthMm: 25.4,
     measuredBy: { width: 'openlibrary', height: 'openlibrary', depth: 'openlibrary' }, pages: 320,
     faces: { front: 'photo', back: 'photo', spine: 'color', top: 'pages', bottom: 'pages', edge: 'pages' },
-    review: ['spine (plain color)'], warnings: [], identifiedBy: { isbn: 'barcode' },
+    review: ['spine (plain color)'], warnings: [], identifiedBy: { profile: 'recognized', isbn: 'barcode' },
   });
   assert.deepEqual((sidecar.pictures as { file: string; page: number; role: string }[]).map(({ file, page, role }) => [file, page, role]),
     [['book-scan.pdf', 1, 'front'], ['book-scan.pdf', 2, 'back']]);
@@ -221,6 +221,54 @@ test('book: vision models find the faces in uncropped photos, which are cut out 
   assert.ok(near(await colorOf(doc, [-1, 0, 0]), '#c62828'), 'the spine is the red strip alone');
 });
 
+test('box: anything box-shaped, at the size given, its sides plain until photographed', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const files = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
+  await sharp({ create: { width: 350, height: 750, channels: 3, background: '#26323a' } }).png().toFile(files[0]);
+  await sharp({ create: { width: 350, height: 750, channels: 3, background: '#b0bec5' } }).png().toFile(files[1]);
+  await assert.rejects(thicken(files, { profile: 'box' }), /a box needs its size/);
+  const { glb, sidecar } = await thicken(files, { profile: 'box', sizeMm: [70, 150, 8] });
+  assert.deepEqual(pick(sidecar, ['profile', 'widthMm', 'heightMm', 'depthMm', 'faces', 'warnings', 'identifiedBy']), {
+    profile: 'box', widthMm: 70, heightMm: 150, depthMm: 8, warnings: [], identifiedBy: { profile: 'given' },
+    faces: { front: 'photo', back: 'photo', left: 'plain', right: 'plain', top: 'plain', bottom: 'plain' },
+  });
+  assert.deepEqual(sidecar.review, ['front and back (told apart only by photo order: check they are the right way round)']);
+  assertExtents(await read(glb), [0.07, 0.15, 0.008]);
+});
+
+test('vision: with nothing else to go on, the models say what it is and roughly how big', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b,c' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  // A phone face down on a brown table, no codes on it: one photo, 900 x 1200, its front a dark rectangle.
+  const photo = path.join(folder, 'IMG_1.png');
+  const front = [[300, 200], [600, 200], [600, 800], [300, 800]];
+  await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } })
+    .composite([{ input: await sharp({ create: { width: 300, height: 600, channels: 3, background: '#26323a' } }).png().toBuffer(), left: 300, top: 200 }])
+    .png().toFile(photo);
+  const seen = front.map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]); // letterboxed into 1000 x 1000
+  const fetch = catalog({}, {
+    vision: async ({ model, prompt }) => {
+      // Saying what it is: a and b disagree, so c is asked, and agrees with a.
+      if (prompt.includes('Which of these is it?')) return model === 'b' ? { object: 'book', sizeMm: [140, 210, 20] } : { object: 'box', sizeMm: model === 'a' ? [70, 150, 8] : [72, 148, 9] };
+      return { faces: [{ face: 'front', corners: seen }] };
+    },
+  });
+  t.after(() => fetch.mock.restore());
+  const { glb, sidecar } = await thicken([photo]);
+
+  assert.deepEqual([sidecar.profile, sidecar.identifiedBy], ['box', { profile: 'vision' }]);
+  const { identified } = sidecar.vision as { identified: { profile: string; sizeMm: number[]; disputed: boolean; answers: { model: string }[] } };
+  assert.deepEqual([identified.profile, identified.sizeMm, identified.disputed, identified.answers.map(({ model }) => model)], ['box', [71, 149, 8.5], false, ['a', 'b', 'c']]);
+  // Sized by the agreeing estimates, and warned, not reviewed; the back, never photographed, is.
+  assert.deepEqual([sidecar.widthMm, sidecar.heightMm, sidecar.depthMm], [71, 149, 8.5]);
+  assert.deepEqual(sidecar.warnings, ['the size is partly the vision models\' estimate (71 × 149 × 8.5 mm): --size for the real one']);
+  assert.deepEqual(sidecar.review, ['back (plain color)']);
+  assert.ok(near(await colorOf(await read(glb), [0, 0, 1]), '#26323a'), 'the front is the phone, cut from the table');
+});
+
 test('book: a thick book\'s spine photo still measures it', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
@@ -322,7 +370,7 @@ test('slab: a grader\'s QR code picks the holder, and the holder its size', asyn
   assert.deepEqual(pick(sidecar, ['profile', 'sources', 'holder', 'grader', 'cert', 'verifyUrl', 'widthMm', 'heightMm', 'depthMm', 'measuredBy', 'faces', 'review', 'warnings', 'identifiedBy']), {
     profile: 'slab', sources: ['slab.jpg'], holder: 'psa', grader: 'psa', cert: '12345678', verifyUrl: 'https://www.psacard.com/cert/12345678',
     widthMm: 80.5, heightMm: 136, depthMm: 6.5, measuredBy: 'table', faces: { front: 'photo', back: 'plastic' },
-    review: ['back (plain plastic)'], warnings: [], identifiedBy: { grader: 'qr', cert: 'qr' },
+    review: ['back (plain plastic)'], warnings: [], identifiedBy: { profile: 'recognized', grader: 'qr', cert: 'qr' },
   });
   const doc = await read(glb);
   assertExtents(doc, [0.0805, 0.136, 0.0065]);
@@ -367,7 +415,7 @@ test('slab: a cert barcode on a holder-shaped photo is a slab, of a grader it sa
   const { sidecar } = await thicken([fixture('slab-barcode.jpg')]);
   assert.deepEqual([sidecar.profile, sidecar.holder, sidecar.cert, sidecar.grader], ['slab', 'psa', '0017041720', undefined]);
   assert.ok(sidecar.warnings.some((warning) => warning.startsWith('a PSA-size holder is assumed')));
-  assert.deepEqual(sidecar.identifiedBy, { grader: 'assumed', cert: 'barcode' });
+  assert.deepEqual(sidecar.identifiedBy, { profile: 'recognized', grader: 'assumed', cert: 'barcode' });
 
   // The same barcode on a square picture is no evidence of a slab.
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
@@ -456,14 +504,14 @@ test('preview: both sides of a model, drawn beside it as <name>.preview.png', as
  */
 function catalog(edition: object, { cover, data, vision }: {
   cover?: Uint8Array; data?: object;
-  vision?: (request: { model: string; photo: Buffer; authorization: string | null }) => Promise<object | undefined>;
+  vision?: (request: { model: string; prompt: string; photo: Buffer; authorization: string | null }) => Promise<object | undefined>;
 } = {}) {
   return mock.method(globalThis, 'fetch', async (url: string | URL, init?: RequestInit) => {
     const href = String(url);
     if (vision && href === 'http://vision.test/api/chat/completions') {
       const { model, messages } = JSON.parse(String(init!.body));
       const photo = Buffer.from(messages[0].content[1].image_url.url.split(',')[1], 'base64');
-      const answer = await vision({ model, photo, authorization: new Headers(init!.headers).get('authorization') });
+      const answer = await vision({ model, prompt: messages[0].content[0].text, photo, authorization: new Headers(init!.headers).get('authorization') });
       return answer ? Response.json({ choices: [{ message: { content: JSON.stringify(answer) } }] }) : new Response('', { status: 500 });
     }
     if (href === 'https://openlibrary.org/isbn/9780140328721.json') return Response.json(edition);

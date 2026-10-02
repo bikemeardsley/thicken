@@ -23,13 +23,15 @@ The same as a function: `thicken(files, options)` in `src/thicken.ts`.
 
 ## What it makes
 
-Two families:
+Thicken makes the 3D object; what it knows about kinds of object lives in
+profiles, one file each in `src/profiles`. Two families:
 
 | Profile | Input | Output |
 | --- | --- | --- |
 | **Digital artwork made into an object** | | |
 | Badge | Artwork with transparency | The artwork's own outline, extruded (the approach in michaelbeardsley-now's `badge-shape.ts`) |
 | **A real object rebuilt at its real size** | | |
+| Box | Front [back, sides], and its size (or a vision estimate) | Softly rounded box with the photos on its faces: anything box-shaped, from a game case to a phone |
 | Book | Front cover, back, spine (any order, any of them), or just an ISBN | Softly rounded box at the book's size: covers, spine, page edges |
 | Graded slab | Front [back] | Softly rounded box at the holder's size, with the photos on its faces and clear-plastic edges |
 | Raw card (planned) | Front and back | Thin rounded card at 63.5 × 88.9 mm |
@@ -43,11 +45,26 @@ Name the profile, or leave it out and Thicken picks one:
   itself (`verifyUrl`).
 - So does an older label's Code 128 cert barcode, but only on a photo shaped
   like a holder. The grader then isn't known: a PSA-size holder is assumed,
-  and marked for review.
+  with a warning.
 - Artwork with transparency around a shape that isn't just a rectangle means
   a **badge**.
-- Anything else is refused with a request to name the profile. Other
-  barcodes don't count: books carry UPCs, QR codes and library stickers.
+- Otherwise, with [vision](#vision-optional), the models are shown the
+  profiles and say which it is, and roughly how big: two agreeing settle it,
+  as with faces, and `box` takes anything box-shaped the others don't cover.
+- Anything still unknown is refused with a request to name the profile.
+  Other barcodes don't count: books carry UPCs, QR codes and library
+  stickers.
+
+The sidecar's `identifiedBy.profile` says which way it was chosen: `given`,
+`recognized` (codes or the artwork), or `vision`.
+
+**Adding a profile** is one file in `src/profiles`, listed in `PROFILES`
+(`src/thicken.ts`): its name; a few words on what it is and on each of its
+faces, which is all the vision models are told; optionally how its codes or
+pictures give it away unaided; and how to build it from the photos placed on
+its faces. Generic profiles are named for the shape they build (`box`, and
+later perhaps `flat` or `cylinder`), not "unknown": a shape Thicken can't
+build is refused rather than forced into one it can.
 
 Pictures are placed on faces by what they show (see
 [Photos](#photos-any-number)). With no front, Open Library's cover stands in,
@@ -115,6 +132,7 @@ Each sidecar's `faces` says where every face came from:
 | `openlibrary` | A stand-in front cover from Open Library, used only when you photographed the back but not the front |
 | `color` | A plain color from the cover's edge (a book's missing back or spine) |
 | `plastic` | Plain plastic (a slab with no back photo) |
+| `plain` | A plain color from the front's edge (a box's side not photographed: an extra, not reviewed) |
 | `pages` | A generated stack of cream pages (a book's top, bottom or page edge: an extra, not reviewed) |
 
 **How it looks.** The photos sit on a matte, non-metal surface (glTF's
@@ -148,8 +166,13 @@ THICKEN_VISION_MODELS=gemini-3.8-flash-high,gpt-6-luna,gpt-5.6-terra,gemini-3.1-
   turns, the next model is asked; if it can't settle it, the primary's answer
   is used and the face goes on the review list. A face only one model names,
   while another answered without it, is left out.
+- When nothing else says what the object is, the first photo also goes to
+  the roster with the list of profiles: which is it, and roughly how big?
+  Two agreeing settle it, the same way; the size estimate stands in only
+  where `--size` doesn't say, with a warning.
 - The rest of the roster stands in for a seat that fails or takes over 3
-  minutes. A fine-tuned model goes in by putting it first.
+  minutes. A fine-tuned model goes in by putting it first. Each sidecar
+  records every answer, per profile, which is the material for tuning one.
 - With no vision settings, nothing is asked and photos are used whole.
 
 **What leaves the machine:** with `THICKEN_VISION_URL` set, the photos
@@ -269,7 +292,7 @@ The cover photo's shape is checked against the result. A mismatch over 5%
 warns: it means a bad crop or a different edition.
 
 **Slab.** Graders don't publish exterior holder sizes, and figures online
-disagree by 1–5 mm, so the table in `src/slab.ts` holds the best found, each
+disagree by 1–5 mm, so the table in `src/profiles/slab.ts` holds the best found, each
 with its source. Correct it against real holders. It covers PSA (standard,
 `psa-thick`, and `psa-tall` for tall boys such as 1969–70 Topps basketball),
 BGS, CGC, SGC and TAG. `--size` overrides it per model. A QR code tells the

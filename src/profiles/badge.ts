@@ -5,11 +5,30 @@
 import { Document } from '@gltf-transform/core';
 import earcut from 'earcut';
 import sharp from 'sharp';
-import { addPart, colorMaterial, emptyPart, pictureMaterial, toGlb } from './glb.ts';
-import type { Picture } from './image.ts';
-import { trace, type Point } from './outline.ts';
+import { addPart, colorMaterial, emptyPart, pictureMaterial, toGlb } from '../glb.ts';
+import type { Picture } from '../image.ts';
+import { trace, type Point } from '../outline.ts';
+import type { Profile } from '../thicken.ts';
 
-export async function badge({ data, width, height, transparent }: Picture, { widthMm = 50, depthMm = 3.5 } = {}) {
+export const badge: Profile = {
+  name: 'badge',
+  faces: {}, // artwork, not a photo of an object: nothing for the vision models to find
+  read: (_scanned, [picture]) => ({ recognized: isArtwork(picture), use: [] }),
+  build: ([picture], { options }) => make(picture, options),
+};
+
+/** Cut-out artwork: see-through around a shape that isn't just a rectangle (a lifted book cover is one). */
+function isArtwork(picture?: Picture): boolean {
+  if (!picture?.transparent) return false;
+  const { outlines } = trace(picture.data, picture.width, picture.height, 4);
+  const xs = outlines.flat().map(([x]) => x);
+  const ys = outlines.flat().map(([, y]) => y);
+  const box = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+  const area = outlines.reduce((sum, outline) => sum + Math.abs(signedArea(outline)), 0);
+  return area < 0.9 * box;
+}
+
+async function make({ data, width, height, transparent }: Picture, { widthMm = 50, depthMm = 3.5 } = {}) {
   if (!(widthMm > 0 && depthMm > 0)) throw new Error('width and depth must be positive millimeters');
   const { outlines, edge } = trace(data, width, height, 4);
   const png = await sharp(data, { raw: { width, height, channels: 4 } }).png().toBuffer();
@@ -85,7 +104,7 @@ export async function badge({ data, width, height, transparent }: Picture, { wid
 
 const cross = ([ax, ay]: Point, [bx, by]: Point, [cx, cy]: Point) => (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
 
-export const signedArea = (points: Point[]) =>
+const signedArea = (points: Point[]) =>
   points.reduce((sum, [x, y], i) => {
     const [nx, ny] = points[(i + 1) % points.length];
     return sum + x * ny - nx * y;

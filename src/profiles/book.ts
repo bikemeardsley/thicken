@@ -7,11 +7,35 @@
 // size, then for thickness the spine and page-edge photos and the page count.
 // With an ISBN the sidecar also gets Open Library's catalog record.
 import sharp from 'sharp';
-import { assignFaces, cut, pictureRecord, shots } from './faces.ts';
-import { box, type Side } from './glb.ts';
-import { load, texture, turned, type Picture } from './image.ts';
-import type { Code, Faces } from './thicken.ts';
-import type { Sight } from './vision.ts';
+import { assignFaces, cut, pictureRecord, shots } from '../faces.ts';
+import { box, type Side } from '../glb.ts';
+import { load, texture, turned, type Picture } from '../image.ts';
+import type { Code, Faces, Profile } from '../thicken.ts';
+import type { Sight } from '../vision.ts';
+
+export const book: Profile = {
+  name: 'book',
+  about: 'a book, hardcover or paperback',
+  faces: { front: 'front cover', back: 'back cover', spine: 'spine', edge: 'the page edge opposite the spine', top: 'top', bottom: 'bottom' },
+  note: 'For the spine and the page sides, upright is as the book stands on a shelf.',
+  // An ISBN barcode (EAN-13 starting 978 or 979) says it's a book, which, and which photos show its back.
+  read: (scanned) => {
+    const use = scanned.map(({ format, text }) => (format === 'EAN13' && /^97[89]/.test(text) ? 'isbn' : undefined));
+    const at = use.indexOf('isbn');
+    return { recognized: at >= 0, use, isbn: at >= 0 ? scanned[at].text : undefined };
+  },
+  build: async (pictures, { options, facts, codes, sights }) => {
+    const isbn = options.isbn ? checkIsbn(options.isbn) : (facts.isbn as string | undefined);
+    const { glb, sidecar } = await make(pictures, { isbn, sizeMm: options.sizeMm, codes, sights });
+    return { glb, sidecar: { ...sidecar, identifiedBy: { isbn: options.isbn ? 'given' : isbn ? 'barcode' : undefined } } };
+  },
+};
+
+function checkIsbn(text: string): string {
+  const isbn = text.replace(/[\s-]/g, '').toUpperCase();
+  if (!/^(\d{9}[\dX]|\d{13})$/.test(isbn)) throw new Error(`not an ISBN: ${text}`);
+  return isbn;
+}
 
 const PAGE_MM = 0.075; // per page: trade paper runs 300–400 pages to the inch
 const BOARDS_MM = 4; // a hardcover's two boards
@@ -33,7 +57,7 @@ interface Log { warnings: string[]; lookups: Lookup[] }
  * the back. With no front, Open Library's cover stands in, so a photo of the
  * back is enough to start.
  */
-export async function book(
+async function make(
   pictures: Picture[],
   { isbn, sizeMm = [], codes = [], sights }: { isbn?: string; sizeMm?: number[]; codes?: Code[]; sights?: Sight[] } = {},
 ) {

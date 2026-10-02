@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// thicken [badge|book|slab] <picture or PDF>... [-o out.glb] [--preview] [options]
-// thicken batch [badge|book|slab] <folder> [-o out-folder] [--preview] [--force] [options]
+// thicken [profile] <picture or PDF>... [-o out.glb] [--preview] [options]
+// thicken batch [profile] <folder> [-o out-folder] [--preview] [--force] [options]
 // thicken preview <model.glb or folder>...
 // With no profile named, Thicken picks one per model (see src/thicken.ts).
 // Writes each GLB and, beside it, a JSON sidecar of the same name.
@@ -9,17 +9,19 @@ import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { batchItems, PROFILES, thicken, type Options, type Profile, type Sidecar } from './thicken.ts';
+import { batchItems, PROFILES, thicken, type Options, type Sidecar } from './thicken.ts';
 
-const USAGE = `usage: thicken [badge|book|slab] <picture or PDF>... [-o out.glb] [--preview]
-       thicken batch [badge|book|slab] <folder> [-o out-folder] [--preview] [--force]
+const USAGE = `usage: thicken [${PROFILES.map((p) => p.name).join('|')}] <picture or PDF>... [-o out.glb] [--preview]
+       thicken batch [profile] <folder> [-o out-folder] [--preview] [--force]
        thicken preview <model.glb or folder>...
   book   front back spine (any order) [--isbn 978...] [--size WxHxD]  (mm; any left out are looked up or estimated)
   slab   front [back]  [--holder psa|psa-thick|psa-tall|bgs|cgc|sgc|tag] [--size WxHxD]
   badge  artwork       [--width mm] [--depth mm]
+  box    front [back, sides]  [--size WxHxD]  (anything box-shaped; with vision, the size can be estimated)
 Pictures: JPEG, PNG, HEIC, WebP, AVIF, GIF, TIFF, SVG, or a scanner app's PDF (one picture per page).
 With no profile named: an ISBN barcode or --isbn means a book, a grader's QR code (or a cert
-barcode on a holder-shaped photo) a slab, cut-out artwork a badge.
+barcode on a holder-shaped photo) a slab, cut-out artwork a badge; else, with vision, the
+models say which it is (box for anything else box-shaped).
 Batch: each picture or PDF in the folder is one model, and each subfolder one model from the
 pictures in it; models go to <folder>/thicken unless -o says otherwise. A model already made
 from exactly these pictures is left alone, hand edits and all; --force remakes it. Afterwards
@@ -47,7 +49,7 @@ const { positionals, values } = parseArgs({
   },
 });
 const command = positionals[0] === 'batch' || positionals[0] === 'preview' ? positionals.shift() : 'make';
-const profile = command !== 'preview' && (PROFILES as readonly string[]).includes(positionals[0]) ? (positionals.shift() as Profile) : undefined;
+const profile = command !== 'preview' && PROFILES.some((p) => p.name === positionals[0]) ? positionals.shift() : undefined;
 const nothingGiven = positionals.length === 0 && (command !== 'make' || !values.isbn);
 if (values.help || nothingGiven) {
   console.error(USAGE);
