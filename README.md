@@ -38,6 +38,11 @@ Name the profile, or leave it out and Thicken picks one:
 - An ISBN barcode on any picture, or `--isbn`, means a **book**.
 - A QR code pointing at a grader's site (psacard.com, beckett.com,
   cgccards.com, gosgc.com, taggrading.com) means a **slab**, and says whose.
+  The sidecar keeps the grader, the cert number from the link, and the link
+  itself (`verifyUrl`).
+- So does an older label's Code 128 cert barcode, but only on a photo shaped
+  like a holder. The grader then isn't known: a PSA-size holder is assumed,
+  with a warning to name it.
 - Artwork with transparency around a shape that isn't just a rectangle means
   a **badge**.
 - Anything else is refused with a request to name the profile. Other

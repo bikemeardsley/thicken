@@ -7,9 +7,9 @@ import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { badge, signedArea } from './badge.ts';
 import { book } from './book.ts';
-import { codes, load, type Picture } from './image.ts';
+import { codes, load, subjectBox, type Picture } from './image.ts';
 import { trace } from './outline.ts';
-import { slab } from './slab.ts';
+import { HOLDERS, slab } from './slab.ts';
 
 export const PROFILES = ['badge', 'book', 'slab'] as const;
 export type Profile = (typeof PROFILES)[number];
@@ -33,24 +33,27 @@ export interface Sidecar {
   [detail: string]: unknown;
 }
 
-// A grader's QR code points at its own site, which says whose holder this is.
+// A grader's QR code points at its own verification page, which says whose holder this is.
 const GRADER_SITES: Record<string, string> = { 'psacard.com': 'psa', 'beckett.com': 'bgs', 'cgccards.com': 'cgc', 'gosgc.com': 'sgc', 'taggrading.com': 'tag' };
+// Cert numbers: PSA ~8 digits, BGS 10, SGC 7 (older labels 7-3), CGC 7–12, TAG a letter then digits.
+const CERT = /^[A-Z]?\d{6,12}$|^\d{7}-\d{3}$/i;
+const SLAB_SHAPE_TOLERANCE = 0.06;
 
 export async function thicken(inputs: string[], options: Options = {}): Promise<{ glb: Uint8Array; sidecar: Sidecar }> {
   const { sizeMm = [] } = options;
   if (sizeMm.some((mm) => mm !== undefined && !(mm > 0))) throw new Error('sizes must be positive millimetres, e.g. 152x229x25');
   const pictures = (await Promise.all(inputs.map((input) => load(input)))).flat();
 
-  const found = options.profile === 'badge' ? {} : await lookAtCodes(pictures);
+  const found: Found = options.profile === 'badge' ? {} : await lookAtCodes(pictures);
   const isbn = options.isbn ? checkIsbn(options.isbn) : found.isbn;
   const profile = options.profile
-    ?? (isbn ? 'book' : found.holder ? 'slab' : isArtwork(pictures[0]) ? 'badge' : undefined);
+    ?? (isbn ? 'book' : found.grader || (found.cert && isSlabShaped(pictures[0])) ? 'slab' : isArtwork(pictures[0]) ? 'badge' : undefined);
   if (!profile) {
-    throw new Error('can\'t tell what this is: no ISBN barcode, no grader\'s QR code, and not cut-out artwork. Name it: thicken book|slab|badge <pictures>');
+    throw new Error('can\'t tell what this is: no ISBN barcode, no grader\'s QR code or cert barcode, and not cut-out artwork. Name it: thicken book|slab|badge <pictures>');
   }
 
   const built = profile === 'book' ? await book(pictures, { isbn, sizeMm, backAt: found.isbnAt })
-    : profile === 'slab' ? await slab(pictures, { holder: options.holder ?? found.holder, sizeMm })
+    : profile === 'slab' ? await slab(pictures, { holder: options.holder ?? found.grader, sizeMm, label: { grader: found.grader, cert: found.cert, verifyUrl: found.verifyUrl } })
     : await badge(first(pictures), options);
   return { glb: built.glb, sidecar: { ...built.sidecar, profile, sources: inputs.map((input) => path.basename(input)) } };
 }
@@ -94,18 +97,42 @@ export async function batchItems(folder: string, skip?: string): Promise<{ name:
   return items;
 }
 
-/** An ISBN from a book's barcode (EAN-13, 978/979) and which picture it was on, and a grader from a QR code on a slab's label. */
-async function lookAtCodes(pictures: Picture[]): Promise<{ isbn?: string; isbnAt?: number; holder?: string }> {
-  const found: { isbn?: string; isbnAt?: number; holder?: string } = {};
+interface Found { isbn?: string; isbnAt?: number; grader?: string; cert?: string; verifyUrl?: string }
+
+/**
+ * What the barcodes and QR codes say: a book's ISBN (EAN-13, 978/979) and
+ * which picture it was on; a slab's grader, cert number and verification
+ * page from a QR code to the grader's site; or, on an older label, a cert
+ * number from its Code 128 barcode alone.
+ */
+async function lookAtCodes(pictures: Picture[]): Promise<Found> {
+  const found: Found = {};
   for (const [at, picture] of pictures.entries()) {
     for (const { format, text } of await codes(picture)) {
-      if (format === 'EAN13' && /^97[89]/.test(text) && !found.isbn) Object.assign(found, { isbn: text, isbnAt: at });
-      const host = URL.canParse(text) ? new URL(text).hostname : '';
+      if (format === 'EAN13' && /^97[89]/.test(text)) {
+        if (!found.isbn) Object.assign(found, { isbn: text, isbnAt: at });
+        continue;
+      }
+      const url = URL.canParse(text) ? new URL(text) : undefined;
+      const host = url?.hostname.toLowerCase() ?? '';
       const site = Object.keys(GRADER_SITES).find((s) => host === s || host.endsWith(`.${s}`));
-      if (site) found.holder ??= GRADER_SITES[site];
+      if (url && site && !found.grader) {
+        // The cert number is the first path segment, query value or fragment segment that is one, whole.
+        const cert = [...url.pathname.split('/'), ...url.searchParams.values(), ...url.hash.split(/[#/?&=]/)].find((part) => CERT.test(part));
+        Object.assign(found, { grader: GRADER_SITES[site], verifyUrl: text, cert: cert?.toUpperCase() ?? found.cert });
+      } else if (format === 'Code128' && CERT.test(text)) {
+        found.cert ??= text.toUpperCase();
+      }
     }
   }
   return found;
+}
+
+/** A picture the shape of a known slab holder, give or take a loose crop. */
+function isSlabShaped(picture?: Picture): boolean {
+  if (!picture) return false;
+  const { width, height } = subjectBox(picture);
+  return Object.values(HOLDERS).some(([w, h]) => Math.abs(width / height / (w / h) - 1) < SLAB_SHAPE_TOLERANCE);
 }
 
 /** Cut-out artwork: see-through around a shape that isn't just a rectangle (a lifted book cover is one). */

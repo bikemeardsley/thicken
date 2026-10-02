@@ -89,28 +89,30 @@ export function columnColour({ data, width, height }: Picture, x0: number, x1: n
   return `#${hex(r)}${hex(g)}${hex(b)}`;
 }
 
+/** The part of a picture that is the subject: all of it, or for a lifted subject the box around its opaque pixels. */
+export function subjectBox({ data, width, height, transparent }: Picture): { left: number; top: number; width: number; height: number } {
+  if (!transparent) return { left: 0, top: 0, width, height };
+  let [left, top, right, bottom] = [width, height, -1, -1];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (data[(y * width + x) * 4 + 3] < 128) continue;
+      left = Math.min(left, x); right = Math.max(right, x);
+      top = Math.min(top, y); bottom = Math.max(bottom, y);
+    }
+  }
+  if (right < 0) throw new Error('the picture is entirely see-through');
+  return { left, top, width: right - left + 1, height: bottom - top + 1 };
+}
+
 /**
  * A picture as a JPEG for a box face, with its size and the colour along its
  * left edge. A lifted subject is cropped to itself, and its see-through
  * corners are filled with that edge colour.
  */
 export async function texture(picture: Picture): Promise<{ jpeg: Buffer; width: number; height: number; edge: string }> {
-  const { data, transparent } = picture;
-  let [left, top, right, bottom] = [0, 0, picture.width - 1, picture.height - 1];
-  if (transparent) {
-    [left, top, right, bottom] = [picture.width, picture.height, -1, -1];
-    for (let y = 0; y < picture.height; y++) {
-      for (let x = 0; x < picture.width; x++) {
-        if (data[(y * picture.width + x) * 4 + 3] < 128) continue;
-        left = Math.min(left, x); right = Math.max(right, x);
-        top = Math.min(top, y); bottom = Math.max(bottom, y);
-      }
-    }
-    if (right < 0) throw new Error('the picture is entirely see-through');
-  }
-  const [width, height] = [right - left + 1, bottom - top + 1];
+  const { left, top, width, height } = subjectBox(picture);
   const edge = columnColour(picture, left, left + 4);
-  const jpeg = await sharp(data, { raw: { width: picture.width, height: picture.height, channels: 4 } })
+  const jpeg = await sharp(picture.data, { raw: { width: picture.width, height: picture.height, channels: 4 } })
     .extract({ left, top, width, height })
     .flatten({ background: edge })
     .jpeg({ quality: 90 })

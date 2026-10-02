@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -118,8 +120,38 @@ test('book: pictures in any order are placed by what they show', async (t) => {
 // slab.jpg: 296 × 500, a PSA holder's shape, with a QR code to a psacard.com cert on the label.
 test('slab: a grader\'s QR code picks the holder, and the holder its size', async () => {
   const { glb, sidecar } = await thicken([fixture('slab.jpg')]);
-  assert.deepEqual(sidecar, { profile: 'slab', sources: ['slab.jpg'], holder: 'psa', widthMm: 80.5, heightMm: 136, depthMm: 6.5, measuredBy: 'table', warnings: [] });
+  assert.deepEqual(sidecar, {
+    profile: 'slab', sources: ['slab.jpg'], holder: 'psa', grader: 'psa', cert: '12345678', verifyUrl: 'https://www.psacard.com/cert/12345678',
+    widthMm: 80.5, heightMm: 136, depthMm: 6.5, measuredBy: 'table', warnings: [],
+  });
   assertExtents(await read(glb), [0.0805, 0.136, 0.0065]);
+});
+
+test('slab: the cert is the first whole cert number in the QR link, not a tracking number after it', async (t) => {
+  const { prepareZXingModule, writeBarcode } = await import('zxing-wasm/full');
+  prepareZXingModule({ overrides: { wasmBinary: readFileSync(createRequire(import.meta.url).resolve('zxing-wasm/full/zxing_full.wasm')) } });
+  const written = await writeBarcode('https://www.psacard.com/cert/12345678?ref=98765432', { format: 'QRCode', scale: 2 });
+  const qr = Buffer.from(await written.image!.arrayBuffer());
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const front = path.join(folder, 'front.png');
+  await sharp({ create: { width: 296, height: 500, channels: 3, background: '#ffffff' } }).composite([{ input: qr, left: 20, top: 20 }]).png().toFile(front);
+  const { sidecar } = await thicken([front]);
+  assert.deepEqual([sidecar.grader, sidecar.cert], ['psa', '12345678']);
+});
+
+// slab-barcode.jpg: the same holder shape, but an older label with only a Code 128 cert barcode (BGS-style 0017041720).
+test('slab: a cert barcode on a holder-shaped photo is a slab, of a grader it says it can\'t name', async (t) => {
+  const { sidecar } = await thicken([fixture('slab-barcode.jpg')]);
+  assert.deepEqual([sidecar.profile, sidecar.holder, sidecar.cert, sidecar.grader], ['slab', 'psa', '0017041720', undefined]);
+  assert.match((sidecar.warnings as string[])[0], /grader isn't identified/);
+
+  // The same barcode on a square picture is no evidence of a slab.
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const square = path.join(folder, 'square.jpg');
+  await sharp(fixture('slab-barcode.jpg')).extend({ right: 204, background: '#d0d4d8' }).toFile(square);
+  await assert.rejects(thicken([square]), /can't tell what this is/);
 });
 
 test('a picture with nothing to go on is refused, not guessed', async () => {
