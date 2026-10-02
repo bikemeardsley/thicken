@@ -9,8 +9,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { previewPath, startPreview } from './preview.ts';
-import { batchItems, PROFILES, stillToShoot, thicken, type Options, type Profile, type Sidecar } from './thicken.ts';
+import { batchItems, PROFILES, thicken, type Options, type Profile, type Sidecar } from './thicken.ts';
 
 const USAGE = `usage: thicken [badge|book|slab] <picture or PDF>... [-o out.glb] [--preview]
        thicken batch [badge|book|slab] <folder> [-o out-folder] [--preview] [--force]
@@ -89,10 +88,15 @@ async function upToDate(out: string, files: string[]) {
   return existsSync(out) && (await readSidecar(out))?.inputsKey === await inputsKey(files);
 }
 
-/** A previewer if a browser can be had; without one, models are still made and the reason is said once. */
+/**
+ * A previewer if a browser can be had; without one, models are still made and
+ * the reason is said once. Loaded only when asked for: the browser driver
+ * takes seconds to load, which every run would otherwise pay.
+ */
 async function previewer() {
   try {
-    return await startPreview();
+    const { startPreview, previewPath } = await import('./preview.ts');
+    return { ...(await startPreview()), previewPath };
   } catch (error) {
     console.warn(`  warning: no previews: ${(error as Error).message}`);
     return undefined;
@@ -102,8 +106,7 @@ async function previewer() {
 try {
   if (command === 'make') {
     const { out, sidecar } = await build(positionals, values.out);
-    const missing = stillToShoot(sidecar.faces);
-    if (missing.length) console.log(`  still to shoot: ${missing.join(', ')}`);
+    if (sidecar.review.length) console.log(`  to review: ${sidecar.review.join('; ')}`);
     const preview = values.preview ? await previewer() : undefined;
     if (preview) {
       await preview.render(out)
@@ -119,6 +122,7 @@ try {
         models.push(target);
       }
     }
+    const { startPreview } = await import('./preview.ts');
     const preview = await startPreview();
     try {
       for (const model of models) {
@@ -142,7 +146,7 @@ try {
     const preview = values.preview ? await previewer() : undefined;
     // ponytail: one at a time, which is polite to Open Library and loses little (HEIC decoding is single-threaded wasm); a small pool if big batches drag.
     let [made, kept, failed] = [0, 0, 0];
-    const toShoot: string[] = [];
+    const toReview: string[] = [];
     for (const { name, files } of items) {
       const out = path.join(outFolder, `${name}.glb`);
       const current = !values.force && await upToDate(out, files);
@@ -159,15 +163,17 @@ try {
         }
       }
       // A preview that can't be drawn is a warning: the model itself is made.
-      if (preview && (!current || !existsSync(previewPath(out)))) {
+      if (preview && (!current || !existsSync(preview.previewPath(out)))) {
         await preview.render(out).catch((error: Error) => console.warn(`  ${name}: no preview: ${error.message}`));
       }
-      const missing = stillToShoot((await readSidecar(out))?.faces);
-      if (missing.length) toShoot.push(`  ${name}: ${missing.join(', ')}`);
+      const review = (await readSidecar(out))?.review ?? [];
+      if (review.length) toReview.push(`  ${name}: ${review.join('; ')}`);
     }
     await preview?.close();
     console.log(`${made} made, ${kept} already up to date, ${failed} failed, in ${outFolder}`);
-    if (toShoot.length) console.log(`still to shoot (put each item's photos in a subfolder named after it, then re-run):\n${toShoot.join('\n')}`);
+    if (toReview.length) {
+      console.log(`to review (stand-ins and guesses; add photos to the item's subfolder, or --size, then re-run):\n${toReview.join('\n')}`);
+    }
     process.exitCode = failed ? 1 : 0;
   }
 } catch (error) {

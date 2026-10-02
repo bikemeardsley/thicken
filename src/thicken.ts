@@ -2,7 +2,9 @@
 // one named), build it. Two families: digital artwork made into an object
 // (badge), and a real object rebuilt at its real size (book, slab).
 // Barcodes are read whatever the profile, so a back cover's ISBN feeds the
-// book's size lookup without being typed in.
+// book's size lookup without being typed in. The sidecar records how each
+// fact was found, what still needs review, and how the model was built.
+import { readFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { badge, signedArea } from './badge.ts';
@@ -30,17 +32,27 @@ export interface Sidecar {
   heightMm: number;
   depthMm: number;
   faces?: Faces;
+  review: string[];
   warnings: string[];
   [detail: string]: unknown;
 }
 
-/** Where each face's picture came from: the user's own photo, or something standing in for one. */
-export type Faces = Record<string, 'photo' | 'openlibrary' | 'color' | 'plastic'>;
+/** What a profile hands back, before the shared record is added. */
+interface Built { widthMm: number; heightMm: number; depthMm: number; warnings: string[]; faces?: Faces; review?: string[]; [detail: string]: unknown }
+
+/**
+ * Where each face's picture came from: the user's own photo, or something
+ * standing in for one. A book's top, bottom and page edge default to plain
+ * page color ("pages"), which is fine as it is: they are extras, never to review.
+ */
+export type Faces = Record<string, 'photo' | 'openlibrary' | 'color' | 'plastic' | 'pages'>;
 const STAND_IN = { openlibrary: 'Open Library\'s cover, not your copy', color: 'plain color', plastic: 'plain plastic' };
 
-/** The faces still to photograph, e.g. "spine (plain color)": for the re-shoot list and preview captions. */
+/** The faces still to photograph, e.g. "spine (plain color)": for the review list and preview captions. */
 export const stillToShoot = (faces: Faces = {}) =>
-  Object.entries(faces).flatMap(([face, from]) => (from === 'photo' ? [] : [`${face} (${STAND_IN[from]})`]));
+  Object.entries(faces).flatMap(([face, from]) => (from === 'photo' || from === 'pages' ? [] : [`${face} (${STAND_IN[from]})`]));
+
+const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string;
 
 // A grader's QR code points at its own verification page, which says whose holder this is.
 const GRADER_SITES: Record<string, string> = { 'psacard.com': 'psa', 'beckett.com': 'bgs', 'cgccards.com': 'cgc', 'gosgc.com': 'sgc', 'taggrading.com': 'tag' };
@@ -49,11 +61,12 @@ const CERT = /^[A-Z]?\d{6,12}$|^\d{7}-\d{3}$/i;
 const SLAB_SHAPE_TOLERANCE = 0.06;
 
 export async function thicken(inputs: string[], options: Options = {}): Promise<{ glb: Uint8Array; sidecar: Sidecar }> {
+  const started = performance.now();
   const { sizeMm = [] } = options;
   if (sizeMm.some((mm) => mm !== undefined && !(mm > 0))) throw new Error('sizes must be positive millimeters, e.g. 152x229x25');
   const pictures = (await Promise.all(inputs.map((input) => load(input)))).flat();
 
-  const found: Found = options.profile === 'badge' ? {} : await lookAtCodes(pictures);
+  const found: Found = options.profile === 'badge' ? { codes: [] } : await lookAtCodes(pictures);
   const isbn = options.isbn ? checkIsbn(options.isbn) : found.isbn;
   const profile = options.profile
     ?? (isbn ? 'book' : found.grader || (found.cert && isSlabShaped(pictures[0])) ? 'slab' : isArtwork(pictures[0]) ? 'badge' : undefined);
@@ -62,9 +75,28 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
   }
 
   const built = profile === 'book' ? await book(pictures, { isbn, sizeMm, backAt: found.isbnAt })
-    : profile === 'slab' ? await slab(pictures, { holder: options.holder ?? found.grader, sizeMm, label: { grader: found.grader, cert: found.cert, verifyUrl: found.verifyUrl } })
+    : profile === 'slab' ? await slab(pictures, {
+      holder: options.holder ?? found.grader, sizeMm, labelAt: found.graderAt,
+      label: { grader: found.grader, cert: found.cert, verifyUrl: found.verifyUrl },
+    })
     : await badge(first(pictures), options);
-  return { glb: built.glb, sidecar: { ...built.sidecar, profile, sources: inputs.map((input) => path.basename(input)) } };
+  // How each identifying fact was found, for anyone deciding how far to trust it.
+  const identifiedBy = profile === 'book' ? { isbn: options.isbn ? 'given' : found.isbn ? 'barcode' : undefined }
+    : profile === 'slab' ? { grader: options.holder ? 'given' : found.grader ? 'qr' : 'assumed', cert: found.certFrom }
+    : undefined;
+  const own = built.sidecar as Built;
+  return {
+    glb: built.glb,
+    sidecar: {
+      ...own,
+      profile,
+      sources: inputs.map((input) => path.basename(input)),
+      review: [...stillToShoot(own.faces), ...(own.review ?? [])],
+      identifiedBy,
+      codes: found.codes,
+      build: { thicken: VERSION, createdAt: new Date().toISOString(), ms: Math.round(performance.now() - started), glbBytes: built.glb.length },
+    },
+  };
 }
 
 const PICTURE = /\.(jpe?g|png|heic|heif|webp|avif|gif|tiff?|svg|pdf)$/i;
@@ -106,20 +138,35 @@ export async function batchItems(folder: string, skip?: string): Promise<{ name:
   return items;
 }
 
-interface Found { isbn?: string; isbnAt?: number; grader?: string; cert?: string; verifyUrl?: string }
+/** A code seen on a picture. Its text is kept only when Thicken used it: a stray QR code can hold a Wi-Fi password. */
+interface Code { picture: number; format: string; use?: 'isbn' | 'grader' | 'cert'; text?: string }
+
+interface Found {
+  codes: Code[];
+  isbn?: string;
+  isbnAt?: number;
+  grader?: string;
+  graderAt?: number;
+  cert?: string;
+  certFrom?: 'qr' | 'barcode';
+  verifyUrl?: string;
+}
 
 /**
  * What the barcodes and QR codes say: a book's ISBN (EAN-13, 978/979) and
  * which picture it was on; a slab's grader, cert number and verification
- * page from a QR code to the grader's site; or, on an older label, a cert
- * number from its Code 128 barcode alone.
+ * page from a QR code to the grader's site, and which picture that was; or,
+ * on an older label, a cert number from its Code 128 barcode alone.
  */
 async function lookAtCodes(pictures: Picture[]): Promise<Found> {
-  const found: Found = {};
+  const found: Found = { codes: [] };
   for (const [at, picture] of pictures.entries()) {
     for (const { format, text } of await codes(picture)) {
+      const code: Code = { picture: at, format };
+      found.codes.push(code);
       if (format === 'EAN13' && /^97[89]/.test(text)) {
         if (!found.isbn) Object.assign(found, { isbn: text, isbnAt: at });
+        Object.assign(code, { use: 'isbn', text });
         continue;
       }
       const url = URL.canParse(text) ? new URL(text) : undefined;
@@ -128,9 +175,12 @@ async function lookAtCodes(pictures: Picture[]): Promise<Found> {
       if (url && site && !found.grader) {
         // The cert number is the first path segment, query value or fragment segment that is one, whole.
         const cert = [...url.pathname.split('/'), ...url.searchParams.values(), ...url.hash.split(/[#/?&=]/)].find((part) => CERT.test(part));
-        Object.assign(found, { grader: GRADER_SITES[site], verifyUrl: text, cert: cert?.toUpperCase() ?? found.cert });
-      } else if (format === 'Code128' && CERT.test(text)) {
-        found.cert ??= text.toUpperCase();
+        Object.assign(found, { grader: GRADER_SITES[site], graderAt: at, verifyUrl: text });
+        if (cert) Object.assign(found, { cert: cert.toUpperCase(), certFrom: 'qr' });
+        Object.assign(code, { use: 'grader', text });
+      } else if (format === 'Code128' && CERT.test(text) && !found.cert) {
+        Object.assign(found, { cert: text.toUpperCase(), certFrom: 'barcode' });
+        Object.assign(code, { use: 'cert', text });
       }
     }
   }

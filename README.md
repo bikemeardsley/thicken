@@ -43,17 +43,15 @@ Name the profile, or leave it out and Thicken picks one:
   itself (`verifyUrl`).
 - So does an older label's Code 128 cert barcode, but only on a photo shaped
   like a holder. The grader then isn't known: a PSA-size holder is assumed,
-  with a warning to name it.
+  and marked for review.
 - Artwork with transparency around a shape that isn't just a rectangle means
   a **badge**.
 - Anything else is refused with a request to name the profile. Other
   barcodes don't count: books carry UPCs, QR codes and library stickers.
 
-A book's pictures are placed by what they show, not their order. The
-picture carrying the ISBN barcode is the back cover, and a tall, narrow
-picture is the spine. The rest, in order, are the front and (with no
-barcode) the back. With no front, the cover comes from Open Library, so one
-photo of the back is a whole book.
+Pictures are placed on faces by what they show, not their order (see
+[Photos](#photos-any-number)). With no front, Open Library's cover stands in,
+marked for review, so one photo of the back is enough to start a book.
 
 ## Batch
 
@@ -68,18 +66,42 @@ classified on its own; `thicken batch book <folder>` forces a profile.
   edits included. Add, remove or replace a picture, whatever its file date
   (cameras keep capture dates), and that model is made again. `--force`
   remakes them all.
-- At the end it lists the faces still to photograph (below).
+- At the end it lists everything still to review (below).
 
 The quickest way to do a shelf: photograph the back of every book. Each
 barcode gives the ISBN, and Open Library gives the size and a stand-in front
 cover until you photograph your own.
 
-## Your photos, or stand-ins
+## Photos: any number
+
+Give as many photos of an object as you like, in any order: each lands on a
+face, and more photos make a better model. In order:
+
+1. **A face word in the file name decides it:** `front` (or `cover`),
+   `back`, `spine`, `top`, `bottom`, `edge` (or `fore`). With two, the last
+   counts: `back_to_the_future_front.jpg` is the front, `back-cover.jpg` the
+   back. This overrides everything below.
+2. **What the photo shows:** a book's ISBN-barcode photo is its back; a
+   slab's grader-QR photo is its front (its back for CGC, which prints the QR
+   code there).
+3. **Shape, for books:** tall narrow photos are the spine, then the page
+   edge; wide narrow ones the top, then the bottom.
+4. **The rest:** front, then back.
+5. **Extra shots** join the face they match in color, and each face keeps
+   its sharpest shot. The others stay in the sidecar as alternates.
+
+A book wants three photos (front, back, spine) and a slab two (front, back).
+Top, bottom and page-edge photos are extras that replace the plain page
+color. Upright spine and page-edge photos also measure the thickness.
+
+Two things the rules get wrong, both fixed by naming the file: a page-edge
+photo with no spine photo is taken for the spine, and an ISBN printed on a
+front cover (some manga, coursepacks) makes it the back.
 
 A model shows your copy, not one from the internet: every face you
-photograph carries your photo, exactly as taken (unlit, so its colors are
-untouched). The ISBN only supplies the size. Faces you didn't photograph
-are filled in, and each sidecar's `faces` says which is which:
+photograph carries your photo exactly as taken (unlit, so its colors are
+untouched). The ISBN supplies the size and catalog data. Each sidecar's
+`faces` says where every face came from:
 
 | Value | Meaning |
 | --- | --- |
@@ -87,11 +109,34 @@ are filled in, and each sidecar's `faces` says which is which:
 | `openlibrary` | A stand-in front cover from Open Library, used only when you photographed the back but not the front |
 | `color` | A plain color from the cover's edge (a book's missing back or spine) |
 | `plastic` | Plain plastic (a slab with no back photo) |
+| `pages` | Plain page color (a book's top, bottom or page edge: an extra, not reviewed) |
 
-So a book wants three photos (front, back, spine) and a slab two (front,
-back); fewer still make a model. A batch ends with the list of faces still
-to photograph. Put the item's photos in a subfolder named after it and run
-the batch again, and only that model is remade.
+## Review
+
+Stand-ins and guesses are kept, and marked: each sidecar's `review` lists
+them, a batch ends with the list, and the preview caption shows it. That
+covers a stand-in front, a plain spine or back, a guessed trim size, a
+default thickness, an assumed slab holder, and photos and page count
+disagreeing on the thickness. Add the photos (in a subfolder named after
+the item) or the measurement, run again, and only that model is remade,
+with its review cleared.
+
+## What the sidecar records
+
+- **Size:** `widthMm`, `heightMm`, `depthMm`; `measuredBy`, the source of
+  each; `depthEstimates`, every thickness estimate made.
+- **Identity:** `isbn` and `catalog` (title, authors, publishers, publish
+  date, subjects, Dewey and LC classification), or `grader`, `cert` and
+  `verifyUrl`; `identifiedBy`, how each was found.
+- **Photos:** for each, its file and page, format, original size, bytes,
+  camera, lens, capture time (the camera's own clock and UTC offset),
+  sharpness, and the face it became.
+- **Codes:** every barcode and QR code seen, and which photo it was on.
+- **Lookups:** every network call: host, path, status and time.
+- **Build:** Thicken's version, when, how long, the GLB's size, and a
+  fingerprint of the photos used (`inputsKey`).
+- **Never recorded:** GPS, serial numbers, and the text of any code Thicken
+  didn't use (a QR code can hold a Wi-Fi password). Sidecars may be published.
 
 ## Preview
 
@@ -168,6 +213,7 @@ whose shape is off the holder's by more than 4% warns.
 | Decoding HEIC | Dependency | [catdad-experiments/libheif-js](https://github.com/catdad-experiments/libheif-js) (LGPL-3.0, used unmodified). sharp's binaries leave out HEVC. |
 | Reading barcodes | Dependency | [Sec-ant/zxing-wasm](https://github.com/Sec-ant/zxing-wasm) (MIT). Its `.wasm` is loaded from `node_modules`, not its default CDN. |
 | Pictures from scanner PDFs | Dependency | [unjs/unpdf](https://github.com/unjs/unpdf) (MIT, pdf.js inside) |
+| Reading camera details (EXIF) | Dependency | [devongovett/exif-reader](https://github.com/devongovett/exif-reader) (MIT): parses the EXIF block sharp returns |
 | Drawing previews | Dependency | [google/model-viewer](https://github.com/google/model-viewer) (Apache-2.0): frames and lights a GLB; three.js inside |
 | Running the preview browser | Dependency | [microsoft/playwright](https://github.com/microsoft/playwright) (`playwright-core`, Apache-2.0): drives an installed Chrome or Edge, no browser download |
 | Book dimension sources | Write | Read [palmerabollo/node-isbn](https://github.com/palmerabollo/node-isbn)'s provider fallback. Ours is per dimension, not first-provider-wins. |

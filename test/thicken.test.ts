@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { mock, test } from 'node:test';
 import { getBounds, NodeIO, type Document, type Primitive, type vec2, type vec3 } from '@gltf-transform/core';
 import { KHRMaterialsUnlit } from '@gltf-transform/extensions';
-import sharp from 'sharp';
+import sharp, { type Sharp } from 'sharp';
 import { startPreview } from '../src/preview.ts';
 import { batchItems, thicken } from '../src/thicken.ts';
 
@@ -21,7 +21,8 @@ const fixture = (name: string) => fileURLToPath(new URL(`fixtures/${name}`, impo
 // (simplifying turns the L's inside corner into a slant).
 test('badge: cut-out artwork, its outline extruded to a closed solid at real-world size', async () => {
   const { glb, sidecar } = await thicken([fixture('badge.png')], { widthMm: 35, depthMm: 2 }); // 1 mm per pixel
-  assert.deepEqual(sidecar, { profile: 'badge', sources: ['badge.png'], widthMm: 35, heightMm: 23, depthMm: 2, edge: '#3366cc', regions: 2, warnings: [] });
+  assert.deepEqual(pick(sidecar, ['profile', 'sources', 'widthMm', 'heightMm', 'depthMm', 'edge', 'regions', 'review', 'warnings']),
+    { profile: 'badge', sources: ['badge.png'], widthMm: 35, heightMm: 23, depthMm: 2, edge: '#3366cc', regions: 2, review: [], warnings: [] });
 
   const doc = await read(glb);
   assertExtents(doc, [0.035, 0.023, 0.002]);
@@ -59,12 +60,16 @@ test('book: a scanned PDF, its ISBN read off the back cover, its size from Open 
   const fetch = catalog({ physical_dimensions: '8 x 5 x 1 inches', number_of_pages: 320 });
   t.after(() => fetch.mock.restore());
   const { glb, sidecar } = await thicken([fixture('book-scan.pdf')]);
-  assert.deepEqual(sidecar, {
+  assert.deepEqual(pick(sidecar, ['profile', 'sources', 'isbn', 'widthMm', 'heightMm', 'depthMm', 'measuredBy', 'pages', 'faces', 'review', 'warnings', 'identifiedBy']), {
     profile: 'book', sources: ['book-scan.pdf'], isbn: '9780140328721', widthMm: 127, heightMm: 203.2, depthMm: 25.4,
     measuredBy: { width: 'openlibrary', height: 'openlibrary', depth: 'openlibrary' }, pages: 320,
-    faces: { front: 'photo', back: 'photo', spine: 'color' }, warnings: [],
+    faces: { front: 'photo', back: 'photo', spine: 'color', top: 'pages', bottom: 'pages', edge: 'pages' },
+    review: ['spine (plain color)'], warnings: [], identifiedBy: { isbn: 'barcode' },
   });
-  assert.equal(fetch.mock.callCount(), 1, 'Open Library had every dimension, so no backup was asked');
+  assert.deepEqual((sidecar.pictures as { file: string; page: number; role: string }[]).map(({ file, page, role }) => [file, page, role]),
+    [['book-scan.pdf', 1, 'front'], ['book-scan.pdf', 2, 'back']]);
+  assert.deepEqual(sidecar.codes, [{ picture: 1, format: 'EAN13', use: 'isbn', text: '9780140328721' }]);
+  assert.ok(fetch.mock.calls.every((call) => !String(call.arguments[0]).includes('googleapis')), 'Open Library had every dimension, so no backup was asked');
 
   const doc = await read(glb);
   assertExtents(doc, [0.127, 0.2032, 0.0254]);
@@ -88,7 +93,7 @@ test('book: dimensions the catalog lacks fall through to the backup sources', as
 // book-back.jpg: the back cover alone, barcode and all, as a phone shoots it.
 test('book: a photo of the back alone is enough, the front cover coming from Open Library', async (t) => {
   const cover = await sharp({ create: { width: 500, height: 800, channels: 3, background: '#1d2b53' } }).jpeg().toBuffer();
-  const fetch = catalog({ physical_dimensions: '8 x 5 x 1 inches' }, cover);
+  const fetch = catalog({ physical_dimensions: '8 x 5 x 1 inches' }, { cover });
   t.after(() => fetch.mock.restore());
   const { glb, sidecar } = await thicken([fixture('book-back.jpg')]);
   assert.equal(sidecar.coverUrl, 'https://covers.openlibrary.org/b/isbn/9780140328721-L.jpg');
@@ -109,22 +114,88 @@ test('book: pictures in any order are placed by what they show', async (t) => {
   };
   const fetch = catalog({ physical_dimensions: '8 x 5 x 1 inches' });
   t.after(() => fetch.mock.restore());
-  // Spine first, back (the barcode) second, then the front and a fourth picture nobody needs.
-  const pictures = [await solid('spine.png', 60, '#c62828'), fixture('book-back.jpg'), await solid('front.png', 500, '#1d2b53'), await solid('extra.png', 500, '#2e7d32')];
+  // Spine first, back (the barcode) second, then the front and a fourth picture nobody needs. The
+  // front's name holds two face words; the last one counts, as people name files "<title>_<face>".
+  const pictures = [
+    await solid('spine.png', 60, '#c62828'), fixture('book-back.jpg'),
+    await solid('back-to-the-future-front.png', 500, '#1d2b53'), await solid('extra.png', 500, '#2e7d32'),
+  ];
   const { glb, sidecar } = await thicken(pictures);
-  assert.deepEqual(sidecar.warnings, ['1 picture(s) not used: a book takes one front, back and spine']);
+  assert.deepEqual(sidecar.warnings, ['1 picture(s) not used: none looked like another shot of a face']);
   const doc = await read(glb);
   assert.ok(near(await colorOf(doc, [0, 0, 1]), '#1d2b53'), 'the front is the first picture that is neither barcode nor spine');
   assert.ok(Math.min(...await colorOf(doc, [0, 0, -1])) > 180, 'the back is the barcode picture');
   assert.ok(near(await colorOf(doc, [-1, 0, 0]), '#c62828'), 'the spine is the tall narrow picture');
 });
 
+test('book: any number of photos, each on its face, the sharpest kept, the thickness measured, and all of it recorded', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const { prepareZXingModule, writeBarcode } = await import('zxing-wasm/full');
+  prepareZXingModule({ overrides: { wasmBinary: readFileSync(createRequire(import.meta.url).resolve('zxing-wasm/full/zxing_full.wasm')) } });
+  // A sticker on the cover with a Wi-Fi password in its QR code: seen, never recorded.
+  const wifi = Buffer.from(await (await writeBarcode('WIFI:T:WPA;S:home;P:hunter2;;', { format: 'QRCode', scale: 3 })).image!.arrayBuffer());
+  const lines = [...Array(12).keys()].map((i) => `<text x="40" y="${80 + i * 46}" font-size="32" fill="#f4a259" font-family="Georgia">LINE ${i}</text>`).join('');
+  const art = await sharp({ create: { width: 500, height: 800, channels: 3, background: '#1d2b53' } })
+    .composite([{ input: Buffer.from(`<svg width="500" height="800">${lines}</svg>`) }, { input: wifi, left: 360, top: 640 }])
+    .png().toBuffer();
+  const save = async (name: string, image: Sharp) => {
+    await image.toFile(path.join(folder, name));
+    return path.join(folder, name);
+  };
+  const solid = (width: number, height: number, color: string) => sharp({ create: { width, height, channels: 3, background: color } }).png();
+  const files = [
+    // The front, with the camera's EXIF (and GPS, which must not be recorded).
+    await save('IMG_1.jpg', sharp(art).withExif({
+      IFD0: { Make: 'Apple', Model: 'iPhone 15 Pro' },
+      IFD2: { DateTimeOriginal: '2026:09:30 14:05:11', OffsetTimeOriginal: '-05:00' },
+      IFD3: { GPSLatitudeRef: 'N' },
+    }).jpeg()),
+    await save('IMG_2.jpg', sharp(art).blur(6).jpeg()), // the front again, out of focus
+    fixture('book-back.jpg'), // the back, barcode and all
+    await save('IMG_4.png', solid(60, 800, '#c62828')), // the spine
+    await save('IMG_5.png', solid(50, 800, '#f2ead9')), // the page edge
+    await save('IMG_6.png', solid(500, 60, '#e8dcc0')), // the top
+  ];
+  const fetch = catalog({ physical_dimensions: '8 x 5 inches' }, {
+    data: { title: 'Fantastic Mr Fox', authors: [{ name: 'Roald Dahl' }], publishers: [{ name: 'Puffin' }], publish_date: '1988', number_of_pages: 100 },
+  });
+  t.after(() => fetch.mock.restore());
+  const { glb, sidecar } = await thicken(files);
+
+  const pictures = sidecar.pictures as { file: string; role: string; sharpness: number; camera?: string; takenAt?: string }[];
+  assert.deepEqual(pictures.map(({ file, role }) => [file, role]), [
+    ['IMG_1.jpg', 'front'], ['IMG_2.jpg', 'alternate front'], ['book-back.jpg', 'back'], ['IMG_4.png', 'spine'], ['IMG_5.png', 'edge'], ['IMG_6.png', 'top'],
+  ]);
+  assert.ok(pictures[0].sharpness > pictures[1].sharpness, 'the sharp shot of the front beats the blurred one');
+  assert.deepEqual([pictures[0].camera, pictures[0].takenAt], ['Apple iPhone 15 Pro', '2026-09-30T14:05:11-05:00']);
+  assert.deepEqual(sidecar.faces, { front: 'photo', back: 'photo', spine: 'photo', top: 'photo', bottom: 'pages', edge: 'photo' });
+
+  // Thickness: spine 60/800 and edge 50/800 of the 203.2 mm height, median 13.97 mm; the page count says 7.5 mm.
+  assert.deepEqual([sidecar.depthMm, (sidecar.measuredBy as Record<string, string>).depth, sidecar.depthEstimates], [14, 'photos', { photos: 14, pages: 7.5 }]);
+  assert.deepEqual(sidecar.review, ['thickness (the photos say 14 mm, the page count 7.5 mm: check the spine photo\'s crop)']);
+  assert.deepEqual(pick(sidecar.catalog as Record<string, unknown>, ['title', 'authors', 'publishers', 'publishDate']),
+    { title: 'Fantastic Mr Fox', authors: ['Roald Dahl'], publishers: ['Puffin'], publishDate: '1988' });
+
+  // Every code is listed, but only the one used keeps its text; GPS is never recorded.
+  assert.deepEqual(sidecar.codes, [{ picture: 0, format: 'QRCode' }, { picture: 2, format: 'EAN13', use: 'isbn', text: '9780140328721' }]);
+  const text = JSON.stringify(sidecar);
+  assert.ok(!text.includes('hunter2') && !text.includes('GPS'), 'nothing private in the sidecar');
+  assert.ok((sidecar.lookups as { host: string; status: number }[]).some(({ host, status }) => host === 'openlibrary.org' && status === 200));
+
+  const doc = await read(glb);
+  assert.ok(near(await colorOf(doc, [-1, 0, 0]), '#c62828'), 'spine photo on the spine');
+  assert.ok(near(await colorOf(doc, [1, 0, 0]), '#f2ead9'), 'page-edge photo on the page edge');
+  assert.ok(near(await colorOf(doc, [0, 1, 0]), '#e8dcc0'), 'top photo on the top');
+});
+
 // slab.jpg: 296 × 500, a PSA holder's shape, with a QR code to a psacard.com cert on the label.
 test('slab: a grader\'s QR code picks the holder, and the holder its size', async () => {
   const { glb, sidecar } = await thicken([fixture('slab.jpg')]);
-  assert.deepEqual(sidecar, {
+  assert.deepEqual(pick(sidecar, ['profile', 'sources', 'holder', 'grader', 'cert', 'verifyUrl', 'widthMm', 'heightMm', 'depthMm', 'measuredBy', 'faces', 'review', 'warnings', 'identifiedBy']), {
     profile: 'slab', sources: ['slab.jpg'], holder: 'psa', grader: 'psa', cert: '12345678', verifyUrl: 'https://www.psacard.com/cert/12345678',
-    widthMm: 80.5, heightMm: 136, depthMm: 6.5, measuredBy: 'table', faces: { front: 'photo', back: 'plastic' }, warnings: [],
+    widthMm: 80.5, heightMm: 136, depthMm: 6.5, measuredBy: 'table', faces: { front: 'photo', back: 'plastic' },
+    review: ['back (plain plastic)'], warnings: [], identifiedBy: { grader: 'qr', cert: 'qr' },
   });
   assertExtents(await read(glb), [0.0805, 0.136, 0.0065]);
 });
@@ -142,11 +213,21 @@ test('slab: the cert is the first whole cert number in the QR link, not a tracki
   assert.deepEqual([sidecar.grader, sidecar.cert], ['psa', '12345678']);
 });
 
+test('slab: shot back first, the QR label still goes on the front', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const back = path.join(folder, 'IMG_1.png');
+  await sharp({ create: { width: 296, height: 500, channels: 3, background: '#c8ccd0' } }).png().toFile(back);
+  const { sidecar } = await thicken([back, fixture('slab.jpg')]);
+  assert.deepEqual((sidecar.pictures as { file: string; role: string }[]).map(({ file, role }) => [file, role]), [['IMG_1.png', 'back'], ['slab.jpg', 'front']]);
+});
+
 // slab-barcode.jpg: the same holder shape, but an older label with only a Code 128 cert barcode (BGS-style 0017041720).
 test('slab: a cert barcode on a holder-shaped photo is a slab, of a grader it says it can\'t name', async (t) => {
   const { sidecar } = await thicken([fixture('slab-barcode.jpg')]);
   assert.deepEqual([sidecar.profile, sidecar.holder, sidecar.cert, sidecar.grader], ['slab', 'psa', '0017041720', undefined]);
-  assert.match((sidecar.warnings as string[])[0], /grader isn't identified/);
+  assert.match(sidecar.review.join(' '), /holder \(PSA size assumed/);
+  assert.deepEqual(sidecar.identifiedBy, { grader: 'assumed', cert: 'barcode' });
 
   // The same barcode on a square picture is no evidence of a slab.
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
@@ -195,7 +276,7 @@ test('batch: every model is made, and one that fails is reported without stoppin
   assert.equal(first.status, 1, 'a failed model fails the batch');
   assert.match(first.stderr, /plain: failed: can't tell what this is/);
   assert.match(first.stdout, /3 made, 0 already up to date, 1 failed/);
-  assert.match(first.stdout, /still to shoot[^\n]*\n {2}lone-slab: back \(plain plastic\)$/m, 'the front-only slab is listed, the full one is not');
+  assert.match(first.stdout, /to review[^\n]*\n {2}lone-slab: back \(plain plastic\)$/m, 'the front-only slab is listed, the full one is not');
   assert.deepEqual((await readdir(path.join(folder, 'thicken'))).sort(),
     ['badge.glb', 'badge.json', 'lone-slab.glb', 'lone-slab.json', 'slab.glb', 'slab.json']);
 
@@ -228,11 +309,12 @@ test('preview: both sides of a model, drawn beside it as <name>.preview.png', as
   assert.ok(data[k + 1] > data[k] + 40 && data[k + 1] > data[k + 2] + 40, `front view center is ${[...data.subarray(k, k + 3)]}`);
 });
 
-/** Stand-in catalogs: Open Library knows one edition (and maybe its cover), Google Books is out of quota. */
-function catalog(edition: object, cover?: Uint8Array) {
+/** Stand-in catalogs: Open Library knows one edition (and maybe its cover and catalog record), Google Books is out of quota. */
+function catalog(edition: object, { cover, data }: { cover?: Uint8Array; data?: object } = {}) {
   return mock.method(globalThis, 'fetch', async (url: string | URL) => {
     const href = String(url);
     if (href === 'https://openlibrary.org/isbn/9780140328721.json') return Response.json(edition);
+    if (data && href.startsWith('https://openlibrary.org/api/books?bibkeys=ISBN:9780140328721')) return Response.json({ 'ISBN:9780140328721': data });
     if (cover && href.startsWith('https://covers.openlibrary.org/b/isbn/9780140328721-L.jpg')) return new Response(new Uint8Array(cover));
     if (href.startsWith('https://www.googleapis.com/')) return new Response('{}', { status: 429 });
     return new Response('', { status: 404 });
@@ -256,6 +338,7 @@ async function colorOf(doc: Document, normal: number[]): Promise<number[]> {
 const near = (color: number[], hex: string) => color.every((c, i) => Math.abs(c - parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16)) < 12);
 
 const read = (glb: Uint8Array) => new NodeIO().registerExtensions([KHRMaterialsUnlit]).readBinary(glb);
+const pick = (object: Record<string, unknown>, keys: string[]) => Object.fromEntries(keys.map((key) => [key, object[key]]));
 
 function assertExtents(doc: Document, meters: number[]) {
   const { min, max } = getBounds(doc.getRoot().getDefaultScene()!);

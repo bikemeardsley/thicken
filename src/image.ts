@@ -7,6 +7,8 @@
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import path from 'node:path';
+import exifReader from 'exif-reader';
 import sharp, { type Sharp } from 'sharp';
 import { extractImages, getDocumentProxy } from 'unpdf';
 import { prepareZXingModule, readBarcodes } from 'zxing-wasm/reader';
@@ -17,26 +19,81 @@ const MAX_PX = 2048; // plenty for a 30 cm book, and keeps a 48 MP photo from co
 // The barcode reader's .wasm from node_modules, not the CDN it fetches by default.
 prepareZXingModule({ overrides: { wasmBinary: readFileSync(require.resolve('zxing-wasm/reader/zxing_reader.wasm')) } });
 
-export interface Picture { data: Buffer; width: number; height: number; transparent: boolean }
-
-/** Every picture in a file or encoded image: one, or one per page of a PDF. */
-export async function load(input: string | Buffer): Promise<Picture[]> {
-  const bytes = typeof input === 'string' ? await readFile(input) : input;
-  if (bytes.subarray(0, 5).toString('latin1') === '%PDF-') return Promise.all((await pdfPages(bytes)).map(upright));
-  const { format, compression, width = 1, height = 1, density = 72 } = await sharp(bytes).metadata();
-  if (compression === 'hevc') return [await upright(await heic(bytes))];
-  // An SVG is drawn at the size it asks for; draw it big enough to stay sharp.
-  const svgDensity = format === 'svg' ? Math.min(100_000, (density * MAX_PX) / Math.max(width, height)) : undefined;
-  return [await upright(sharp(bytes, { density: svgDensity }).rotate())];
+/** Where a picture came from, for the sidecar: never GPS or serial numbers, as sidecars may be published. */
+export interface Source {
+  file: string;
+  page?: number;
+  format: string;
+  width: number; // original pixels, before scaling to MAX_PX
+  height: number;
+  bytes: number;
+  camera?: string;
+  lens?: string;
+  takenAt?: string; // the camera's own clock, with its UTC offset when it wrote one
 }
 
-async function upright(image: Sharp): Promise<Picture> {
+export interface Picture { data: Buffer; width: number; height: number; transparent: boolean; source: Source }
+
+/** Every picture in a file or encoded image (`name` labels a buffer): one, or one per page of a PDF. */
+export async function load(input: string | Buffer, name = 'picture'): Promise<Picture[]> {
+  const bytes = typeof input === 'string' ? await readFile(input) : input;
+  const file = typeof input === 'string' ? path.basename(input) : name;
+  if (bytes.subarray(0, 5).toString('latin1') === '%PDF-') {
+    return Promise.all((await pdfPages(bytes)).map(({ image, width, height }, i) =>
+      upright(image, { file, page: i + 1, format: 'pdf', width, height, bytes: bytes.length })));
+  }
+  const { format = 'unknown', compression, width = 1, height = 1, density = 72, exif } = await sharp(bytes).metadata();
+  const source: Source = { file, format: compression === 'hevc' ? 'heic' : format, width, height, bytes: bytes.length, ...camera(exif) };
+  if (compression === 'hevc') return [await upright(await heic(bytes), source)];
+  // An SVG is drawn at the size it asks for; draw it big enough to stay sharp.
+  const svgDensity = format === 'svg' ? Math.min(100_000, (density * MAX_PX) / Math.max(width, height)) : undefined;
+  return [await upright(sharp(bytes, { density: svgDensity }).rotate(), source)];
+}
+
+async function upright(image: Sharp, source: Source): Promise<Picture> {
   const { data, info } = await image
     .resize(MAX_PX, MAX_PX, { fit: 'inside', withoutEnlargement: true })
     .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   let transparent = false;
   for (let i = 3; i < data.length && !transparent; i += 4) transparent = data[i] < 128;
-  return { data, width: info.width, height: info.height, transparent };
+  return { data, width: info.width, height: info.height, transparent, source };
+}
+
+/**
+ * Camera, lens and capture time from EXIF. The time is the camera's own clock
+ * plus the offset it wrote, if any, never converted: exif-reader reads the
+ * local time as if it were UTC, so only its wall-clock digits are used.
+ */
+function camera(exif?: Buffer): Pick<Source, 'camera' | 'lens' | 'takenAt'> {
+  if (!exif) return {};
+  try {
+    const { Image = {}, Photo = {} } = exifReader(exif) as { Image?: Record<string, unknown>; Photo?: Record<string, unknown> };
+    const taken = Photo.DateTimeOriginal;
+    return {
+      camera: [Image.Make, Image.Model].filter(Boolean).join(' ') || undefined,
+      lens: typeof Photo.LensModel === 'string' ? Photo.LensModel : undefined,
+      takenAt: taken instanceof Date && !Number.isNaN(taken.getTime())
+        ? taken.toISOString().slice(0, 19) + (typeof Photo.OffsetTimeOriginal === 'string' ? Photo.OffsetTimeOriginal : '')
+        : undefined,
+    };
+  } catch {
+    return {}; // unreadable EXIF costs the record, not the model
+  }
+}
+
+/**
+ * How sharp the subject is, and its mean color. Sharpness is the spread of a
+ * Laplacian on a copy shrunk to 512 px (so sizes compare), lightly blurred
+ * first so sensor noise and JPEG blocks don't pass for detail.
+ */
+export async function measure(picture: Picture): Promise<{ sharpness: number; color: number[] }> {
+  const crop = () => sharp(picture.data, { raw: { width: picture.width, height: picture.height, channels: 4 } })
+    .extract(subjectBox(picture)).resize(512, 512, { fit: 'inside' });
+  const [edges, tones] = await Promise.all([
+    crop().grayscale().blur(1).convolve({ width: 3, height: 3, kernel: [0, 1, 0, 1, -4, 1, 0, 1, 0], offset: 128 }).stats(),
+    crop().stats(),
+  ]);
+  return { sharpness: Math.round(edges.channels[0].stdev * 100) / 100, color: tones.channels.slice(0, 3).map((c) => Math.round(c.mean)) };
 }
 
 /** The primary image of a HEIC file; libheif applies its rotation and mirroring. */
@@ -55,16 +112,17 @@ async function heic(bytes: Buffer): Promise<Sharp> {
 }
 
 /** Each page's largest picture, turned as the page is. */
-async function pdfPages(bytes: Buffer): Promise<Sharp[]> {
+async function pdfPages(bytes: Buffer): Promise<{ image: Sharp; width: number; height: number }[]> {
   const pdf = await getDocumentProxy(new Uint8Array(bytes));
-  const pages: Sharp[] = [];
+  const pages: { image: Sharp; width: number; height: number }[] = [];
   for (let n = 1; n <= pdf.numPages; n++) {
     const images = await extractImages(pdf, n);
     if (images.length === 0) throw new Error(`PDF page ${n} has no picture on it: only scanned PDFs work`);
     const { data, width, height, channels } = images.reduce((a, b) => (b.width * b.height > a.width * a.height ? b : a));
     // ponytail: honors the page's /Rotate only; a scan drawn turned by its content stream would come out sideways.
     const { rotate } = await pdf.getPage(n);
-    pages.push(sharp(Buffer.from(data.buffer, data.byteOffset, data.byteLength), { raw: { width, height, channels } }).rotate(rotate));
+    const image = sharp(Buffer.from(data.buffer, data.byteOffset, data.byteLength), { raw: { width, height, channels } }).rotate(rotate);
+    pages.push({ image, width, height });
   }
   return pages;
 }

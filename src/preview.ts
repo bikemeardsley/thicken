@@ -1,7 +1,7 @@
 // Preview pictures of finished models, to check a batch at a glance: each GLB
 // drawn from the front three-quarters and the back three-quarters, side by
-// side, captioned with its real size and any face that isn't the user's own
-// photo. Written beside the model as <name>.preview.png, never <name>.png,
+// side, captioned with its real size and anything still to review (stand-in
+// faces, guessed sizes). Written beside the model as <name>.preview.png, never <name>.png,
 // which may be the photo it was made from. Drawn by Google's model-viewer in
 // a headless browser, with the viewer and the model served from disk, so
 // nothing is fetched from the network.
@@ -76,8 +76,8 @@ function caption(glb: string): string {
   const json = glb.replace(/(\.glb)?$/i, '.json');
   if (!existsSync(json)) return '';
   const sidecar = JSON.parse(readFileSync(json, 'utf8')) as Sidecar;
-  const notYours = stillToShoot(sidecar.faces);
-  return [`${sidecar.widthMm} × ${sidecar.heightMm} × ${sidecar.depthMm} mm`, notYours.length ? `not your photos: ${notYours.join(', ')}` : '']
+  const review = sidecar.review ?? stillToShoot(sidecar.faces); // older sidecars have faces but no review list
+  return [`${sidecar.widthMm} × ${sidecar.heightMm} × ${sidecar.depthMm} mm`, review.length ? `to review: ${review.join('; ')}` : '']
     .filter(Boolean).join('  ·  ');
 }
 

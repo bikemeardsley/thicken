@@ -1,8 +1,9 @@
 // The graded-card profile: a slab at its holder's size, with the front and
 // back photos on its faces and clear-plastic edges. The photos are used as
 // they are, so crop them to the slab's edges (or use a scanner app).
+import { assignFaces, pictureRecord, shots } from './faces.ts';
 import { box, type Side } from './glb.ts';
-import { texture, type Picture } from './image.ts';
+import type { Picture } from './image.ts';
 import type { Faces } from './thicken.ts';
 
 // ponytail: graders don't publish exterior holder sizes, and the figures online disagree by 1–5 mm across
@@ -23,23 +24,36 @@ const SHAPE_TOLERANCE = 0.04;
 /** What the label's codes said: grader, cert number, and the grader's verification page. */
 export interface Label { grader?: string; cert?: string; verifyUrl?: string }
 
-/** Pictures in order: front, back. With no holder named or read off a QR code, a PSA-size holder is assumed, and said so. */
-export async function slab(pictures: Picture[], { holder, sizeMm = [], label = {} }: { holder?: string; sizeMm?: number[]; label?: Label } = {}) {
+/**
+ * Pictures in any number and order (src/faces.ts). The one carrying the
+ * grader's QR code (`labelAt`) is the front, or for CGC, which prints its QR
+ * code on the back of the label, the back. With no holder named or read off a
+ * QR code, a PSA-size holder is assumed and the model marked for review.
+ */
+export async function slab(
+  pictures: Picture[],
+  { holder, sizeMm = [], label = {}, labelAt }: { holder?: string; sizeMm?: number[]; label?: Label; labelAt?: number } = {},
+) {
   const warnings: string[] = [];
-  if (!holder && sizeMm.length < 3) warnings.push('the grader isn\'t identified (no QR code to its site), so it\'s a PSA-size holder: name it with --holder');
+  const review: string[] = [];
+  if (!holder && sizeMm.length < 3) review.push('holder (PSA size assumed: no QR code named the grader; name it with --holder)');
   holder ??= 'psa';
   const size = [0, 1, 2].map((i) => sizeMm[i] ?? HOLDERS[holder]?.[i]);
   if (size.some((mm) => mm === undefined)) {
     throw new Error(`no size on file for a "${holder}" holder (known: ${Object.keys(HOLDERS).join(', ')}): measure one and pass --size WxHxD in mm`);
   }
-  if (pictures.length === 0) throw new Error('a slab needs a photo of its front');
-  const [front, back] = await Promise.all(pictures.slice(0, 2).map(texture));
+  const all = await shots(pictures);
+  const qrSide = labelAt === undefined ? {} : label.grader === 'cgc' ? { backAt: labelAt } : { frontAt: labelAt };
+  const { chosen, roles } = assignFaces(all, ['front', 'back'], qrSide);
+  const [front, back] = [chosen.front, chosen.back].map((i) => (i === undefined ? undefined : all[i].texture));
+  if (!front) throw new Error('a slab needs a photo of its front');
   for (const [i, photo] of [front, back].entries()) {
     if (photo && Math.abs(photo.width / photo.height / (size[0] / size[1]) - 1) > SHAPE_TOLERANCE) {
       warnings.push(`the ${i ? 'back' : 'front'} photo isn't the shape of a ${holder} holder: crop it to the slab's edges, or name the right --holder`);
     }
   }
-  if (pictures.length > 2) warnings.push(`${pictures.length - 2} picture(s) not used: a slab takes a front and a back`);
+  const unused = roles.filter((role) => role === 'unused').length;
+  if (unused) warnings.push(`${unused} picture(s) not used: none looked like another shot of a face`);
   const glb = await box('slab', size, {
     front: { picture: front.jpeg },
     back: back ? { picture: back.jpeg } : PLASTIC,
@@ -50,7 +64,7 @@ export async function slab(pictures: Picture[], { holder, sizeMm = [], label = {
     sidecar: {
       profile: 'slab', holder, ...label,
       widthMm: size[0], heightMm: size[1], depthMm: size[2], measuredBy: sizeMm.length ? 'measured' : 'table',
-      faces: { front: 'photo', back: back ? 'photo' : 'plastic' } satisfies Faces, warnings,
+      faces: { front: 'photo', back: back ? 'photo' : 'plastic' } satisfies Faces, review, warnings, pictures: pictureRecord(all, roles),
     },
   };
 }
