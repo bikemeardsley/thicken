@@ -166,16 +166,20 @@ letterbox.
 
 ## Review
 
-Stand-ins and guesses are kept, and marked: each sidecar's `review` lists
-them, a batch ends with the list, and the preview caption shows it. That
-covers a stand-in front, a plain spine or back, a guessed trim size, a
-default thickness, a thickness from photos scaled to a guessed height, an
-assumed slab holder, photos and page count disagreeing on the thickness, a
-front and back told apart only by photo order, and a face the vision models
-disagreed on. Add the photos (in a subfolder named after the item) or the
-measurement, run again, and only that model is remade, with its review
+The review list is for what the model shows: if every face is your photo,
+the right way round, there's nothing to review. Each sidecar's `review`
+lists the rest, a batch ends with the list, and the preview caption shows
+it: a stand-in front, a plain spine or back, a front and back told apart
+only by photo order, a face the vision models disagreed on, and a photo no
+vision model answered for (used whole). Add the photos (in a subfolder named
+after the item), run again, and only that model is remade, with its review
 cleared. A front and back the wrong way round are swapped by giving them in
 the other order (in a batch subfolder, file names set the order).
+
+Guessed sizes are warnings instead (in `warnings`, and printed): a standard
+trim size, a default or estimated thickness, estimates that disagree, an
+assumed slab holder. A size off by a few millimeters still shows the object;
+`--size` sets the real one.
 
 ## What the sidecar records
 

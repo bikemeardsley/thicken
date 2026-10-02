@@ -41,7 +41,7 @@ export async function slab(
 ) {
   const warnings: string[] = [];
   const review: string[] = [];
-  if (!holder && sizeMm.length < 3) review.push('holder (PSA size assumed: no QR code named the grader; name it with --holder)');
+  if (!holder && sizeMm.length < 3) warnings.push('a PSA-size holder is assumed (no QR code named the grader): --holder for another');
   holder ??= 'psa';
   const size = [0, 1, 2].map((i) => sizeMm[i] ?? HOLDERS[holder]?.[i]);
   if (size.some((mm) => mm === undefined)) {

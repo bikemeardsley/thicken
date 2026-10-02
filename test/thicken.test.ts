@@ -244,8 +244,10 @@ test('book: with no barcode, the front and back go by photo order, marked for re
   const { sidecar } = await thicken(files, { profile: 'book' });
   assert.deepEqual((sidecar.pictures as { role: string }[]).map(({ role }) => role), ['front', 'back', 'spine']);
   assert.match(sidecar.review.join('\n'), /^front and back \(no barcode: told apart only by photo order/m);
-  // No ISBN, so the height is a trim size guessed from the cover, and the spine's thickness scales with it.
-  assert.match(sidecar.review.join('\n'), /^thickness \(from the photos, but scaled to a guessed height\)$/m);
+  // No ISBN, so the height is a trim size guessed from the cover, and the spine's thickness scales with it:
+  // warned, not for review, as the model still shows the book's faces.
+  assert.ok(sidecar.warnings.includes('the thickness is from the photos, scaled to a guessed height'));
+  assert.ok(sidecar.review.every((item) => !item.includes('thickness') && !item.includes('size')));
 });
 
 test('book: any number of photos, each on its face, the sharpest kept, the thickness measured, and all of it recorded', async (t) => {
@@ -296,7 +298,9 @@ test('book: any number of photos, each on its face, the sharpest kept, the thick
 
   // Thickness: spine 60/800 and edge 50/800 of the 203.2 mm height, median 13.97 mm; the page count says 7.5 mm.
   assert.deepEqual([sidecar.depthMm, (sidecar.measuredBy as Record<string, string>).depth, sidecar.depthEstimates], [14, 'photos', { photos: 14, pages: 7.5 }]);
-  assert.deepEqual(sidecar.review, ['thickness (the photos say 14 mm, the page count 7.5 mm: check the spine photo\'s crop)']);
+  // Every face photographed: nothing to review. The thickness estimates disagreeing is only a warning.
+  assert.deepEqual(sidecar.review, []);
+  assert.ok(sidecar.warnings.includes('the photos say 14 mm thick, the page count 7.5 mm: check the spine photo\'s crop'));
   assert.deepEqual(pick(sidecar.catalog as Record<string, unknown>, ['title', 'authors', 'publishers', 'publishDate']),
     { title: 'Fantastic Mr Fox', authors: ['Roald Dahl'], publishers: ['Puffin'], publishDate: '1988' });
 
@@ -362,7 +366,7 @@ test('slab: every photo showing the label\'s QR code or cert barcode is the fron
 test('slab: a cert barcode on a holder-shaped photo is a slab, of a grader it says it can\'t name', async (t) => {
   const { sidecar } = await thicken([fixture('slab-barcode.jpg')]);
   assert.deepEqual([sidecar.profile, sidecar.holder, sidecar.cert, sidecar.grader], ['slab', 'psa', '0017041720', undefined]);
-  assert.match(sidecar.review.join(' '), /holder \(PSA size assumed/);
+  assert.ok(sidecar.warnings.some((warning) => warning.startsWith('a PSA-size holder is assumed')));
   assert.deepEqual(sidecar.identifiedBy, { grader: 'assumed', cert: 'barcode' });
 
   // The same barcode on a square picture is no evidence of a slab.

@@ -107,7 +107,7 @@ export async function book(
   if (!size.width && !size.height) {
     const [width, height] = nearestTrim(aspect);
     take('trim', { width: width * 25.4, height: height * 25.4 });
-    review.push('size (a standard trim size, guessed from the cover\'s shape)');
+    log.warnings.push('the size is a standard trim size guessed from the cover\'s shape: --size for the real one');
   }
 
   // Thickness from spine and page-edge photos shot square on (thickness per unit height, times the height),
@@ -124,10 +124,11 @@ export async function book(
   take('photos', { depth: fromPhotos });
   take('pages', { depth: fromPages });
   take('default', { depth: DEFAULT_DEPTH_MM });
-  if (measuredBy.depth === 'default') review.push('thickness (a default 20 mm)');
-  if (measuredBy.depth === 'photos' && measuredBy.height === 'trim') review.push('thickness (from the photos, but scaled to a guessed height)');
+  // Guessed sizes are warnings, not review: the model still shows the book, faces and all.
+  if (measuredBy.depth === 'default') log.warnings.push('the thickness is a default 20 mm');
+  if (measuredBy.depth === 'photos' && measuredBy.height === 'trim') log.warnings.push('the thickness is from the photos, scaled to a guessed height');
   if (fromPhotos && fromPages && Math.abs(fromPhotos / fromPages - 1) > ESTIMATES_DISAGREE) {
-    review.push(`thickness (the photos say ${round(fromPhotos)} mm, the page count ${round(fromPages)} mm: check the spine photo's crop)`);
+    log.warnings.push(`the photos say ${round(fromPhotos)} mm thick, the page count ${round(fromPages)} mm: check the spine photo's crop`);
   }
   const { depth = 0 } = size;
 
