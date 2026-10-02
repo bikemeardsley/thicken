@@ -112,15 +112,19 @@ itself, and more photos make a better model. In order:
 A book wants three photos (front, back, spine) and a slab two (front, back).
 Top, bottom and page-edge photos are extras that replace the plain page
 color. Spine and page-edge photos shot square on also measure the thickness
-(a face seen at an angle is foreshortened). A spine shot lying down is stood
-up as if the book lay face up.
+(a face seen at an angle is foreshortened). A spine or page-edge shot lying
+down is stood up as if the book lay face up. With vision, every face comes
+upright as the models saw it: sides as the object normally stands, the top
+looked down on from the front, the bottom with the object tipped onto its
+back.
 
 The page rules were set on real photos (43 spines and 13 page blocks, cropped
 from Wikimedia Commons), and get every spine and 10 of the 13 page blocks
 right. What they get wrong: sprayed and gilt page edges, and a dim photo of
 yellowed pages, are taken for the spine; an ISBN barcode on a front cover
-(some manga and coursepacks, or a shop's sticker) makes it the back; and a
-spine shot with the book lying face down is stood up upside down.
+(some manga and coursepacks, or a shop's sticker) makes it the back; and,
+without vision, a spine or page-edge shot with the book lying face down is
+stood up upside down.
 
 A model shows your copy, not one from the internet: every face you
 photograph carries your photo. The ISBN supplies the size and catalog data.

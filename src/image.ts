@@ -250,7 +250,7 @@ function homography(from: number[][], to: number[][]): number[] {
   return rows.map((row, i) => row[8] / row[i]);
 }
 
-/** A texture turned a quarter turn clockwise. */
-export async function turned(t: Awaited<ReturnType<typeof texture>>) {
-  return { ...t, jpeg: await sharp(t.jpeg).rotate(90).jpeg({ quality: 90 }).toBuffer(), width: t.height, height: t.width };
+/** A texture turned a quarter turn, clockwise unless said otherwise. */
+export async function turned(t: Awaited<ReturnType<typeof texture>>, clockwise = true) {
+  return { ...t, jpeg: await sharp(t.jpeg).rotate(clockwise ? 90 : -90).jpeg({ quality: 90 }).toBuffer(), width: t.height, height: t.width };
 }

@@ -35,7 +35,7 @@ const facesPrompt = ({ name, about, faces, note }: Kind) => `This photo shows ${
 
 Faces: ${Object.entries(faces).map(([face, words]) => (words === face ? `"${face}"` : `"${face}" (${words})`)).join(', ')}.
 
-Give each face's corners in that face's own reading order: top-left, top-right, bottom-right, bottom-left, as the face would look held upright in front of you.${note ? ` ${note}` : ''} A corner hidden from view goes where it would be.
+Give each face's corners in that face's own reading order: top-left, top-right, bottom-right, bottom-left, as the face would look held upright in front of you. For a side, upright is with the object standing as it normally does; for the top, looking down on it from the front (its back edge at the top); for the bottom, with the object tipped back onto its back (its front edge at the top).${note ? ` ${note}` : ''} A corner hidden from view goes where it would be.
 
 Also read its title, and authors if it has them.
 

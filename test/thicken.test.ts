@@ -123,10 +123,11 @@ test('book: pictures are placed by what they show, whatever their names, order o
   const solid = (width: number, height: number, color: string) => sharp({ create: { width, height, channels: 3, background: color } });
   const fetch = catalog({ physical_dimensions: '8 x 5 inches' });
   t.after(() => fetch.mock.restore());
-  // Shot lying down, as on a table: plain pages, then a printed spine with the book's top (a white band) on
-  // the left, as it lies face up. Then the back twice (the barcode in both), the front, and a stray picture.
+  // Shot lying down, as on a table, the book's top a white band: plain pages, the top on the right as the book
+  // lies face up; then a printed spine, the top on its left. Then the back twice (the barcode in both), the front,
+  // and a stray picture.
   const files = [
-    await save('IMG_1.png', solid(800, 50, '#f2ead9')),
+    await save('IMG_1.png', solid(800, 50, '#f2ead9').composite([{ input: await solid(40, 50, '#ffffff').png().toBuffer(), left: 760, top: 0 }])),
     await save('IMG_2.png', solid(800, 60, '#c62828').composite([{ input: await solid(40, 60, '#ffffff').png().toBuffer(), left: 0, top: 0 }])),
     fixture('book-back.jpg'),
     await save('IMG_4.png', sharp(fixture('book-back.jpg'))),
@@ -148,9 +149,12 @@ test('book: pictures are placed by what they show, whatever their names, order o
   assert.ok(near(await colorOf(doc, [0, 0, 1]), '#1d2b53'), 'the front is the picture left over');
   assert.ok(Math.min(...await colorOf(doc, [0, 0, -1])) > 180, 'the back is the barcode picture');
   assert.ok(near(await colorOf(doc, [1, 0, 0]), '#f2ead9'), 'the page edge is the plain narrow picture');
-  const { data, info } = await sharp(pictureOn(doc, [-1, 0, 0])).raw().toBuffer({ resolveWithObject: true });
-  const at = (y: number) => [...data.subarray((y * info.width + (info.width >> 1)) * info.channels).subarray(0, 3)];
-  assert.ok(info.height > info.width && near(at(2), '#ffffff') && near(at(info.height - 3), '#c62828'), 'the spine stands with its top up');
+  // Both stood up the right way: the book's top, the white band, at the top of each picture.
+  for (const [normal, body] of [[[-1, 0, 0], '#c62828'], [[1, 0, 0], '#f2ead9']] as const) {
+    const { data, info } = await sharp(pictureOn(doc, [...normal])).raw().toBuffer({ resolveWithObject: true });
+    const at = (y: number) => [...data.subarray((y * info.width + (info.width >> 1)) * info.channels).subarray(0, 3)];
+    assert.ok(info.height > info.width && near(at(2), '#ffffff') && near(at(info.height - 3), body), `the face facing ${normal} stands with its top up`);
+  }
 });
 
 test('book: vision models find the faces in uncropped photos, which are cut out and straightened, peers checking each other', async (t) => {

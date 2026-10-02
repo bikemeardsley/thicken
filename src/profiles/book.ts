@@ -17,7 +17,7 @@ export const book: Profile = {
   name: 'book',
   about: 'a book, hardcover or paperback',
   faces: { front: 'front cover', back: 'back cover', spine: 'spine', edge: 'the page edge opposite the spine', top: 'top', bottom: 'bottom' },
-  note: 'For the spine and the page sides, upright is as the book stands on a shelf.',
+  note: 'The book stands on its bottom edge, front cover toward you, its spine and page edge each seen from its own side with the top of the book up.',
   // An ISBN barcode (EAN-13 starting 978 or 979) says it's a book, which, and which photos show its back.
   read: (scanned) => {
     const use = scanned.map(({ format, text }) => (format === 'EAN13' && /^97[89]/.test(text) ? 'isbn' : undefined));
@@ -70,9 +70,10 @@ async function make(
   const { chosen, roles, guessedFrontBack } = assignFaces(all, ['front', 'back', 'spine', 'top', 'bottom', 'edge'], { placed, byShape: true });
   if (guessedFrontBack) review.push('front and back (no barcode: told apart only by photo order, so check they are the right way round)');
   const photo = (face: string) => (chosen[face] === undefined ? undefined : all[chosen[face]].texture);
-  // Narrow photos turned to run along their faces: a spine shot lying down is stood up, as if the book lay face up.
-  const along = (face: string, tall: boolean) => { const t = photo(face); return t && (t.width < t.height) !== tall ? turned(t) : t; };
-  const [spine, edge, top, bottom] = await Promise.all([along('spine', true), along('edge', true), along('top', false), along('bottom', false)]);
+  // Narrow photos turned to run along their faces, as if the book lay face up: then the book's top is at a
+  // lying spine's left (turned clockwise to stand it up) and at a lying page edge's right (counterclockwise).
+  const along = (face: string, tall: boolean, clockwise = true) => { const t = photo(face); return t && (t.width < t.height) !== tall ? turned(t, clockwise) : t; };
+  const [spine, edge, top, bottom] = await Promise.all([along('spine', true), along('edge', true, false), along('top', false), along('bottom', false)]);
   const back = photo('back');
   let front = photo('front');
   const unused = roles.filter((role) => role === 'unused').length;
