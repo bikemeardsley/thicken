@@ -104,28 +104,52 @@ test('book: a photo of the back alone is enough, the front cover coming from Ope
   assert.ok(Math.min(...await colorOf(doc, [0, 0, -1])) > 180, 'back is the photo');
 });
 
-test('book: pictures in any order are placed by what they show', async (t) => {
+test('book: pictures are placed by what they show, whatever their names, order or which way up', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
-  const solid = async (name: string, width: number, color: string) => {
-    const file = path.join(folder, name);
-    await sharp({ create: { width, height: 800, channels: 3, background: color } }).png().toFile(file);
-    return file;
+  const save = async (name: string, image: Sharp) => {
+    await image.png().toFile(path.join(folder, name));
+    return path.join(folder, name);
   };
-  const fetch = catalog({ physical_dimensions: '8 x 5 x 1 inches' });
+  const solid = (width: number, height: number, color: string) => sharp({ create: { width, height, channels: 3, background: color } });
+  const fetch = catalog({ physical_dimensions: '8 x 5 inches' });
   t.after(() => fetch.mock.restore());
-  // Spine first, back (the barcode) second, then the front and a fourth picture nobody needs. The
-  // front's name holds two face words; the last one counts, as people name files "<title>_<face>".
-  const pictures = [
-    await solid('spine.png', 60, '#c62828'), fixture('book-back.jpg'),
-    await solid('back-to-the-future-front.png', 500, '#1d2b53'), await solid('extra.png', 500, '#2e7d32'),
+  // Shot lying down, as on a table: plain pages, then a printed spine with the book's top (a white band) on
+  // the left, as it lies face up. Then the back twice (the barcode in both), the front, and a stray picture.
+  const files = [
+    await save('IMG_1.png', solid(800, 50, '#f2ead9')),
+    await save('IMG_2.png', solid(800, 60, '#c62828').composite([{ input: await solid(40, 60, '#ffffff').png().toBuffer(), left: 0, top: 0 }])),
+    fixture('book-back.jpg'),
+    await save('IMG_4.png', sharp(fixture('book-back.jpg'))),
+    await save('IMG_5.png', solid(500, 800, '#1d2b53')),
+    await save('IMG_6.png', solid(500, 800, '#2e7d32')),
   ];
-  const { glb, sidecar } = await thicken(pictures);
-  assert.deepEqual(sidecar.warnings, ['1 picture(s) not used: none looked like another shot of a face']);
+  const { glb, sidecar } = await thicken(files);
+  assert.deepEqual((sidecar.pictures as { file: string; role: string }[]).map(({ file, role }) => [file, role]), [
+    ['IMG_1.png', 'edge'], ['IMG_2.png', 'spine'], ['book-back.jpg', 'back'], ['IMG_4.png', 'alternate back'], ['IMG_5.png', 'front'], ['IMG_6.png', 'unused'],
+  ]);
+  assert.deepEqual([sidecar.review, sidecar.warnings], [[], ['1 picture(s) not used: none looked like another shot of a face', 'www.googleapis.com answered 429']]);
+  // Stood up, the spine and page edge measure the thickness: 60/800 and 50/800 of the 203.2 mm height.
+  assert.deepEqual([sidecar.depthMm, (sidecar.measuredBy as Record<string, string>).depth], [14, 'photos']);
+
   const doc = await read(glb);
-  assert.ok(near(await colorOf(doc, [0, 0, 1]), '#1d2b53'), 'the front is the first picture that is neither barcode nor spine');
+  assert.ok(near(await colorOf(doc, [0, 0, 1]), '#1d2b53'), 'the front is the picture left over');
   assert.ok(Math.min(...await colorOf(doc, [0, 0, -1])) > 180, 'the back is the barcode picture');
-  assert.ok(near(await colorOf(doc, [-1, 0, 0]), '#c62828'), 'the spine is the tall narrow picture');
+  assert.ok(near(await colorOf(doc, [1, 0, 0]), '#f2ead9'), 'the page edge is the plain narrow picture');
+  const { data, info } = await sharp(pictureOn(doc, [-1, 0, 0])).raw().toBuffer({ resolveWithObject: true });
+  const at = (y: number) => [...data.subarray((y * info.width + (info.width >> 1)) * info.channels).subarray(0, 3)];
+  assert.ok(info.height > info.width && near(at(2), '#ffffff') && near(at(info.height - 3), '#c62828'), 'the spine stands with its top up');
+});
+
+test('book: with no barcode, the front and back go by photo order, marked for review', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const files = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
+  await sharp({ create: { width: 500, height: 800, channels: 3, background: '#1d2b53' } }).png().toFile(files[0]);
+  await sharp({ create: { width: 500, height: 800, channels: 3, background: '#2e7d32' } }).png().toFile(files[1]);
+  const { sidecar } = await thicken(files, { profile: 'book' });
+  assert.deepEqual((sidecar.pictures as { role: string }[]).map(({ role }) => role), ['front', 'back']);
+  assert.match(sidecar.review.join('\n'), /^front and back \(no barcode: told apart only by photo order/m);
 });
 
 test('book: any number of photos, each on its face, the sharpest kept, the thickness measured, and all of it recorded', async (t) => {
@@ -144,6 +168,9 @@ test('book: any number of photos, each on its face, the sharpest kept, the thick
     return path.join(folder, name);
   };
   const solid = (width: number, height: number, color: string) => sharp({ create: { width, height, channels: 3, background: color } }).png();
+  // A sprayed page edge, blue, its page lines showing: bands of #3c5c8e and #2e4e80, averaging #355587.
+  const sprayed = Buffer.alloc(50 * 800 * 3);
+  for (let i = 0; i < 50 * 800; i++) sprayed.set(Math.floor((i % 50) / 5) % 2 ? [0x3c, 0x5c, 0x8e] : [0x2e, 0x4e, 0x80], i * 3);
   const files = [
     // The front, with the camera's EXIF (and GPS, which must not be recorded).
     await save('IMG_1.jpg', sharp(art).withExif({
@@ -154,7 +181,7 @@ test('book: any number of photos, each on its face, the sharpest kept, the thick
     await save('IMG_2.jpg', sharp(art).blur(6).jpeg()), // the front again, out of focus
     fixture('book-back.jpg'), // the back, barcode and all
     await save('IMG_4.png', solid(60, 800, '#c62828')), // the spine
-    await save('IMG_5.png', solid(50, 800, '#f2ead9')), // the page edge
+    await save('IMG_5.png', sharp(sprayed, { raw: { width: 50, height: 800, channels: 3 } }).png()), // the page edge
     await save('IMG_6.png', solid(500, 60, '#e8dcc0')), // the top
   ];
   const fetch = catalog({ physical_dimensions: '8 x 5 inches' }, {
@@ -185,7 +212,7 @@ test('book: any number of photos, each on its face, the sharpest kept, the thick
 
   const doc = await read(glb);
   assert.ok(near(await colorOf(doc, [-1, 0, 0]), '#c62828'), 'spine photo on the spine');
-  assert.ok(near(await colorOf(doc, [1, 0, 0]), '#f2ead9'), 'page-edge photo on the page edge');
+  assert.ok(near(await colorOf(doc, [1, 0, 0]), '#355587'), 'page-edge photo on the page edge');
   assert.ok(near(await colorOf(doc, [0, 1, 0]), '#e8dcc0'), 'top photo on the top');
 });
 
@@ -213,13 +240,24 @@ test('slab: the cert is the first whole cert number in the QR link, not a tracki
   assert.deepEqual([sidecar.grader, sidecar.cert], ['psa', '12345678']);
 });
 
-test('slab: shot back first, the QR label still goes on the front', async (t) => {
+test('slab: every photo showing the label\'s QR code or cert barcode is the front, whatever the order', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
   const back = path.join(folder, 'IMG_1.png');
   await sharp({ create: { width: 296, height: 500, channels: 3, background: '#c8ccd0' } }).png().toFile(back);
-  const { sidecar } = await thicken([back, fixture('slab.jpg')]);
-  assert.deepEqual((sidecar.pictures as { file: string; role: string }[]).map(({ file, role }) => [file, role]), [['IMG_1.png', 'back'], ['slab.jpg', 'front']]);
+  const roles = async (files: string[]) =>
+    ((await thicken(files)).sidecar.pictures as { file: string; role: string }[]).map(({ file, role }) => [file, role]);
+  for (const front of ['slab.jpg', 'slab-barcode.jpg']) {
+    assert.deepEqual(await roles([back, fixture(front)]), [['IMG_1.png', 'back'], [front, 'front']]);
+    assert.deepEqual(await roles([fixture(front), fixture(front), back]), [[front, 'front'], [front, 'alternate front'], ['IMG_1.png', 'back']]);
+  }
+  // CGC prints its QR code on the back of the label, so that photo is the back.
+  const { prepareZXingModule, writeBarcode } = await import('zxing-wasm/full');
+  prepareZXingModule({ overrides: { wasmBinary: readFileSync(createRequire(import.meta.url).resolve('zxing-wasm/full/zxing_full.wasm')) } });
+  const qr = Buffer.from(await (await writeBarcode('https://www.cgccards.com/certlookup/4123456001/', { format: 'QRCode', scale: 3 })).image!.arrayBuffer());
+  const cgc = path.join(folder, 'IMG_2.png');
+  await sharp({ create: { width: 296, height: 500, channels: 3, background: '#e8eaec' } }).composite([{ input: qr, left: 40, top: 40 }]).png().toFile(cgc);
+  assert.deepEqual(await roles([cgc, back]), [['IMG_2.png', 'back'], ['IMG_1.png', 'front']]);
 });
 
 // slab-barcode.jpg: the same holder shape, but an older label with only a Code 128 cert barcode (BGS-style 0017041720).
@@ -268,15 +306,16 @@ test('batch: every model is made, and one that fails is reported without stoppin
   await copyFile(fixture('plain.jpg'), path.join(folder, 'plain.jpg'));
   await copyFile(fixture('slab.jpg'), path.join(folder, 'lone-slab.jpg')); // a front with no back
   await mkdir(path.join(folder, 'slab'));
-  await copyFile(fixture('slab.jpg'), path.join(folder, 'slab', '1-front.jpg'));
-  await copyFile(fixture('slab.jpg'), path.join(folder, 'slab', '2-back.jpg'));
+  await copyFile(fixture('slab.jpg'), path.join(folder, 'slab', 'IMG_1.jpg'));
+  await sharp({ create: { width: 296, height: 500, channels: 3, background: '#c8ccd0' } }).jpeg().toFile(path.join(folder, 'slab', 'IMG_2.jpg'));
   const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
   const batch = () => spawnSync(process.execPath, [cli, 'batch', folder], { encoding: 'utf8' });
   const first = batch();
   assert.equal(first.status, 1, 'a failed model fails the batch');
   assert.match(first.stderr, /plain: failed: can't tell what this is/);
   assert.match(first.stdout, /3 made, 0 already up to date, 1 failed/);
-  assert.match(first.stdout, /to review[^\n]*\n {2}lone-slab: back \(plain plastic\)$/m, 'the front-only slab is listed, the full one is not');
+  assert.match(first.stdout, /to review[^\n]*\n {2}lone-slab: back \(plain plastic\)$/m, 'the front-only slab is listed');
+  assert.doesNotMatch(first.stdout, /^ {2}slab:/m, 'the full one is not');
   assert.deepEqual((await readdir(path.join(folder, 'thicken'))).sort(),
     ['badge.glb', 'badge.json', 'lone-slab.glb', 'lone-slab.json', 'slab.glb', 'slab.json']);
 
@@ -284,7 +323,7 @@ test('batch: every model is made, and one that fails is reported without stoppin
   // even to one dated earlier (a camera keeps its photos' capture dates).
   assert.match(batch().stdout, /0 made, 3 already up to date, 1 failed/);
   const earlier = new Date(2001, 0, 1);
-  await utimes(path.join(folder, 'slab', '2-back.jpg'), earlier, earlier);
+  await utimes(path.join(folder, 'slab', 'IMG_2.jpg'), earlier, earlier);
   assert.match(batch().stdout, /1 made, 2 already up to date, 1 failed/);
 });
 
@@ -321,17 +360,20 @@ function catalog(edition: object, { cover, data }: { cover?: Uint8Array; data?: 
   });
 }
 
-/** Mean color [r, g, b] (0–255) of the picture on the face with this outward normal. */
-async function colorOf(doc: Document, normal: number[]): Promise<number[]> {
+/** The picture on the face with this outward normal. */
+function pictureOn(doc: Document, normal: number[]): Uint8Array {
   for (const primitive of doc.getRoot().listMeshes()[0].listPrimitives()) {
     const image = primitive.getMaterial()?.getBaseColorTexture()?.getImage();
     const facing = primitive.getAttribute('NORMAL')!.getElement(0, [0, 0, 0]);
-    if (image && facing.every((c, k) => Math.abs(c - normal[k]) < 1e-6)) {
-      const { channels } = await sharp(image).stats();
-      return channels.slice(0, 3).map((channel) => channel.mean);
-    }
+    if (image && facing.every((c, k) => Math.abs(c - normal[k]) < 1e-6)) return image;
   }
   throw new Error(`no picture on the face with normal ${normal}`);
+}
+
+/** Mean color [r, g, b] (0–255) of the picture on the face with this outward normal. */
+async function colorOf(doc: Document, normal: number[]): Promise<number[]> {
+  const { channels } = await sharp(pictureOn(doc, normal)).stats();
+  return channels.slice(0, 3).map((channel) => channel.mean);
 }
 
 /** Within JPEG's wobble of a #rrggbb color. */

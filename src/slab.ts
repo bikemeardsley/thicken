@@ -4,7 +4,7 @@
 import { assignFaces, pictureRecord, shots } from './faces.ts';
 import { box, type Side } from './glb.ts';
 import type { Picture } from './image.ts';
-import type { Faces } from './thicken.ts';
+import type { Code, Faces } from './thicken.ts';
 
 // ponytail: graders don't publish exterior holder sizes, and the figures online disagree by 1–5 mm across
 // sources and holder generations. These are the best found (2026-10-01); measure real holders and correct
@@ -25,14 +25,15 @@ const SHAPE_TOLERANCE = 0.04;
 export interface Label { grader?: string; cert?: string; verifyUrl?: string }
 
 /**
- * Pictures in any number and order (src/faces.ts). The one carrying the
- * grader's QR code (`labelAt`) is the front, or for CGC, which prints its QR
- * code on the back of the label, the back. With no holder named or read off a
- * QR code, a PSA-size holder is assumed and the model marked for review.
+ * Pictures in any number and order (src/faces.ts). Every one showing the
+ * grader's QR code is the front, or for CGC, which prints its QR code on the
+ * back of the label, the back; every one showing the cert barcode is the
+ * front. With no holder named or read off a QR code, a PSA-size holder is
+ * assumed and the model marked for review.
  */
 export async function slab(
   pictures: Picture[],
-  { holder, sizeMm = [], label = {}, labelAt }: { holder?: string; sizeMm?: number[]; label?: Label; labelAt?: number } = {},
+  { holder, sizeMm = [], label = {}, codes = [] }: { holder?: string; sizeMm?: number[]; label?: Label; codes?: Code[] } = {},
 ) {
   const warnings: string[] = [];
   const review: string[] = [];
@@ -43,8 +44,12 @@ export async function slab(
     throw new Error(`no size on file for a "${holder}" holder (known: ${Object.keys(HOLDERS).join(', ')}): measure one and pass --size WxHxD in mm`);
   }
   const all = await shots(pictures);
-  const qrSide = labelAt === undefined ? {} : label.grader === 'cgc' ? { backAt: labelAt } : { frontAt: labelAt };
-  const { chosen, roles } = assignFaces(all, ['front', 'back'], qrSide);
+  const placed: string[] = [];
+  for (const { picture, use } of codes) {
+    if (use === 'grader' || use === 'cert') placed[picture] = use === 'grader' && label.grader === 'cgc' ? 'back' : 'front';
+  }
+  const { chosen, roles, guessedFrontBack } = assignFaces(all, ['front', 'back'], { placed });
+  if (guessedFrontBack) review.push('front and back (no QR code or cert barcode: told apart only by photo order, so check they are the right way round)');
   const [front, back] = [chosen.front, chosen.back].map((i) => (i === undefined ? undefined : all[i].texture));
   if (!front) throw new Error('a slab needs a photo of its front');
   for (const [i, photo] of [front, back].entries()) {

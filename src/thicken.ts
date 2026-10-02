@@ -74,9 +74,9 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
     throw new Error('can\'t tell what this is: no ISBN barcode, no grader\'s QR code or cert barcode, and not cut-out artwork. Name it: thicken book|slab|badge <pictures>');
   }
 
-  const built = profile === 'book' ? await book(pictures, { isbn, sizeMm, backAt: found.isbnAt })
+  const built = profile === 'book' ? await book(pictures, { isbn, sizeMm, codes: found.codes })
     : profile === 'slab' ? await slab(pictures, {
-      holder: options.holder ?? found.grader, sizeMm, labelAt: found.graderAt,
+      holder: options.holder ?? found.grader, sizeMm, codes: found.codes,
       label: { grader: found.grader, cert: found.cert, verifyUrl: found.verifyUrl },
     })
     : await badge(first(pictures), options);
@@ -139,24 +139,23 @@ export async function batchItems(folder: string, skip?: string): Promise<{ name:
 }
 
 /** A code seen on a picture. Its text is kept only when Thicken used it: a stray QR code can hold a Wi-Fi password. */
-interface Code { picture: number; format: string; use?: 'isbn' | 'grader' | 'cert'; text?: string }
+export interface Code { picture: number; format: string; use?: 'isbn' | 'grader' | 'cert'; text?: string }
 
 interface Found {
   codes: Code[];
   isbn?: string;
-  isbnAt?: number;
   grader?: string;
-  graderAt?: number;
   cert?: string;
   certFrom?: 'qr' | 'barcode';
   verifyUrl?: string;
 }
 
 /**
- * What the barcodes and QR codes say: a book's ISBN (EAN-13, 978/979) and
- * which picture it was on; a slab's grader, cert number and verification
- * page from a QR code to the grader's site, and which picture that was; or,
- * on an older label, a cert number from its Code 128 barcode alone.
+ * What the barcodes and QR codes say: a book's ISBN (EAN-13, 978/979); a
+ * slab's grader, cert number and verification page from a QR code to the
+ * grader's site; or, on an older label, a cert number from its Code 128
+ * barcode alone. Every code used is marked on every picture showing it, which
+ * is how the profiles tell which face a picture is.
  */
 async function lookAtCodes(pictures: Picture[]): Promise<Found> {
   const found: Found = { codes: [] };
@@ -165,21 +164,23 @@ async function lookAtCodes(pictures: Picture[]): Promise<Found> {
       const code: Code = { picture: at, format };
       found.codes.push(code);
       if (format === 'EAN13' && /^97[89]/.test(text)) {
-        if (!found.isbn) Object.assign(found, { isbn: text, isbnAt: at });
+        found.isbn ??= text;
         Object.assign(code, { use: 'isbn', text });
         continue;
       }
       const url = URL.canParse(text) ? new URL(text) : undefined;
       const host = url?.hostname.toLowerCase() ?? '';
       const site = Object.keys(GRADER_SITES).find((s) => host === s || host.endsWith(`.${s}`));
-      if (url && site && !found.grader) {
-        // The cert number is the first path segment, query value or fragment segment that is one, whole.
-        const cert = [...url.pathname.split('/'), ...url.searchParams.values(), ...url.hash.split(/[#/?&=]/)].find((part) => CERT.test(part));
-        Object.assign(found, { grader: GRADER_SITES[site], graderAt: at, verifyUrl: text });
-        if (cert) Object.assign(found, { cert: cert.toUpperCase(), certFrom: 'qr' });
+      if (url && site) {
+        if (!found.grader) {
+          // The cert number is the first path segment, query value or fragment segment that is one, whole.
+          const cert = [...url.pathname.split('/'), ...url.searchParams.values(), ...url.hash.split(/[#/?&=]/)].find((part) => CERT.test(part));
+          Object.assign(found, { grader: GRADER_SITES[site], verifyUrl: text });
+          if (cert) Object.assign(found, { cert: cert.toUpperCase(), certFrom: 'qr' });
+        }
         Object.assign(code, { use: 'grader', text });
-      } else if (format === 'Code128' && CERT.test(text) && !found.cert) {
-        Object.assign(found, { cert: text.toUpperCase(), certFrom: 'barcode' });
+      } else if (format === 'Code128' && CERT.test(text) && (!found.cert || found.cert === text.toUpperCase())) {
+        if (!found.cert) Object.assign(found, { cert: text.toUpperCase(), certFrom: 'barcode' });
         Object.assign(code, { use: 'cert', text });
       }
     }

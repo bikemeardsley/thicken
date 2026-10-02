@@ -49,7 +49,7 @@ Name the profile, or leave it out and Thicken picks one:
 - Anything else is refused with a request to name the profile. Other
   barcodes don't count: books carry UPCs, QR codes and library stickers.
 
-Pictures are placed on faces by what they show, not their order (see
+Pictures are placed on faces by what they show (see
 [Photos](#photos-any-number)). With no front, Open Library's cover stands in,
 marked for review, so one photo of the back is enough to start a book.
 
@@ -74,29 +74,35 @@ cover until you photograph your own.
 
 ## Photos: any number
 
-Give as many photos of an object as you like, in any order: each lands on a
-face, and more photos make a better model. In order:
+Give as many photos of an object as you like, in any order and named
+anything. Thicken works out which face each photo shows from the photo
+itself, and more photos make a better model. In order:
 
-1. **A face word in the file name decides it:** `front` (or `cover`),
-   `back`, `spine`, `top`, `bottom`, `edge` (or `fore`). With two, the last
-   counts: `back_to_the_future_front.jpg` is the front, `back-cover.jpg` the
-   back. This overrides everything below.
-2. **What the photo shows:** a book's ISBN-barcode photo is its back; a
-   slab's grader-QR photo is its front (its back for CGC, which prints the QR
-   code there).
-3. **Shape, for books:** tall narrow photos are the spine, then the page
-   edge; wide narrow ones the top, then the bottom.
-4. **The rest:** front, then back.
-5. **Extra shots** join the face they match in color, and each face keeps
-   its sharpest shot. The others stay in the sidecar as alternates.
+1. **Codes:** every photo showing a book's ISBN barcode is its back; every
+   photo showing a slab label's grader QR code or cert barcode is its front
+   (its back, for CGC, which prints the QR code there).
+2. **Narrow photos, for books,** shot standing or lying down: one with print
+   on it is the spine; plain paper (calm, light and pale, or showing page
+   lines) is a page side. A page side as thin as the spine runs down the
+   book, so it's the page edge; one that looks thicker is the top, then the
+   bottom (on a book wider than tall, it's taken for the page edge).
+3. **The rest:** front, then back. Told apart by order alone, they're marked
+   for review.
+4. **Extra shots** join the face they match in shape and color, and each
+   face keeps its sharpest shot. The others stay in the sidecar as
+   alternates.
 
 A book wants three photos (front, back, spine) and a slab two (front, back).
 Top, bottom and page-edge photos are extras that replace the plain page
-color. Upright spine and page-edge photos also measure the thickness.
+color. Spine and page-edge photos also measure the thickness. A spine shot
+lying down is stood up as if the book lay face up.
 
-Two things the rules get wrong, both fixed by naming the file: a page-edge
-photo with no spine photo is taken for the spine, and an ISBN printed on a
-front cover (some manga, coursepacks) makes it the back.
+The page rules were set on real photos (43 spines and 13 page blocks, cropped
+from Wikimedia Commons), and get every spine and 10 of the 13 page blocks
+right. What they get wrong: sprayed and gilt page edges, and a dim photo of
+yellowed pages, are taken for the spine; an ISBN barcode on a front cover
+(some manga and coursepacks, or a shop's sticker) makes it the back; and a
+spine shot with the book lying face down is stood up upside down.
 
 A model shows your copy, not one from the internet: every face you
 photograph carries your photo exactly as taken (unlit, so its colors are
@@ -116,10 +122,12 @@ untouched). The ISBN supplies the size and catalog data. Each sidecar's
 Stand-ins and guesses are kept, and marked: each sidecar's `review` lists
 them, a batch ends with the list, and the preview caption shows it. That
 covers a stand-in front, a plain spine or back, a guessed trim size, a
-default thickness, an assumed slab holder, and photos and page count
-disagreeing on the thickness. Add the photos (in a subfolder named after
-the item) or the measurement, run again, and only that model is remade,
-with its review cleared.
+default thickness, an assumed slab holder, photos and page count
+disagreeing on the thickness, and a front and back told apart only by photo
+order. Add the photos (in a subfolder named after the item) or the
+measurement, run again, and only that model is remade, with its review
+cleared. A front and back the wrong way round are swapped by giving them in
+the other order (in a batch subfolder, file names set the order).
 
 ## What the sidecar records
 

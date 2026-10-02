@@ -8,8 +8,8 @@
 // With an ISBN the sidecar also gets Open Library's catalog record.
 import { assignFaces, pictureRecord, shots } from './faces.ts';
 import { box, type Side } from './glb.ts';
-import { load, texture, type Picture } from './image.ts';
-import type { Faces } from './thicken.ts';
+import { load, texture, turned, type Picture } from './image.ts';
+import type { Code, Faces } from './thicken.ts';
 
 const PAGE_MM = 0.075; // per page: trade paper runs 300–400 pages to the inch
 const BOARDS_MM = 4; // a hardcover's two boards
@@ -25,17 +25,23 @@ export interface Lookup { host: string; path: string; status: number | 'unreacha
 interface Log { warnings: string[]; lookups: Lookup[] }
 
 /**
- * Pictures in any number and order. The one that carried the ISBN barcode
- * (`backAt`) is the back, unless its file name says otherwise. With no front,
- * Open Library's cover stands in, so a photo of the back is enough to start.
+ * Pictures in any number and order (src/faces.ts). Every one showing the ISBN
+ * barcode is the back. With no front, Open Library's cover stands in, so a
+ * photo of the back is enough to start.
  */
-export async function book(pictures: Picture[], { isbn, sizeMm = [], backAt }: { isbn?: string; sizeMm?: number[]; backAt?: number } = {}) {
+export async function book(pictures: Picture[], { isbn, sizeMm = [], codes = [] }: { isbn?: string; sizeMm?: number[]; codes?: Code[] } = {}) {
   const log: Log = { warnings: [], lookups: [] };
   const review: string[] = [];
   const all = await shots(pictures);
-  const { chosen, roles } = assignFaces(all, ['front', 'back', 'spine', 'top', 'bottom', 'edge'], { backAt, byShape: true });
+  const placed: string[] = [];
+  for (const { picture, use } of codes) if (use === 'isbn') placed[picture] = 'back';
+  const { chosen, roles, guessedFrontBack } = assignFaces(all, ['front', 'back', 'spine', 'top', 'bottom', 'edge'], { placed, byShape: true });
+  if (guessedFrontBack) review.push('front and back (no barcode: told apart only by photo order, so check they are the right way round)');
   const photo = (face: string) => (chosen[face] === undefined ? undefined : all[chosen[face]].texture);
-  const [back, spine, top, bottom, edge] = ['back', 'spine', 'top', 'bottom', 'edge'].map(photo);
+  // Narrow photos turned to run along their faces: a spine shot lying down is stood up, as if the book lay face up.
+  const along = (face: string, tall: boolean) => { const t = photo(face); return t && (t.width < t.height) !== tall ? turned(t) : t; };
+  const [spine, edge, top, bottom] = await Promise.all([along('spine', true), along('edge', true), along('top', false), along('bottom', false)]);
+  const back = photo('back');
   let front = photo('front');
   const unused = roles.filter((role) => role === 'unused').length;
   if (unused) log.warnings.push(`${unused} picture(s) not used: none looked like another shot of a face`);
@@ -96,8 +102,8 @@ export async function book(pictures: Picture[], { isbn, sizeMm = [], backAt }: {
     review.push('size (a standard trim size, guessed from the cover\'s shape)');
   }
 
-  // Thickness from the upright spine and page-edge photos (thickness per unit height, times the
-  // height; a crop wider than half the book is no spine), else the page count, else a default.
+  // Thickness from the spine and page-edge photos (thickness per unit height, times the height;
+  // a crop wider than half the book is no spine), else the page count, else a default.
   const { width = 0, height = 0 } = size;
   const fromPhotos = median([spine, edge].flatMap((t) => (t ? [height * (t.width / t.height)] : [])).filter((mm) => mm > 1 && mm < width / 2));
   const fromPages = pages ? pages * PAGE_MM + (hardcover ? BOARDS_MM : 0) : undefined;

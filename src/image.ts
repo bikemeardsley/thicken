@@ -82,18 +82,38 @@ function camera(exif?: Buffer): Pick<Source, 'camera' | 'lens' | 'takenAt'> {
 }
 
 /**
- * How sharp the subject is, and its mean color. Sharpness is the spread of a
- * Laplacian on a copy shrunk to 512 px (so sizes compare), lightly blurred
- * first so sensor noise and JPEG blocks don't pass for detail.
+ * What the subject looks like, on a copy shrunk to 512 px so sizes compare:
+ * - sharpness: the spread of a Laplacian, lightly blurred first so sensor
+ *   noise and JPEG blocks don't pass for detail;
+ * - color: the mean, as [r, g, b];
+ * - stripes: how much more it changes across its long side than along it.
+ *   Stacked page edges are fine lines running the length of the photo, so
+ *   they score high; a printed spine changes both ways.
  */
-export async function measure(picture: Picture): Promise<{ sharpness: number; color: number[] }> {
+export async function measure(picture: Picture): Promise<{ sharpness: number; color: number[]; stripes: number }> {
+  const box = subjectBox(picture);
   const crop = () => sharp(picture.data, { raw: { width: picture.width, height: picture.height, channels: 4 } })
-    .extract(subjectBox(picture)).resize(512, 512, { fit: 'inside' });
-  const [edges, tones] = await Promise.all([
-    crop().grayscale().blur(1).convolve({ width: 3, height: 3, kernel: [0, 1, 0, 1, -4, 1, 0, 1, 0], offset: 128 }).stats(),
-    crop().stats(),
+    .extract(box).resize(512, 512, { fit: 'inside' });
+  // stats() reads a pipeline's input, not its result, so each result is rendered first.
+  const stats = async (image: Sharp) => {
+    const { data, info } = await image.raw().toBuffer({ resolveWithObject: true });
+    return sharp(data, { raw: info }).stats();
+  };
+  // Sobel, scaled down so strong edges don't clip at the 0–255 limit.
+  const energy = async (kernel: number[]) =>
+    (await stats(crop().grayscale().convolve({ width: 3, height: 3, kernel, scale: 8, offset: 128 }))).channels[0].stdev;
+  const [edges, tones, dx, dy] = await Promise.all([
+    stats(crop().grayscale().blur(1).convolve({ width: 3, height: 3, kernel: [0, 1, 0, 1, -4, 1, 0, 1, 0], offset: 128 })),
+    stats(crop()),
+    energy([-1, 0, 1, -2, 0, 2, -1, 0, 1]),
+    energy([-1, -2, -1, 0, 0, 0, 1, 2, 1]),
   ]);
-  return { sharpness: Math.round(edges.channels[0].stdev * 100) / 100, color: tones.channels.slice(0, 3).map((c) => Math.round(c.mean)) };
+  const [across, along] = box.width < box.height ? [dx, dy] : [dy, dx];
+  return {
+    sharpness: Math.round(edges.channels[0].stdev * 100) / 100,
+    color: tones.channels.slice(0, 3).map((c) => Math.round(c.mean)),
+    stripes: Math.round((across / Math.max(along, 0.01)) * 100) / 100,
+  };
 }
 
 /** The primary image of a HEIC file; libheif applies its rotation and mirroring. */
@@ -176,4 +196,9 @@ export async function texture(picture: Picture): Promise<{ jpeg: Buffer; width: 
     .jpeg({ quality: 90 })
     .toBuffer();
   return { jpeg, width, height, edge };
+}
+
+/** A texture turned a quarter turn clockwise. */
+export async function turned(t: Awaited<ReturnType<typeof texture>>) {
+  return { ...t, jpeg: await sharp(t.jpeg).rotate(90).jpeg({ quality: 90 }).toBuffer(), width: t.height, height: t.width };
 }
