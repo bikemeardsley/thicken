@@ -29,9 +29,18 @@ export interface Sidecar {
   widthMm: number;
   heightMm: number;
   depthMm: number;
+  faces?: Faces;
   warnings: string[];
   [detail: string]: unknown;
 }
+
+/** Where each face's picture came from: the user's own photo, or something standing in for one. */
+export type Faces = Record<string, 'photo' | 'openlibrary' | 'colour' | 'plastic'>;
+const STAND_IN = { openlibrary: 'Open Library\'s cover, not your copy', colour: 'plain colour', plastic: 'plain plastic' };
+
+/** The faces still to photograph, e.g. "spine (plain colour)": for the re-shoot list and preview captions. */
+export const stillToShoot = (faces: Faces = {}) =>
+  Object.entries(faces).flatMap(([face, from]) => (from === 'photo' ? [] : [`${face} (${STAND_IN[from]})`]));
 
 // A grader's QR code points at its own verification page, which says whose holder this is.
 const GRADER_SITES: Record<string, string> = { 'psacard.com': 'psa', 'beckett.com': 'bgs', 'cgccards.com': 'cgc', 'gosgc.com': 'sgc', 'taggrading.com': 'tag' };

@@ -6,6 +6,7 @@
 // the page count, the cover's shape, and last a standard trim size.
 import { box, type Side } from './glb.ts';
 import { load, texture, type Picture } from './image.ts';
+import type { Faces } from './thicken.ts';
 
 const PAGE_MM = 0.075; // per page: trade paper runs 300–400 pages to the inch
 const BOARDS_MM = 4; // a hardcover's two boards
@@ -32,6 +33,7 @@ export async function book(pictures: Picture[], { isbn, sizeMm = [], backAt }: {
   const back = backAt === undefined ? rest.shift() : textures[backAt];
   const spine = spineAt < 0 ? undefined : textures[spineAt];
   if (rest.length) warnings.push(`${rest.length} picture(s) not used: a book takes one front, back and spine`);
+  const faces: Faces = { front: front ? 'photo' : 'openlibrary', back: back ? 'photo' : 'colour', spine: spine ? 'photo' : 'colour' };
   const coverUrl = !front && isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg` : undefined;
   if (!front) {
     const cover = coverUrl && await fetchBytes(`${coverUrl}?default=false`, warnings);
@@ -94,7 +96,7 @@ export async function book(pictures: Picture[], { isbn, sizeMm = [], backAt }: {
   const round = (mm: number) => Math.round(mm * 10) / 10;
   return {
     glb,
-    sidecar: { profile: 'book', isbn, ...(coverUrl && { coverUrl }), widthMm: round(width), heightMm: round(height), depthMm: round(depth), measuredBy, pages, warnings },
+    sidecar: { profile: 'book', isbn, ...(coverUrl && { coverUrl }), widthMm: round(width), heightMm: round(height), depthMm: round(depth), measuredBy, pages, faces, warnings },
   };
 }
 

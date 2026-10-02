@@ -3,15 +3,19 @@
 // they are, so crop them to the slab's edges (or use a scanner app).
 import { box, type Side } from './glb.ts';
 import { texture, type Picture } from './image.ts';
+import type { Faces } from './thicken.ts';
 
-// ponytail: graders don't publish holder sizes; these are collectors' caliper measurements (±1 mm across
-// holder generations). Measure your own holders and correct this table; --size overrides it per model.
+// ponytail: graders don't publish exterior holder sizes, and the figures online disagree by 1–5 mm across
+// sources and holder generations. These are the best found (2026-10-01); measure real holders and correct
+// them. --size overrides per model. A QR code says the grader, not the holder, so a tall boy needs --holder.
 export const HOLDERS: Record<string, number[]> = { // width, height, depth in mm
-  psa: [80.5, 136, 6.5],
+  psa: [80.5, 136, 6.5], // collector caliper measurements
   'psa-thick': [80.5, 136, 10.25],
+  'psa-tall': [108, 184, 6.5], // tall boys (1969–70 Topps basketball…): 4¼ × 7¼ in per Collectors Universe; depth assumed
   bgs: [83, 131, 8.5],
   cgc: [80.5, 135, 7.5],
   sgc: [86.5, 138.5, 8.5],
+  tag: [79.5, 133.5, 7.5], // TAG's help centre: 3.125 × 5.25 in, 7.5 mm at the raised lip
 };
 const PLASTIC: Side = { colour: '#dfe3e6', roughness: 0.15 };
 const SHAPE_TOLERANCE = 0.04;
@@ -45,7 +49,8 @@ export async function slab(pictures: Picture[], { holder, sizeMm = [], label = {
     glb,
     sidecar: {
       profile: 'slab', holder, ...label,
-      widthMm: size[0], heightMm: size[1], depthMm: size[2], measuredBy: sizeMm.length ? 'measured' : 'table', warnings,
+      widthMm: size[0], heightMm: size[1], depthMm: size[2], measuredBy: sizeMm.length ? 'measured' : 'table',
+      faces: { front: 'photo', back: back ? 'photo' : 'plastic' } satisfies Faces, warnings,
     },
   };
 }

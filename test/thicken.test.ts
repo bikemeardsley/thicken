@@ -10,6 +10,7 @@ import { mock, test } from 'node:test';
 import { getBounds, NodeIO, type Document, type Primitive, type vec2, type vec3 } from '@gltf-transform/core';
 import { KHRMaterialsUnlit } from '@gltf-transform/extensions';
 import sharp from 'sharp';
+import { startPreview } from '../src/preview.ts';
 import { batchItems, thicken } from '../src/thicken.ts';
 
 const fixture = (name: string) => fileURLToPath(new URL(`fixtures/${name}`, import.meta.url));
@@ -60,7 +61,8 @@ test('book: a scanned PDF, its ISBN read off the back cover, its size from Open 
   const { glb, sidecar } = await thicken([fixture('book-scan.pdf')]);
   assert.deepEqual(sidecar, {
     profile: 'book', sources: ['book-scan.pdf'], isbn: '9780140328721', widthMm: 127, heightMm: 203.2, depthMm: 25.4,
-    measuredBy: { width: 'openlibrary', height: 'openlibrary', depth: 'openlibrary' }, pages: 320, warnings: [],
+    measuredBy: { width: 'openlibrary', height: 'openlibrary', depth: 'openlibrary' }, pages: 320,
+    faces: { front: 'photo', back: 'photo', spine: 'colour' }, warnings: [],
   });
   assert.equal(fetch.mock.callCount(), 1, 'Open Library had every dimension, so no backup was asked');
 
@@ -122,7 +124,7 @@ test('slab: a grader\'s QR code picks the holder, and the holder its size', asyn
   const { glb, sidecar } = await thicken([fixture('slab.jpg')]);
   assert.deepEqual(sidecar, {
     profile: 'slab', sources: ['slab.jpg'], holder: 'psa', grader: 'psa', cert: '12345678', verifyUrl: 'https://www.psacard.com/cert/12345678',
-    widthMm: 80.5, heightMm: 136, depthMm: 6.5, measuredBy: 'table', warnings: [],
+    widthMm: 80.5, heightMm: 136, depthMm: 6.5, measuredBy: 'table', faces: { front: 'photo', back: 'plastic' }, warnings: [],
   });
   assertExtents(await read(glb), [0.0805, 0.136, 0.0065]);
 });
@@ -183,6 +185,7 @@ test('batch: every model is made, and one that fails is reported without stoppin
   t.after(() => rm(folder, { recursive: true, force: true }));
   await copyFile(fixture('badge.png'), path.join(folder, 'badge.png'));
   await copyFile(fixture('plain.jpg'), path.join(folder, 'plain.jpg'));
+  await copyFile(fixture('slab.jpg'), path.join(folder, 'lone-slab.jpg')); // a front with no back
   await mkdir(path.join(folder, 'slab'));
   await copyFile(fixture('slab.jpg'), path.join(folder, 'slab', '1-front.jpg'));
   await copyFile(fixture('slab.jpg'), path.join(folder, 'slab', '2-back.jpg'));
@@ -191,14 +194,38 @@ test('batch: every model is made, and one that fails is reported without stoppin
   const first = batch();
   assert.equal(first.status, 1, 'a failed model fails the batch');
   assert.match(first.stderr, /plain: failed: can't tell what this is/);
-  assert.match(first.stdout, /2 made, 0 already up to date, 1 failed/);
-  assert.deepEqual((await readdir(path.join(folder, 'thicken'))).sort(), ['badge.glb', 'badge.json', 'slab.glb', 'slab.json']);
+  assert.match(first.stdout, /3 made, 0 already up to date, 1 failed/);
+  assert.match(first.stdout, /still to shoot[^\n]*\n {2}lone-slab: back \(plain plastic\)$/m, 'the front-only slab is listed, the full one is not');
+  assert.deepEqual((await readdir(path.join(folder, 'thicken'))).sort(),
+    ['badge.glb', 'badge.json', 'lone-slab.glb', 'lone-slab.json', 'slab.glb', 'slab.json']);
 
-  // Run again: the models are newer than their pictures, so they're left alone, until a picture changes.
-  assert.match(batch().stdout, /0 made, 2 already up to date, 1 failed/);
-  const later = new Date(Date.now() + 60_000);
-  await utimes(path.join(folder, 'slab', '2-back.jpg'), later, later);
-  assert.match(batch().stdout, /1 made, 1 already up to date, 1 failed/);
+  // Run again: made from exactly these pictures, so left alone, until a picture changes,
+  // even to one dated earlier (a camera keeps its photos' capture dates).
+  assert.match(batch().stdout, /0 made, 3 already up to date, 1 failed/);
+  const earlier = new Date(2001, 0, 1);
+  await utimes(path.join(folder, 'slab', '2-back.jpg'), earlier, earlier);
+  assert.match(batch().stdout, /1 made, 2 already up to date, 1 failed/);
+});
+
+test('preview: both sides of a model, drawn beside it as <name>.preview.png', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const { glb, sidecar } = await thicken([fixture('slab.jpg')]);
+  const model = path.join(folder, 'slab.glb');
+  await writeFile(model, glb);
+  await writeFile(path.join(folder, 'slab.json'), JSON.stringify(sidecar));
+  const preview = await startPreview().catch(() => undefined);
+  if (!preview) return t.skip('no Chrome or Edge on this machine');
+  try {
+    assert.equal(await preview.render(model), path.join(folder, 'slab.preview.png'));
+  } finally {
+    await preview.close();
+  }
+  const { data, info } = await sharp(path.join(folder, 'slab.preview.png')).raw().toBuffer({ resolveWithObject: true });
+  assert.deepEqual([info.width, info.height], [800, 574]);
+  // The front view's middle is the slab's green card, not the background.
+  const k = (300 * info.width + 200) * info.channels;
+  assert.ok(data[k + 1] > data[k] + 40 && data[k + 1] > data[k + 2] + 40, `front view centre is ${[...data.subarray(k, k + 3)]}`);
 });
 
 /** Stand-in catalogues: Open Library knows one edition (and maybe its cover), Google Books is out of quota. */

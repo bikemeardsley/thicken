@@ -17,9 +17,12 @@
   "dependencies": {
     "@gltf-transform/core": "4.5.1",
     "@gltf-transform/extensions": "4.5.1",
+    "@google/model-viewer": "4.3.1",
     "earcut": "3.2.4",
     "libheif-js": "1.23.2",
+    "playwright-core": "1.63.0",
     "sharp": "0.35.5",
+    "three": "0.183.2",
     "unpdf": "1.8.1",
     "zxing-wasm": "3.1.4"
   },

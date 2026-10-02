@@ -1,24 +1,31 @@
 #!/usr/bin/env node
-// thicken [badge|book|slab] <picture or PDF>... [-o out.glb] [options]
-// thicken batch [badge|book|slab] <folder> [-o out-folder] [options]
+// thicken [badge|book|slab] <picture or PDF>... [-o out.glb] [--preview] [options]
+// thicken batch [badge|book|slab] <folder> [-o out-folder] [--preview] [--force] [options]
+// thicken preview <model.glb or folder>...
 // With no profile named, Thicken picks one per model (see src/thicken.ts).
 // Writes each GLB and, beside it, a JSON sidecar of the same name.
-import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { batchItems, PROFILES, thicken, type Options, type Profile } from './thicken.ts';
+import { previewPath, startPreview } from './preview.ts';
+import { batchItems, PROFILES, stillToShoot, thicken, type Options, type Profile, type Sidecar } from './thicken.ts';
 
-const USAGE = `usage: thicken [badge|book|slab] <picture or PDF>... [-o out.glb]
-       thicken batch [badge|book|slab] <folder> [-o out-folder]
-  book   front [back] [spine]  [--isbn 978...] [--size WxHxD]  (mm; any left out are looked up or estimated)
-  slab   front [back]          [--holder psa|psa-thick|bgs|cgc|sgc] [--size WxHxD]
-  badge  artwork               [--width mm] [--depth mm]
+const USAGE = `usage: thicken [badge|book|slab] <picture or PDF>... [-o out.glb] [--preview]
+       thicken batch [badge|book|slab] <folder> [-o out-folder] [--preview] [--force]
+       thicken preview <model.glb or folder>...
+  book   front back spine (any order) [--isbn 978...] [--size WxHxD]  (mm; any left out are looked up or estimated)
+  slab   front [back]  [--holder psa|psa-thick|psa-tall|bgs|cgc|sgc|tag] [--size WxHxD]
+  badge  artwork       [--width mm] [--depth mm]
 Pictures: JPEG, PNG, HEIC, WebP, AVIF, GIF, TIFF, SVG, or a scanner app's PDF (one picture per page).
-With no profile named: an ISBN barcode or --isbn means a book, a grader's QR code a slab, cut-out artwork a badge.
-A book's barcode picture is its back cover; with no front, the cover comes from Open Library.
+With no profile named: an ISBN barcode or --isbn means a book, a grader's QR code (or a cert
+barcode on a holder-shaped photo) a slab, cut-out artwork a badge.
 Batch: each picture or PDF in the folder is one model, and each subfolder one model from the
-pictures in it; models go to <folder>/thicken unless -o says otherwise. A model already newer
-than its pictures is left alone, hand edits and all; --force remakes it.`;
+pictures in it; models go to <folder>/thicken unless -o says otherwise. A model already made
+from exactly these pictures is left alone, hand edits and all; --force remakes it. Afterwards
+it lists the faces still to photograph.
+--preview, or the preview command, writes <name>.preview.png beside each model (needs Chrome or Edge).`;
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
@@ -29,14 +36,14 @@ const { positionals, values } = parseArgs({
     holder: { type: 'string' },
     width: { type: 'string' },
     depth: { type: 'string' },
+    preview: { type: 'boolean' },
     force: { type: 'boolean' },
     help: { type: 'boolean', short: 'h' },
   },
 });
-const batch = positionals[0] === 'batch';
-if (batch) positionals.shift();
-const profile = (PROFILES as readonly string[]).includes(positionals[0]) ? (positionals.shift() as Profile) : undefined;
-const nothingGiven = positionals.length === 0 && (batch || !values.isbn);
+const command = positionals[0] === 'batch' || positionals[0] === 'preview' ? positionals.shift() : 'make';
+const profile = command !== 'preview' && (PROFILES as readonly string[]).includes(positionals[0]) ? (positionals.shift() as Profile) : undefined;
+const nothingGiven = positionals.length === 0 && (command !== 'make' || !values.isbn);
 if (values.help || nothingGiven) {
   console.error(USAGE);
   process.exit(values.help ? 0 : 1);
@@ -52,28 +59,79 @@ const options: Options = {
   depthMm: mm(values.depth),
 };
 
-/** Make one model and write it, with its sidecar beside it. */
+const sidecarOf = (glb: string) => glb.replace(/(\.glb)?$/i, '.json');
+const readSidecar = (glb: string): Promise<Sidecar | undefined> =>
+  readFile(sidecarOf(glb), 'utf8').then((text) => JSON.parse(text), () => undefined);
+
+/** What a model was made from: each picture's name, size and time. A changed picture changes it, whatever its date. */
+async function inputsKey(files: string[]) {
+  const parts = await Promise.all(files.map(async (file) => {
+    const { size, mtimeMs } = await stat(file);
+    return [path.basename(file), size, mtimeMs];
+  }));
+  return createHash('sha256').update(JSON.stringify(parts)).digest('hex').slice(0, 16);
+}
+
+/** Make one model and write it, then its sidecar (last, so a sidecar means a finished model). */
 async function build(files: string[], out?: string) {
   const { glb, sidecar } = await thicken(files, options);
   const named = files[0] ? path.join(path.dirname(files[0]), path.parse(files[0]).name) : `${sidecar.isbn}`;
   out ??= `${named}.glb`;
   await writeFile(out, glb);
-  await writeFile(out.replace(/(\.glb)?$/i, '.json'), `${JSON.stringify(sidecar, null, 2)}\n`);
+  await writeFile(sidecarOf(out), `${JSON.stringify({ ...sidecar, inputsKey: await inputsKey(files) }, null, 2)}\n`);
   console.log(`${out}: ${sidecar.profile}, ${sidecar.widthMm} × ${sidecar.heightMm} × ${sidecar.depthMm} mm`);
   for (const warning of sidecar.warnings) console.warn(`  warning: ${warning}`);
+  return { out, sidecar };
 }
 
-/** A model that exists and is newer than every picture it came from: a re-run leaves it, and any hand edits, alone. */
+/** A model already made from exactly these pictures: a re-run leaves it, and any hand edits, alone. */
 async function upToDate(out: string, files: string[]) {
-  const model = await stat(out).catch(() => undefined);
-  if (!model) return false;
-  for (const file of files) if ((await stat(file)).mtimeMs > model.mtimeMs) return false;
-  return true;
+  return existsSync(out) && (await readSidecar(out))?.inputsKey === await inputsKey(files);
+}
+
+/** A previewer if a browser can be had; without one, models are still made and the reason is said once. */
+async function previewer() {
+  try {
+    return await startPreview();
+  } catch (error) {
+    console.warn(`  warning: no previews: ${(error as Error).message}`);
+    return undefined;
+  }
 }
 
 try {
-  if (!batch) {
-    await build(positionals, values.out);
+  if (command === 'make') {
+    const { out, sidecar } = await build(positionals, values.out);
+    const missing = stillToShoot(sidecar.faces);
+    if (missing.length) console.log(`  still to shoot: ${missing.join(', ')}`);
+    const preview = values.preview ? await previewer() : undefined;
+    if (preview) {
+      await preview.render(out)
+        .then((png) => console.log(`  preview: ${png}`), (error: Error) => console.warn(`  warning: no preview: ${error.message}`))
+        .finally(() => preview.close());
+    }
+  } else if (command === 'preview') {
+    const models: string[] = [];
+    for (const target of positionals) {
+      if ((await stat(target)).isDirectory()) {
+        models.push(...(await readdir(target)).filter((name) => /\.glb$/i.test(name)).map((name) => path.join(target, name)));
+      } else {
+        models.push(target);
+      }
+    }
+    const preview = await startPreview();
+    try {
+      for (const model of models) {
+        try {
+          console.log(await preview.render(model));
+        } catch (error) {
+          process.exitCode = 1;
+          console.error(`${model}: no preview: ${(error as Error).message}`);
+        }
+      }
+    } finally {
+      await preview.close();
+    }
   } else {
     if (values.isbn) throw new Error('--isbn names one book; a batch reads each book\'s own barcode');
     const [folder] = positionals;
@@ -81,23 +139,35 @@ try {
     const items = await batchItems(folder, outFolder);
     if (items.length === 0) throw new Error(`no pictures or PDFs in ${folder}`);
     await mkdir(outFolder, { recursive: true });
+    const preview = values.preview ? await previewer() : undefined;
     // ponytail: one at a time, which is polite to Open Library and loses little (HEIC decoding is single-threaded wasm); a small pool if big batches drag.
     let [made, kept, failed] = [0, 0, 0];
+    const toShoot: string[] = [];
     for (const { name, files } of items) {
       const out = path.join(outFolder, `${name}.glb`);
-      if (!values.force && await upToDate(out, files)) {
+      const current = !values.force && await upToDate(out, files);
+      if (current) {
         kept++;
-        continue;
+      } else {
+        try {
+          await build(files, out);
+          made++;
+        } catch (error) {
+          failed++;
+          console.error(`${name}: failed: ${(error as Error).message}`);
+          continue;
+        }
       }
-      try {
-        await build(files, out);
-        made++;
-      } catch (error) {
-        failed++;
-        console.error(`${name}: failed: ${(error as Error).message}`);
+      // A preview that can't be drawn is a warning: the model itself is made.
+      if (preview && (!current || !existsSync(previewPath(out)))) {
+        await preview.render(out).catch((error: Error) => console.warn(`  ${name}: no preview: ${error.message}`));
       }
+      const missing = stillToShoot((await readSidecar(out))?.faces);
+      if (missing.length) toShoot.push(`  ${name}: ${missing.join(', ')}`);
     }
+    await preview?.close();
     console.log(`${made} made, ${kept} already up to date, ${failed} failed, in ${outFolder}`);
+    if (toShoot.length) console.log(`still to shoot (put each item's photos in a subfolder named after it, then re-run):\n${toShoot.join('\n')}`);
     process.exitCode = failed ? 1 : 0;
   }
 } catch (error) {
