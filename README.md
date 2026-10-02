@@ -30,8 +30,8 @@ Two families:
 | **Digital artwork made into an object** | | |
 | Badge | Artwork with transparency | The artwork's own outline, extruded (the approach in michaelbeardsley-now's `badge-shape.ts`) |
 | **A real object rebuilt at its real size** | | |
-| Book | Front cover, back, spine (any order, any of them), or just an ISBN | Box at the book's size: covers, spine, cream page edges |
-| Graded slab | Front [back] | Box at the holder's size, with the photos on its faces and clear-plastic edges |
+| Book | Front cover, back, spine (any order, any of them), or just an ISBN | Softly rounded box at the book's size: covers, spine, page edges |
+| Graded slab | Front [back] | Softly rounded box at the holder's size, with the photos on its faces and clear-plastic edges |
 | Raw card (planned) | Front and back | Thin rounded card at 63.5 × 88.9 mm |
 
 Name the profile, or leave it out and Thicken picks one:
@@ -106,9 +106,8 @@ yellowed pages, are taken for the spine; an ISBN barcode on a front cover
 spine shot with the book lying face down is stood up upside down.
 
 A model shows your copy, not one from the internet: every face you
-photograph carries your photo exactly as taken (unlit, so its colors are
-untouched). The ISBN supplies the size and catalog data. Each sidecar's
-`faces` says where every face came from:
+photograph carries your photo. The ISBN supplies the size and catalog data.
+Each sidecar's `faces` says where every face came from:
 
 | Value | Meaning |
 | --- | --- |
@@ -116,7 +115,15 @@ untouched). The ISBN supplies the size and catalog data. Each sidecar's
 | `openlibrary` | A stand-in front cover from Open Library, used only when you photographed the back but not the front |
 | `color` | A plain color from the cover's edge (a book's missing back or spine) |
 | `plastic` | Plain plastic (a slab with no back photo) |
-| `pages` | Plain page color (a book's top, bottom or page edge: an extra, not reviewed) |
+| `pages` | A generated stack of cream pages (a book's top, bottom or page edge: an extra, not reviewed) |
+
+**How it looks.** The photos sit on a matte, non-metal surface (glTF's
+metallic-roughness, roughness 0.6), lit, so a model shades as it turns, like
+the object; the photo's colors show where the light falls full on it. Edges
+and corners are rounded, 1 mm on a book and 1.5 mm on a slab, and each face's
+photo wraps halfway round its edges. The model still measures its full size
+across the faces. Page sides with no photo get stacked page lines, generated
+the same every time, not a texture from anywhere else.
 
 ## Vision (optional)
 
@@ -197,7 +204,8 @@ the other order (in a batch subfolder, file names set the order).
 `<name>.preview.png` beside each model: the front three-quarter view and the
 back three-quarter view side by side, captioned with the real size and any
 face that isn't your photo. It never writes `<name>.png`, which may be your
-original. It is drawn by model-viewer in an installed Chrome or Edge, run
+original. The soft shadow under the model is the preview's, not part of the
+asset. It is drawn by model-viewer in an installed Chrome or Edge, run
 headless, with nothing fetched from the network.
 
 Every output is a **GLB** at real-world size (glTF's unit is the meter, so a

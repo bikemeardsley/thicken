@@ -6,6 +6,7 @@
 // often spent; set GOOGLE_BOOKS_API_KEY), the cover's shape, a standard trim
 // size, then for thickness the spine and page-edge photos and the page count.
 // With an ISBN the sidecar also gets Open Library's catalog record.
+import sharp from 'sharp';
 import { assignFaces, cut, pictureRecord, shots } from './faces.ts';
 import { box, type Side } from './glb.ts';
 import { load, texture, turned, type Picture } from './image.ts';
@@ -16,7 +17,8 @@ const PAGE_MM = 0.075; // per page: trade paper runs 300–400 pages to the inch
 const BOARDS_MM = 4; // a hardcover's two boards
 const DEFAULT_DEPTH_MM = 20;
 const TRIMS_IN = [[4.25, 6.87], [5, 8], [5.5, 8.5], [6, 9], [7, 10], [8.5, 11], [8.5, 8.5]]; // width × height
-const PAGE_EDGES: Side = { color: '#efe6d2', roughness: 0.9 }; // cream
+const CREAM = [0xef, 0xe6, 0xd2]; // page color
+const ROUNDED_MM = 1; // a paperback's soft edges
 const ESTIMATES_DISAGREE = 0.35; // photos against page count: beyond this, one of them is wrong
 const LOOKUP_TIMEOUT_MS = 10_000;
 
@@ -134,14 +136,16 @@ export async function book(
   }
 
   const plain: Side = { color: front.edge, roughness: 0.6 }; // a wraparound cover carries on round the spine
+  const paper = await pageTextures();
+  const pagesAcross: Side = { picture: paper.across, roughness: 0.9 }; // one Side for top and bottom: one draw call
   const glb = await box('book', [width, height, depth], {
     front: { picture: front.jpeg },
     back: back ? { picture: back.jpeg } : plain,
     left: spine ? { picture: spine.jpeg } : plain,
-    right: edge ? { picture: edge.jpeg } : PAGE_EDGES,
-    top: top ? { picture: top.jpeg } : PAGE_EDGES,
-    bottom: bottom ? { picture: bottom.jpeg } : PAGE_EDGES,
-  });
+    right: edge ? { picture: edge.jpeg } : { picture: paper.down, roughness: 0.9 },
+    top: top ? { picture: top.jpeg } : pagesAcross,
+    bottom: bottom ? { picture: bottom.jpeg } : pagesAcross,
+  }, ROUNDED_MM);
   return {
     glb,
     sidecar: {
@@ -151,6 +155,42 @@ export async function book(
       pages, faces, review, warnings: log.warnings, catalog, pictures: pictureRecord(all, roles), lookups: log.lookups,
     },
   };
+}
+
+let made: Promise<{ down: Uint8Array; across: Uint8Array }> | undefined;
+/**
+ * Stacked pages for unphotographed page sides, the same for every book: each page a shade of its own,
+ * neighbors drifting together as pages clump, a few darker gaps between sections, faint fibers along the
+ * paper. The lines run down the page-edge texture and across the top-and-bottom one.
+ */
+function pageTextures(): Promise<{ down: Uint8Array; across: Uint8Array }> {
+  made ??= (async () => {
+    const [pages, along] = [192, 256];
+    let seed = 7; // mulberry32: seeded, so the texture never changes between runs
+    const random = () => {
+      seed = (seed + 0x6d2b79f5) >>> 0;
+      let t = Math.imul(seed ^ (seed >>> 15), seed | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const shade: number[] = [];
+    let drift = 0;
+    for (let i = 0; i < pages; i++) {
+      drift = drift * 0.7 + (random() - 0.5) * 0.06;
+      shade.push(1 + drift + (random() - 0.5) * 0.06 - (random() < 0.04 ? 0.08 : 0));
+    }
+    const data = Buffer.alloc(pages * along * 3);
+    for (let y = 0; y < along; y++) {
+      for (let x = 0; x < pages; x++) {
+        const fiber = 1 + (random() - 0.5) * 0.025;
+        for (let k = 0; k < 3; k++) data[(y * pages + x) * 3 + k] = Math.min(255, Math.round(CREAM[k] * shade[x] * fiber));
+      }
+    }
+    const image = sharp(data, { raw: { width: pages, height: along, channels: 3 } });
+    const [down, across] = await Promise.all([image.clone().jpeg({ quality: 90 }).toBuffer(), image.clone().rotate(90).jpeg({ quality: 90 }).toBuffer()]);
+    return { down, across };
+  })();
+  return made;
 }
 
 /** The fields of Open Library's books-API record worth keeping. */

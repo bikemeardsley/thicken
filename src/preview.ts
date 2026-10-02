@@ -14,7 +14,9 @@ const require = createRequire(import.meta.url);
 const VIEWER = require.resolve('@google/model-viewer/dist/model-viewer.min.js');
 const [VIEW_W, VIEW_H, CAPTION_H] = [400, 540, 34]; // px; portrait views, as books and slabs are
 const RENDER_TIMEOUT_MS = 30_000;
-// No tone mapping, so the unlit photo faces show their exact pixels.
+// Neutral tone mapping keeps the photos' colors as they are where the light falls full on them; the
+// soft shadow under the model is the preview's own, not part of the asset.
+const VIEW = 'tone-mapping="neutral" shadow-intensity="1" shadow-softness="1" interaction-prompt="none"';
 const PAGE = `<!doctype html><meta charset="utf-8">
 <style>
   body{margin:0;width:${2 * VIEW_W}px;background:#9aa4ae;font:14px system-ui,sans-serif;color:#1f2933} /* mid slate: light plastic, cream pages and dark covers all stand out */
@@ -22,7 +24,7 @@ const PAGE = `<!doctype html><meta charset="utf-8">
   p{margin:0;height:${CAPTION_H}px;line-height:${CAPTION_H}px;padding:0 12px;background:#fff;white-space:nowrap;overflow:hidden}
 </style>
 <script type="module" src="/model-viewer.js"></script>
-<model-viewer camera-orbit="35deg 72deg auto" tone-mapping="none" interaction-prompt="none"><div slot="progress-bar"></div></model-viewer><model-viewer camera-orbit="215deg 72deg auto" tone-mapping="none" interaction-prompt="none"><div slot="progress-bar"></div></model-viewer>
+<model-viewer camera-orbit="35deg 72deg auto" ${VIEW}><div slot="progress-bar"></div></model-viewer><model-viewer camera-orbit="215deg 72deg auto" ${VIEW}><div slot="progress-bar"></div></model-viewer>
 <p></p>`;
 
 export const previewPath = (glb: string) => glb.replace(/(\.glb)?$/i, '.preview.png');

@@ -22,6 +22,7 @@ export const HOLDERS: Record<string, number[]> = { // width, height, depth in mm
 };
 const PLASTIC: Side = { color: '#dfe3e6', roughness: 0.15 };
 const SHAPE_TOLERANCE = 0.04;
+const ROUNDED_MM = 1.5; // a holder's molded edges
 
 /** What the label's codes said: grader, cert number, and the grader's verification page. */
 export interface Label { grader?: string; cert?: string; verifyUrl?: string }
@@ -67,7 +68,7 @@ export async function slab(
     front: { picture: front.jpeg },
     back: back ? { picture: back.jpeg } : PLASTIC,
     left: PLASTIC, right: PLASTIC, top: PLASTIC, bottom: PLASTIC,
-  });
+  }, ROUNDED_MM);
   return {
     glb,
     sidecar: {

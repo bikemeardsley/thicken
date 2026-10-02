@@ -1,8 +1,7 @@
 // The badge profile: digital artwork made into an object. The picture's own
 // outline (src/outline.ts) is extruded to a solid at real-world size; the
-// front shows the picture exactly (unlit, its see-through parts cut out by
-// an alpha mask) and the sides and back are the color just inside the
-// outline. `widthMm` is the traced shape's width; its height follows.
+// front shows the picture (its see-through parts cut out by an alpha mask)
+// and the sides and back are the color just inside the outline. `widthMm` is the traced shape's width; its height follows.
 import { Document } from '@gltf-transform/core';
 import earcut from 'earcut';
 import sharp from 'sharp';

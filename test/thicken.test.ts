@@ -8,7 +8,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mock, test } from 'node:test';
 import { getBounds, NodeIO, type Document, type Primitive, type vec2, type vec3 } from '@gltf-transform/core';
-import { KHRMaterialsUnlit } from '@gltf-transform/extensions';
 import sharp, { type Sharp } from 'sharp';
 import { startPreview } from '../src/preview.ts';
 import { batchItems, thicken } from '../src/thicken.ts';
@@ -30,7 +29,8 @@ test('badge: cut-out artwork, its outline extruded to a closed solid at real-wor
   const faceMaterial = face.getMaterial()!;
   assert.equal(faceMaterial.getAlphaMode(), 'MASK');
   assert.equal(faceMaterial.getBaseColorTexture()?.getMimeType(), 'image/png');
-  assert.ok(faceMaterial.getExtension('KHR_materials_unlit'));
+  // Lit, so it shades as it turns: a matte, non-metal surface.
+  assert.deepEqual([faceMaterial.getExtension('KHR_materials_unlit'), faceMaterial.getMetallicFactor(), faceMaterial.getRoughnessFactor()], [null, 0, 0.6]);
   // #3366cc in linear light, as glTF factors are; unconverted it would be 0.2, 0.4, 0.8.
   rim.getMaterial()!.getBaseColorFactor().slice(0, 3).forEach((c, i) => assert.ok(Math.abs(c - [0.0331, 0.1329, 0.6038][i]) < 1e-3));
 
@@ -72,8 +72,16 @@ test('book: a scanned PDF, its ISBN read off the back cover, its size from Open 
   assert.ok(fetch.mock.calls.every((call) => !String(call.arguments[0]).includes('googleapis')), 'Open Library had every dimension, so no backup was asked');
 
   const doc = await read(glb);
+  // The full size across the faces, its edges rounded to 1 mm: some normals lean between two faces.
   assertExtents(doc, [0.127, 0.2032, 0.0254]);
-  assertClosed(doc, 0.127 * 0.2032 * 0.0254 * 1e9);
+  assertClosed(doc, roundedVolume([127, 203.2, 25.4], 1), 5e-4);
+  const normals = doc.getRoot().listMeshes()[0].listPrimitives().flatMap((p) => {
+    const accessor = p.getAttribute('NORMAL')!;
+    return [...Array(accessor.getCount()).keys()].map((i) => accessor.getElement(i, [0, 0, 0]));
+  });
+  assert.ok(normals.some(([nx, , nz]) => Math.abs(nx) > 0.3 && Math.abs(nz) > 0.3), 'rounded edges');
+  // The page edge, not photographed, is a generated stack of cream pages.
+  assert.ok(near(await colorOf(doc, [1, 0, 0]), '#efe6d2'), 'cream pages');
   // Read from outside, each cover's top-left corner (UV 0,0) is at its top left:
   // the front's at -X, the back's at +X (turn a book over and the spine is on your right).
   assert.deepEqual(cornerAt(doc, [0, 0, 1]), [-1, 1, 1]);
@@ -158,11 +166,13 @@ test('book: vision models find the faces in uncropped photos, which are cut out 
   const front = [[300, 150], [600, 150], [760, 1000], [140, 1000]];
   const table = () => sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } });
   const quad = `<svg width="900" height="1200"><polygon points="${front.map((p) => p.join(',')).join(' ')}" fill="#1d2b53"/></svg>`;
-  const files = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
+  const files = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png'), path.join(folder, 'IMG_3.png')];
   await table().composite([{ input: fixture('book-back.jpg'), left: 200, top: 200 }, {
     input: await sharp({ create: { width: 60, height: 800, channels: 3, background: '#c62828' } }).png().toBuffer(), left: 700, top: 200,
   }]).png().toFile(files[0]);
   await table().composite([{ input: Buffer.from(quad) }]).png().toFile(files[1]);
+  // And a green photo no model can answer for (every call fails): used whole, and listed for review.
+  await sharp({ create: { width: 500, height: 800, channels: 3, background: '#2e7d32' } }).png().toFile(files[2]);
 
   // The models see the photo letterboxed into 1000 x 1000: scaled by 5/6 and centered, 125 px in from the left.
   const seen = (corners: number[][], shift = 0) => corners.map(([x, y]) => [125 + (x * 5) / 6 + shift, (y * 5) / 6 + shift]);
@@ -171,8 +181,11 @@ test('book: vision models find the faces in uncropped photos, which are cut out 
     vision: async ({ model, photo, authorization }) => {
       authorizations.push(String(authorization));
       const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
-      let red = 0;
-      for (let y = 450; y < 550; y++) for (let x = 450; x < 550; x++) red += data[(y * info.width + x) * info.channels];
+      let [red, green] = [0, 0];
+      for (let y = 450; y < 550; y++) {
+        for (let x = 450; x < 550; x++) [red, green] = [red + data[(y * info.width + x) * info.channels], green + data[(y * info.width + x) * info.channels + 1]];
+      }
+      if (green - red > 50 * 10_000) return undefined; // the green photo: every model fails
       const isFront = red / 10_000 < 100; // the middle is navy, not cream
       if (isFront) {
         // a also names a sliver of spine that b, answering, doesn't: left out.
@@ -188,15 +201,16 @@ test('book: vision models find the faces in uncropped photos, which are cut out 
   const { glb, sidecar } = await thicken(files);
 
   assert.deepEqual((sidecar.pictures as { file: string; face: string; role: string }[]).map(({ file, face, role }) => [file, face, role]),
-    [['IMG_1.png', 'back', 'back'], ['IMG_1.png', 'spine', 'spine'], ['IMG_2.png', 'front', 'front']]);
+    [['IMG_1.png', 'back', 'back'], ['IMG_1.png', 'spine', 'spine'], ['IMG_2.png', 'front', 'front'], ['IMG_3.png', undefined, 'unused']]);
+  assert.ok(sidecar.review.includes('IMG_3.png (no vision model answered, so it was used whole: run again, or crop it)'));
   const vision = sidecar.vision as { endpoint: string; photos: { faces: { face: string; by: string[]; agreed: boolean }[]; answers: { model: string }[] }[] };
   assert.equal(vision.endpoint, 'vision.test/api/chat/completions');
   assert.deepEqual(vision.photos.map(({ faces }) => faces.map(({ face, by, agreed }) => [face, by, agreed])),
-    [[['back', ['a', 'c'], true], ['spine', ['a', 'b'], true]], [['front', ['a', 'b'], true]]]);
+    [[['back', ['a', 'c'], true], ['spine', ['a', 'b'], true]], [['front', ['a', 'b'], true]], []]);
   // The spine shares its photo with the back, so it's taken as seen at an angle: no thickness from it.
   assert.deepEqual([(sidecar.measuredBy as Record<string, string>).depth, sidecar.depthEstimates], ['default', { photos: undefined, pages: undefined }]);
-  assert.deepEqual(vision.photos.map(({ answers }) => answers.map(({ model }) => model)), [['a', 'b', 'c'], ['a', 'b']]);
-  assert.ok(sidecar.review.every((item) => !item.includes('vision')), 'the dispute was settled');
+  assert.deepEqual(vision.photos.map(({ answers }) => answers.map(({ model }) => model)), [['a', 'b', 'c'], ['a', 'b'], ['a', 'b', 'c']]);
+  assert.ok(sidecar.review.every((item) => !item.includes('disagree')), 'the dispute was settled');
   assert.ok(authorizations.every((a) => a === 'Bearer secret-key-123') && !JSON.stringify(sidecar).includes('secret-key-123'), 'the key is sent, never recorded');
 
   // Straightened, the covers carry none of the table.
@@ -305,7 +319,9 @@ test('slab: a grader\'s QR code picks the holder, and the holder its size', asyn
     widthMm: 80.5, heightMm: 136, depthMm: 6.5, measuredBy: 'table', faces: { front: 'photo', back: 'plastic' },
     review: ['back (plain plastic)'], warnings: [], identifiedBy: { grader: 'qr', cert: 'qr' },
   });
-  assertExtents(await read(glb), [0.0805, 0.136, 0.0065]);
+  const doc = await read(glb);
+  assertExtents(doc, [0.0805, 0.136, 0.0065]);
+  assertClosed(doc, roundedVolume([80.5, 136, 6.5], 1.5), 5e-4); // the holder's molded edges
 });
 
 test('slab: the cert is the first whole cert number in the QR link, not a tracking number after it', async (t) => {
@@ -453,14 +469,22 @@ function catalog(edition: object, { cover, data, vision }: {
   });
 }
 
+/** The primitive of the face with this outward normal: its normals, averaged (a rounded face's lean off it at the edges). */
+function faceOf(doc: Document, normal: number[]): Primitive | undefined {
+  return doc.getRoot().listMeshes()[0].listPrimitives().find((primitive) => {
+    const normals = primitive.getAttribute('NORMAL')!;
+    const sum = [0, 0, 0];
+    for (let i = 0; i < normals.getCount(); i++) normals.getElement(i, [0, 0, 0]).forEach((c, k) => { sum[k] += c; });
+    const length = Math.hypot(...sum);
+    return length > 0 && sum.every((c, k) => Math.abs(c / length - normal[k]) < 0.01);
+  });
+}
+
 /** The picture on the face with this outward normal. */
 function pictureOn(doc: Document, normal: number[]): Uint8Array {
-  for (const primitive of doc.getRoot().listMeshes()[0].listPrimitives()) {
-    const image = primitive.getMaterial()?.getBaseColorTexture()?.getImage();
-    const facing = primitive.getAttribute('NORMAL')!.getElement(0, [0, 0, 0]);
-    if (image && facing.every((c, k) => Math.abs(c - normal[k]) < 1e-6)) return image;
-  }
-  throw new Error(`no picture on the face with normal ${normal}`);
+  const image = faceOf(doc, normal)?.getMaterial()?.getBaseColorTexture()?.getImage();
+  if (!image) throw new Error(`no picture on the face with normal ${normal}`);
+  return image;
 }
 
 /** Mean color [r, g, b] (0–255) of the picture on the face with this outward normal. */
@@ -472,7 +496,7 @@ async function colorOf(doc: Document, normal: number[]): Promise<number[]> {
 /** Within JPEG's wobble of a #rrggbb color. */
 const near = (color: number[], hex: string) => color.every((c, i) => Math.abs(c - parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16)) < 12);
 
-const read = (glb: Uint8Array) => new NodeIO().registerExtensions([KHRMaterialsUnlit]).readBinary(glb);
+const read = (glb: Uint8Array) => new NodeIO().readBinary(glb);
 const pick = (object: Record<string, unknown>, keys: string[]) => Object.fromEntries(keys.map((key) => [key, object[key]]));
 
 function assertExtents(doc: Document, meters: number[]) {
@@ -480,28 +504,34 @@ function assertExtents(doc: Document, meters: number[]) {
   meters.forEach((size, i) => assert.ok(Math.abs(max[i] - min[i] - size) < 1e-6, `extent ${i}: ${max[i] - min[i]} m`));
 }
 
-/** Closed and wound outward everywhere: the divergence-theorem volume is exactly the solid's. A missing, flipped or inward face breaks it. */
-function assertClosed(doc: Document, mm3: number) {
+/**
+ * Closed and wound outward everywhere: the divergence-theorem volume is the solid's. A missing, flipped or
+ * inward face is off by far more than `tolerance`, the share left for rounded edges, which are polygons a
+ * hair inside the true curve (on a thin slab, about 2e-4 of its volume).
+ */
+function assertClosed(doc: Document, mm3: number, tolerance = 1e-4) {
   let volume = 0;
   for (const primitive of doc.getRoot().listMeshes()[0].listPrimitives()) {
     for (const [a, b, c] of triangles(primitive)) {
       volume += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
     }
   }
-  assert.ok(Math.abs(volume * 1e9 - mm3) < mm3 * 1e-4, `volume ${volume * 1e9} mm³, expected ${mm3}`);
+  assert.ok(Math.abs(volume * 1e9 - mm3) < mm3 * tolerance, `volume ${volume * 1e9} mm³, expected ${mm3}`);
+}
+
+/** A W × H × D mm box's volume in mm³ with its edges and corners rounded to r: the shrunk box swept by a ball (Steiner's formula). */
+function roundedVolume([w, h, d]: number[], r: number): number {
+  const [a, b, c] = [w - 2 * r, h - 2 * r, d - 2 * r];
+  return a * b * c + 2 * r * (a * b + b * c + c * a) + Math.PI * r * r * (a + b + c) + (4 / 3) * Math.PI * r ** 3;
 }
 
 /** Signs of the position whose UV is (0, 0) on the textured face with this normal. */
 function cornerAt(doc: Document, normal: number[]): number[] {
-  for (const primitive of doc.getRoot().listMeshes()[0].listPrimitives()) {
-    const uv = primitive.getAttribute('TEXCOORD_0');
-    const normals = primitive.getAttribute('NORMAL')!;
-    for (let i = 0; uv && i < uv.getCount(); i++) {
-      const [u, v] = uv.getElement(i, [0, 0]);
-      if (u === 0 && v === 0 && normals.getElement(i, [0, 0, 0]).every((n, k) => Math.abs(n - normal[k]) < 1e-6)) {
-        return primitive.getAttribute('POSITION')!.getElement(i, [0, 0, 0]).map(Math.sign);
-      }
-    }
+  const face = faceOf(doc, normal);
+  const uv = face?.getAttribute('TEXCOORD_0');
+  for (let i = 0; uv && i < uv.getCount(); i++) {
+    const [u, v] = uv.getElement(i, [0, 0]);
+    if (u === 0 && v === 0) return face!.getAttribute('POSITION')!.getElement(i, [0, 0, 0]).map(Math.sign);
   }
   throw new Error(`no textured face with normal ${normal}`);
 }

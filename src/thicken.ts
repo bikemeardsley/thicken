@@ -83,8 +83,11 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
       label: { grader: found.grader, cert: found.cert, verifyUrl: found.verifyUrl },
     })
     : await badge(first(pictures), options);
-  const disputed = (sights ?? []).flatMap((sight, i) => sight.disputed.map((face) =>
-    `${face} in ${pictures[i].source.file}${pictures[i].source.page ? ` page ${pictures[i].source.page}` : ''} (the vision models disagree where it is or which way up: check it)`));
+  const named = (i: number) => `${pictures[i].source.file}${pictures[i].source.page ? ` page ${pictures[i].source.page}` : ''}`;
+  const disputed = (sights ?? []).flatMap((sight, i) => [
+    ...sight.disputed.map((face) => `${face} in ${named(i)} (the vision models disagree where it is or which way up: check it)`),
+    ...(sight.answers.some((a) => a.faces) ? [] : [`${named(i)} (no vision model answered, so it was used whole: run again, or crop it)`]),
+  ]);
   // How each identifying fact was found, for anyone deciding how far to trust it.
   const identifiedBy = profile === 'book' ? { isbn: options.isbn ? 'given' : found.isbn ? 'barcode' : undefined }
     : profile === 'slab' ? { grader: options.holder ? 'given' : found.grader ? 'qr' : 'assumed', cert: found.certFrom }
