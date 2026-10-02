@@ -245,10 +245,17 @@ with its edge color.
 knows it, and the sidecar's `measuredBy` says which:
 
 1. `--size WxHxD` in mm, as measured. Any part can be left out.
-2. Open Library: `physical_dimensions`, page count and format. In a sample
-   of ten ISBNs (2026-10-01), 2 had dimensions and 8 a page count.
-3. Google Books `dimensions`. The keyless quota is shared and often spent,
-   so set `GOOGLE_BOOKS_API_KEY`.
+2. Open Library: `physical_dimensions`, page count (`number_of_pages`, or
+   the catalog's `pagination`, "xii, 336 p.") and format. In a sample of ten
+   ISBNs (2026-10-01), 2 had dimensions and 8 a page count.
+3. Google Books `dimensions` and page count, the backup to Open Library.
+   **Optional: bring your own key.** Without one, Thicken asks on the quota
+   every keyless caller shares, which is usually spent (it answers 429, a
+   warning says so, and the chain moves on). With one it's your own 1,000
+   requests a day, free: in the Google Cloud console, enable the Books API,
+   create an API key under Credentials (restrict it to the Books API), and
+   set `GOOGLE_BOOKS_API_KEY` in your environment or a `.env` file where you
+   run Thicken. The key is never recorded: lookups keep only host and path.
 4. Page count × 0.075 mm (trade paper runs 300–400 pages to the inch), plus
    4 mm of boards for a hardcover.
 5. The cover's shape, giving one side from the other.

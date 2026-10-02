@@ -89,7 +89,8 @@ test('book: a scanned PDF, its ISBN read off the back cover, its size from Open 
 });
 
 test('book: dimensions the catalog lacks fall through to the backup sources', async (t) => {
-  const fetch = catalog({ physical_dimensions: '21 cm', number_of_pages: 300, physical_format: 'Hardcover' });
+  // Many Open Library editions give their page count only as catalog pagination text.
+  const fetch = catalog({ physical_dimensions: '21 cm', pagination: 'xii, 300 p.', physical_format: 'Hardcover' });
   t.after(() => fetch.mock.restore());
   const { sidecar } = await thicken([fixture('book-scan.pdf')]);
   assert.deepEqual(

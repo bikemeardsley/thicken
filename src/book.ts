@@ -83,12 +83,12 @@ export async function book(
     // The catalog record, whatever the size sources: title, authors and the rest, for the sidecar.
     const data = (await fetchJson(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`, log))?.[`ISBN:${isbn}`];
     catalog = data && catalogRecord(data);
-    pages = positive(data?.number_of_pages);
+    pages = positive(data?.number_of_pages) ?? paginated(data?.pagination);
   }
   if (isbn && missing()) {
     const edition = await fetchJson(`https://openlibrary.org/isbn/${isbn}.json`, log);
     take('openlibrary', orient(parseDims(edition?.physical_dimensions), aspect));
-    pages ??= positive(edition?.number_of_pages);
+    pages ??= positive(edition?.number_of_pages) ?? paginated(edition?.pagination);
     hardcover = /hard/i.test(edition?.physical_format ?? '');
     if (catalog && edition?.physical_format) catalog.format = edition.physical_format;
   }
@@ -229,6 +229,11 @@ function nearestTrim(aspect: number): number[] {
 }
 
 const positive = (n: unknown) => (typeof n === 'number' && n > 0 ? n : undefined);
+/** A catalog's pagination ("336", "xii, 336 p."): its largest number, if a book could have that many pages ("1 v." can't). */
+const paginated = (text: unknown) => {
+  const most = typeof text === 'string' ? Math.max(0, ...(text.match(/\d+/g) ?? []).map(Number)) : 0;
+  return most >= 16 ? most : undefined;
+};
 const round = (mm: number) => Math.round(mm * 10) / 10;
 const median = (values: number[]) => {
   if (values.length === 0) return undefined;
