@@ -3,6 +3,7 @@
 // (badge), and a real object rebuilt at its real size (book, slab).
 // Barcodes are read whatever the profile, so a back cover's ISBN feeds the
 // book's size lookup without being typed in.
+import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { badge, signedArea } from './badge.ts';
 import { book } from './book.ts';
@@ -48,18 +49,57 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
     throw new Error('can\'t tell what this is: no ISBN barcode, no grader\'s QR code, and not cut-out artwork. Name it: thicken book|slab|badge <pictures>');
   }
 
-  const built = profile === 'book' ? await book(pictures, { isbn, sizeMm })
+  const built = profile === 'book' ? await book(pictures, { isbn, sizeMm, backAt: found.isbnAt })
     : profile === 'slab' ? await slab(pictures, { holder: options.holder ?? found.holder, sizeMm })
     : await badge(first(pictures), options);
   return { glb: built.glb, sidecar: { ...built.sidecar, profile, sources: inputs.map((input) => path.basename(input)) } };
 }
 
-/** An ISBN from a book's barcode (EAN-13, 978/979), and a grader from a QR code on a slab's label. */
-async function lookAtCodes(pictures: Picture[]): Promise<{ isbn?: string; holder?: string }> {
-  const found: { isbn?: string; holder?: string } = {};
-  for (const picture of pictures) {
+const PICTURE = /\.(jpe?g|png|heic|heif|webp|avif|gif|tiff?|svg|pdf)$/i;
+// Numeric (IMG_2 before IMG_10) and case-blind, with a plain tiebreak so the order is the same on every filesystem.
+const byName = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }) || (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * A folder as the models to make from it, for a batch: each picture or PDF
+ * in it is one, from that file alone, and each subfolder is one, from every
+ * picture under it in name order (a phone names shots in the order taken).
+ * Hidden names and `skip` (the output folder) are left out, and output
+ * names are made unique, ignoring case, so no model overwrites another.
+ */
+export async function batchItems(folder: string, skip?: string): Promise<{ name: string; files: string[] }[]> {
+  const visible = (name: string) => !name.split(/[\\/]/).some((part) => part.startsWith('.'));
+  const items: { name: string; files: string[] }[] = [];
+  const entries = (await readdir(folder, { withFileTypes: true })).filter((entry) => visible(entry.name)).sort((a, b) => byName(a.name, b.name));
+  for (const entry of entries) {
+    const full = path.join(folder, entry.name);
+    if (skip && path.resolve(full) === path.resolve(skip)) continue;
+    if (entry.isDirectory()) {
+      const files = (await readdir(full, { recursive: true, withFileTypes: true }))
+        .filter((inner) => inner.isFile())
+        .map((inner) => path.join(inner.parentPath, inner.name))
+        .filter((file) => visible(path.relative(full, file)) && PICTURE.test(file))
+        .sort(byName);
+      if (files.length) items.push({ name: entry.name, files });
+    } else if (entry.isFile() && PICTURE.test(entry.name)) {
+      items.push({ name: path.parse(entry.name).name, files: [full] });
+    }
+  }
+  const taken = new Set<string>();
+  for (const item of items) {
+    let name = item.name;
+    for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${item.name}-${n}`;
+    taken.add(name.toLowerCase());
+    item.name = name;
+  }
+  return items;
+}
+
+/** An ISBN from a book's barcode (EAN-13, 978/979) and which picture it was on, and a grader from a QR code on a slab's label. */
+async function lookAtCodes(pictures: Picture[]): Promise<{ isbn?: string; isbnAt?: number; holder?: string }> {
+  const found: { isbn?: string; isbnAt?: number; holder?: string } = {};
+  for (const [at, picture] of pictures.entries()) {
     for (const { format, text } of await codes(picture)) {
-      if (format === 'EAN13' && /^97[89]/.test(text)) found.isbn ??= text;
+      if (format === 'EAN13' && /^97[89]/.test(text) && !found.isbn) Object.assign(found, { isbn: text, isbnAt: at });
       const host = URL.canParse(text) ? new URL(text).hostname : '';
       const site = Object.keys(GRADER_SITES).find((s) => host === s || host.endsWith(`.${s}`));
       if (site) found.holder ??= GRADER_SITES[site];

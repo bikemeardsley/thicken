@@ -12,20 +12,32 @@ const BOARDS_MM = 4; // a hardcover's two boards
 const DEFAULT_DEPTH_MM = 20;
 const TRIMS_IN = [[4.25, 6.87], [5, 8], [5.5, 8.5], [6, 9], [7, 10], [8.5, 11], [8.5, 8.5]]; // width × height
 const PAGE_EDGES: Side = { colour: '#efe6d2', roughness: 0.9 }; // cream
+const SPINE_SHAPE = 0.4; // width per unit height: spines are well under it, covers well over
 const LOOKUP_TIMEOUT_MS = 10_000;
 
 type Dims = { width?: number; height?: number; depth?: number }; // mm
 
-/** Pictures in order: front cover, back cover, spine. With none, the cover comes from Open Library. */
-export async function book(pictures: Picture[], { isbn, sizeMm = [] }: { isbn?: string; sizeMm?: number[] } = {}) {
+/**
+ * Pictures in any order, placed by what they show: the one that carried the
+ * ISBN barcode (`backAt`) is the back cover, a tall narrow one is the spine,
+ * and the rest, in order, are the front and (with no barcode) the back. With
+ * no front, the cover comes from Open Library, so a photo of the back is enough.
+ */
+export async function book(pictures: Picture[], { isbn, sizeMm = [], backAt }: { isbn?: string; sizeMm?: number[]; backAt?: number } = {}) {
   const warnings: string[] = [];
-  const coverUrl = pictures.length === 0 && isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg` : undefined;
-  if (pictures.length === 0) {
+  const textures = await Promise.all(pictures.map(texture));
+  const spineAt = textures.findIndex((t, i) => i !== backAt && t.width / t.height < SPINE_SHAPE);
+  const rest = textures.filter((_, i) => i !== backAt && i !== spineAt);
+  let front = rest.shift();
+  const back = backAt === undefined ? rest.shift() : textures[backAt];
+  const spine = spineAt < 0 ? undefined : textures[spineAt];
+  if (rest.length) warnings.push(`${rest.length} picture(s) not used: a book takes one front, back and spine`);
+  const coverUrl = !front && isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg` : undefined;
+  if (!front) {
     const cover = coverUrl && await fetchBytes(`${coverUrl}?default=false`, warnings);
-    if (!cover) throw new Error(isbn ? `Open Library has no cover for ISBN ${isbn}: give a photo of it` : 'a book needs a cover photo or an ISBN');
-    pictures = await load(cover);
+    if (!cover) throw new Error(isbn ? `no front cover: photograph it (Open Library has none for ISBN ${isbn})` : 'a book needs a cover photo or an ISBN');
+    front = await texture((await load(cover))[0]);
   }
-  const [front, back, spine] = await Promise.all(pictures.slice(0, 3).map(texture));
   const aspect = front.width / front.height;
 
   const size: Dims = {};

@@ -28,6 +28,7 @@ export async function slab(pictures: Picture[], { holder = 'psa', sizeMm = [] }:
     photo && Math.abs(photo.width / photo.height / (size[0] / size[1]) - 1) > SHAPE_TOLERANCE
       ? [`the ${i ? 'back' : 'front'} photo isn't the shape of a ${holder} holder: crop it to the slab's edges, or name the right --holder`]
       : []);
+  if (pictures.length > 2) warnings.push(`${pictures.length - 2} picture(s) not used: a slab takes a front and a back`);
   const glb = await box('slab', size, {
     front: { picture: front.jpeg },
     back: back ? { picture: back.jpeg } : PLASTIC,

@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { copyFile, mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mock, test } from 'node:test';
 import { getBounds, NodeIO, type Document, type Primitive, type vec2, type vec3 } from '@gltf-transform/core';
 import { KHRMaterialsUnlit } from '@gltf-transform/extensions';
 import sharp from 'sharp';
-import { thicken } from '../src/thicken.ts';
+import { batchItems, thicken } from '../src/thicken.ts';
 
 const fixture = (name: string) => fileURLToPath(new URL(`fixtures/${name}`, import.meta.url));
 
@@ -77,6 +81,40 @@ test('book: dimensions the catalogue lacks fall through to the backup sources', 
   ); // width from the cover's 5:8 shape; depth 300 pages × 0.075 mm + 4 mm of boards
 });
 
+// book-back.jpg: the back cover alone, barcode and all, as a phone shoots it.
+test('book: a photo of the back alone is enough, the front cover coming from Open Library', async (t) => {
+  const cover = await sharp({ create: { width: 500, height: 800, channels: 3, background: '#1d2b53' } }).jpeg().toBuffer();
+  const fetch = catalogue({ physical_dimensions: '8 x 5 x 1 inches' }, cover);
+  t.after(() => fetch.mock.restore());
+  const { glb, sidecar } = await thicken([fixture('book-back.jpg')]);
+  assert.equal(sidecar.coverUrl, 'https://covers.openlibrary.org/b/isbn/9780140328721-L.jpg');
+  assert.deepEqual([sidecar.widthMm, sidecar.heightMm, sidecar.warnings], [127, 203.2, []]);
+  // The navy cover went on the front, the cream photo on the back.
+  const doc = await read(glb);
+  assert.ok(near(await colourOf(doc, [0, 0, 1]), '#1d2b53'), 'front is the downloaded cover');
+  assert.ok(Math.min(...await colourOf(doc, [0, 0, -1])) > 180, 'back is the photo');
+});
+
+test('book: pictures in any order are placed by what they show', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const solid = async (name: string, width: number, colour: string) => {
+    const file = path.join(folder, name);
+    await sharp({ create: { width, height: 800, channels: 3, background: colour } }).png().toFile(file);
+    return file;
+  };
+  const fetch = catalogue({ physical_dimensions: '8 x 5 x 1 inches' });
+  t.after(() => fetch.mock.restore());
+  // Spine first, back (the barcode) second, then the front and a fourth picture nobody needs.
+  const pictures = [await solid('spine.png', 60, '#c62828'), fixture('book-back.jpg'), await solid('front.png', 500, '#1d2b53'), await solid('extra.png', 500, '#2e7d32')];
+  const { glb, sidecar } = await thicken(pictures);
+  assert.deepEqual(sidecar.warnings, ['1 picture(s) not used: a book takes one front, back and spine']);
+  const doc = await read(glb);
+  assert.ok(near(await colourOf(doc, [0, 0, 1]), '#1d2b53'), 'the front is the first picture that is neither barcode nor spine');
+  assert.ok(Math.min(...await colourOf(doc, [0, 0, -1])) > 180, 'the back is the barcode picture');
+  assert.ok(near(await colourOf(doc, [-1, 0, 0]), '#c62828'), 'the spine is the tall narrow picture');
+});
+
 // slab.jpg: 296 × 500, a PSA holder's shape, with a QR code to a psacard.com cert on the label.
 test('slab: a grader\'s QR code picks the holder, and the holder its size', async () => {
   const { glb, sidecar } = await thicken([fixture('slab.jpg')]);
@@ -88,14 +126,75 @@ test('a picture with nothing to go on is refused, not guessed', async () => {
   await assert.rejects(thicken([fixture('plain.jpg')]), /can't tell what this is/);
 });
 
-/** Stand-in catalogues: Open Library knows one edition, Google Books is out of quota. */
-function catalogue(edition: object) {
+test('batch: a folder is one model per picture, PDF or subfolder, none overwriting another', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  for (const name of [
+    'IMG_10.jpg', 'IMG_2.jpg', 'img_2.PNG', 'notes.txt', '.x.jpg', 'pair/b.jpg', 'pair/a.jpg', 'pair/._a.jpg',
+    'nested/photos/b.jpg', 'nested/a.jpg', 'nested/photos/.thumbs/c.jpg', 'empty/readme.md', '.hidden/c.jpg', 'thicken/old.jpg',
+  ]) {
+    await mkdir(path.dirname(path.join(folder, name)), { recursive: true });
+    await writeFile(path.join(folder, name), '');
+  }
+  const items = await batchItems(folder, path.join(folder, 'thicken'));
+  assert.deepEqual(items.map(({ name, files }) => [name, files.map((file) => path.relative(folder, file).replaceAll('\\', '/'))]), [
+    ['IMG_2', ['IMG_2.jpg']],
+    ['img_2-2', ['img_2.PNG']], // the same name but for case, which Windows and macOS treat as one file
+    ['IMG_10', ['IMG_10.jpg']],
+    ['nested', ['nested/a.jpg', 'nested/photos/b.jpg']],
+    ['pair', ['pair/a.jpg', 'pair/b.jpg']],
+  ]);
+});
+
+test('batch: every model is made, and one that fails is reported without stopping the rest', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  await copyFile(fixture('badge.png'), path.join(folder, 'badge.png'));
+  await copyFile(fixture('plain.jpg'), path.join(folder, 'plain.jpg'));
+  await mkdir(path.join(folder, 'slab'));
+  await copyFile(fixture('slab.jpg'), path.join(folder, 'slab', '1-front.jpg'));
+  await copyFile(fixture('slab.jpg'), path.join(folder, 'slab', '2-back.jpg'));
+  const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+  const batch = () => spawnSync(process.execPath, [cli, 'batch', folder], { encoding: 'utf8' });
+  const first = batch();
+  assert.equal(first.status, 1, 'a failed model fails the batch');
+  assert.match(first.stderr, /plain: failed: can't tell what this is/);
+  assert.match(first.stdout, /2 made, 0 already up to date, 1 failed/);
+  assert.deepEqual((await readdir(path.join(folder, 'thicken'))).sort(), ['badge.glb', 'badge.json', 'slab.glb', 'slab.json']);
+
+  // Run again: the models are newer than their pictures, so they're left alone, until a picture changes.
+  assert.match(batch().stdout, /0 made, 2 already up to date, 1 failed/);
+  const later = new Date(Date.now() + 60_000);
+  await utimes(path.join(folder, 'slab', '2-back.jpg'), later, later);
+  assert.match(batch().stdout, /1 made, 1 already up to date, 1 failed/);
+});
+
+/** Stand-in catalogues: Open Library knows one edition (and maybe its cover), Google Books is out of quota. */
+function catalogue(edition: object, cover?: Uint8Array) {
   return mock.method(globalThis, 'fetch', async (url: string | URL) => {
-    if (String(url) === 'https://openlibrary.org/isbn/9780140328721.json') return Response.json(edition);
-    if (String(url).startsWith('https://www.googleapis.com/')) return new Response('{}', { status: 429 });
+    const href = String(url);
+    if (href === 'https://openlibrary.org/isbn/9780140328721.json') return Response.json(edition);
+    if (cover && href.startsWith('https://covers.openlibrary.org/b/isbn/9780140328721-L.jpg')) return new Response(new Uint8Array(cover));
+    if (href.startsWith('https://www.googleapis.com/')) return new Response('{}', { status: 429 });
     return new Response('', { status: 404 });
   });
 }
+
+/** Mean colour [r, g, b] (0–255) of the picture on the face with this outward normal. */
+async function colourOf(doc: Document, normal: number[]): Promise<number[]> {
+  for (const primitive of doc.getRoot().listMeshes()[0].listPrimitives()) {
+    const image = primitive.getMaterial()?.getBaseColorTexture()?.getImage();
+    const facing = primitive.getAttribute('NORMAL')!.getElement(0, [0, 0, 0]);
+    if (image && facing.every((c, k) => Math.abs(c - normal[k]) < 1e-6)) {
+      const { channels } = await sharp(image).stats();
+      return channels.slice(0, 3).map((channel) => channel.mean);
+    }
+  }
+  throw new Error(`no picture on the face with normal ${normal}`);
+}
+
+/** Within JPEG's wobble of a #rrggbb colour. */
+const near = (colour: number[], hex: string) => colour.every((c, i) => Math.abs(c - parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16)) < 12);
 
 const read = (glb: Uint8Array) => new NodeIO().registerExtensions([KHRMaterialsUnlit]).readBinary(glb);
 

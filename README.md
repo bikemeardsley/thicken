@@ -14,6 +14,7 @@ node src/cli.ts book cover.heic --isbn 9780061120084
 node src/cli.ts --isbn 9780061120084              # no photo: cover and size from Open Library
 node src/cli.ts slab front.jpg back.jpg --holder bgs
 node src/cli.ts badge badge.png --width 50 --depth 3.5
+node src/cli.ts batch ~/Pictures/books            # one model per photo, PDF or subfolder
 npm test
 ```
 
@@ -28,7 +29,7 @@ Two families:
 | **Digital artwork made into an object** | | |
 | Badge | Artwork with transparency | The artwork's own outline, extruded (the approach in michaelbeardsley-now's `badge-shape.ts`) |
 | **A real object rebuilt at its real size** | | |
-| Book | Front cover [back] [spine], or just an ISBN | Box at the book's size: covers, spine, cream page edges |
+| Book | Front cover, back, spine (any order, any of them), or just an ISBN | Box at the book's size: covers, spine, cream page edges |
 | Graded slab | Front [back] | Box at the holder's size, with the photos on its faces and clear-plastic edges |
 | Raw card (planned) | Front and back | Thin rounded card at 63.5 × 88.9 mm |
 
@@ -41,6 +42,27 @@ Name the profile, or leave it out and Thicken picks one:
   a **badge**.
 - Anything else is refused with a request to name the profile. Other
   barcodes don't count: books carry UPCs, QR codes and library stickers.
+
+A book's pictures are placed by what they show, not their order. The
+picture carrying the ISBN barcode is the back cover, and a tall, narrow
+picture is the spine. The rest, in order, are the front and (with no
+barcode) the back. With no front, the cover comes from Open Library, so one
+photo of the back is a whole book.
+
+## Batch
+
+`thicken batch <folder>` makes a model from each picture or PDF in the
+folder, and one from each subfolder's pictures. Put a book's front, back and
+spine shots in a subfolder, or scan them into one PDF. Each model is
+classified on its own; `thicken batch book <folder>` forces a profile.
+
+- A model that fails is reported, and the rest carry on.
+- Models go to `<folder>/thicken/`.
+- A re-run leaves alone any model newer than its pictures, hand edits
+  included, so only new or re-shot items are made. `--force` remakes them.
+
+The quickest way to do a shelf: photograph the back of every book. Each
+barcode gives the ISBN, and Open Library gives the size and the front cover.
 
 Every output is a **GLB** at real-world size (glTF's unit is the metre, so a
 50 mm badge is 0.05 across), plus a JSON sidecar. The sidecar holds the
