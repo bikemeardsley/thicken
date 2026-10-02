@@ -12,6 +12,7 @@ import { book } from './book.ts';
 import { codes, load, subjectBox, type Picture } from './image.ts';
 import { trace } from './outline.ts';
 import { HOLDERS, slab } from './slab.ts';
+import { lookAll, visionOn, visionRecord } from './vision.ts';
 
 export const PROFILES = ['badge', 'book', 'slab'] as const;
 export type Profile = (typeof PROFILES)[number];
@@ -74,12 +75,16 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
     throw new Error('can\'t tell what this is: no ISBN barcode, no grader\'s QR code or cert barcode, and not cut-out artwork. Name it: thicken book|slab|badge <pictures>');
   }
 
-  const built = profile === 'book' ? await book(pictures, { isbn, sizeMm, codes: found.codes })
+  // With a vision roster, the models find each photo's faces, which are cut out and straightened (src/vision.ts).
+  const sights = visionOn() && profile !== 'badge' ? await lookAll(pictures, profile) : undefined;
+  const built = profile === 'book' ? await book(pictures, { isbn, sizeMm, codes: found.codes, sights })
     : profile === 'slab' ? await slab(pictures, {
-      holder: options.holder ?? found.grader, sizeMm, codes: found.codes,
+      holder: options.holder ?? found.grader, sizeMm, codes: found.codes, sights,
       label: { grader: found.grader, cert: found.cert, verifyUrl: found.verifyUrl },
     })
     : await badge(first(pictures), options);
+  const disputed = (sights ?? []).flatMap((sight, i) => sight.disputed.map((face) =>
+    `${face} in ${pictures[i].source.file}${pictures[i].source.page ? ` page ${pictures[i].source.page}` : ''} (the vision models disagree where it is or which way up: check it)`));
   // How each identifying fact was found, for anyone deciding how far to trust it.
   const identifiedBy = profile === 'book' ? { isbn: options.isbn ? 'given' : found.isbn ? 'barcode' : undefined }
     : profile === 'slab' ? { grader: options.holder ? 'given' : found.grader ? 'qr' : 'assumed', cert: found.certFrom }
@@ -91,9 +96,10 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
       ...own,
       profile,
       sources: inputs.map((input) => path.basename(input)),
-      review: [...stillToShoot(own.faces), ...(own.review ?? [])],
+      review: [...stillToShoot(own.faces), ...(own.review ?? []), ...disputed],
       identifiedBy,
       codes: found.codes,
+      ...(sights && { vision: visionRecord(sights) }),
       build: { thicken: VERSION, createdAt: new Date().toISOString(), ms: Math.round(performance.now() - started), glbBytes: built.glb.length },
     },
   };

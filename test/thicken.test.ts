@@ -128,6 +128,9 @@ test('book: pictures are placed by what they show, whatever their names, order o
   assert.deepEqual((sidecar.pictures as { file: string; role: string }[]).map(({ file, role }) => [file, role]), [
     ['IMG_1.png', 'edge'], ['IMG_2.png', 'spine'], ['book-back.jpg', 'back'], ['IMG_4.png', 'alternate back'], ['IMG_5.png', 'front'], ['IMG_6.png', 'unused'],
   ]);
+  // No vision roster set: nothing asked, nothing recorded.
+  assert.equal(sidecar.vision, undefined);
+  assert.ok(fetch.mock.calls.every((call) => !String(call.arguments[0]).includes('/chat/completions')));
   assert.deepEqual([sidecar.review, sidecar.warnings], [[], ['1 picture(s) not used: none looked like another shot of a face', 'www.googleapis.com answered 429']]);
   // Stood up, the spine and page edge measure the thickness: 60/800 and 50/800 of the 203.2 mm height.
   assert.deepEqual([sidecar.depthMm, (sidecar.measuredBy as Record<string, string>).depth], [14, 'photos']);
@@ -141,15 +144,93 @@ test('book: pictures are placed by what they show, whatever their names, order o
   assert.ok(info.height > info.width && near(at(2), '#ffffff') && near(at(info.height - 3), '#c62828'), 'the spine stands with its top up');
 });
 
+test('book: vision models find the faces in uncropped photos, which are cut out and straightened, peers checking each other', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b,c', THICKEN_VISION_KEY: 'secret-key-123' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS', 'THICKEN_VISION_KEY']) delete process.env[key]; });
+
+  // Two photos on a brown table, 900 x 1200, the back first (so photo order alone would get them wrong): the back
+  // square on, with the red spine beside it (a strip standing in for the angled shot that shows both); then the
+  // front, a navy cover shot from low down, its far edge foreshortened (a warp without perspective misses it).
+  const back = [[200, 200], [700, 200], [700, 1000], [200, 1000]];
+  const spine = [[700, 200], [760, 200], [760, 1000], [700, 1000]];
+  const front = [[300, 150], [600, 150], [760, 1000], [140, 1000]];
+  const table = () => sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } });
+  const quad = `<svg width="900" height="1200"><polygon points="${front.map((p) => p.join(',')).join(' ')}" fill="#1d2b53"/></svg>`;
+  const files = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
+  await table().composite([{ input: fixture('book-back.jpg'), left: 200, top: 200 }, {
+    input: await sharp({ create: { width: 60, height: 800, channels: 3, background: '#c62828' } }).png().toBuffer(), left: 700, top: 200,
+  }]).png().toFile(files[0]);
+  await table().composite([{ input: Buffer.from(quad) }]).png().toFile(files[1]);
+
+  // The models see the photo letterboxed into 1000 x 1000: scaled by 5/6 and centered, 125 px in from the left.
+  const seen = (corners: number[][], shift = 0) => corners.map(([x, y]) => [125 + (x * 5) / 6 + shift, (y * 5) / 6 + shift]);
+  const authorizations: string[] = [];
+  const fetch = catalog({ physical_dimensions: '8 x 5 inches' }, {
+    vision: async ({ model, photo, authorization }) => {
+      authorizations.push(String(authorization));
+      const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
+      let red = 0;
+      for (let y = 450; y < 550; y++) for (let x = 450; x < 550; x++) red += data[(y * info.width + x) * info.channels];
+      const isFront = red / 10_000 < 100; // the middle is navy, not cream
+      if (isFront) {
+        // a also names a sliver of spine that b, answering, doesn't: left out.
+        return model === 'a' ? { faces: [{ face: 'front', corners: seen(front) }, { face: 'spine', corners: seen([[130, 150], [180, 150], [160, 980], [110, 980]]) }] }
+          : { faces: [{ face: 'front', corners: seen(front, 1) }] };
+      }
+      // b has the back's outline but the wrong way up, so c is asked, and agrees with a. All see the spine.
+      const corners = seen(back, model === 'c' ? 1 : 0);
+      return { faces: [{ face: 'back', corners: model === 'b' ? [corners[2], corners[3], corners[0], corners[1]] : corners }, { face: 'spine', corners: seen(spine) }] };
+    },
+  });
+  t.after(() => fetch.mock.restore());
+  const { glb, sidecar } = await thicken(files);
+
+  assert.deepEqual((sidecar.pictures as { file: string; face: string; role: string }[]).map(({ file, face, role }) => [file, face, role]),
+    [['IMG_1.png', 'back', 'back'], ['IMG_1.png', 'spine', 'spine'], ['IMG_2.png', 'front', 'front']]);
+  const vision = sidecar.vision as { endpoint: string; photos: { faces: { face: string; by: string[]; agreed: boolean }[]; answers: { model: string }[] }[] };
+  assert.equal(vision.endpoint, 'vision.test/api/chat/completions');
+  assert.deepEqual(vision.photos.map(({ faces }) => faces.map(({ face, by, agreed }) => [face, by, agreed])),
+    [[['back', ['a', 'c'], true], ['spine', ['a', 'b'], true]], [['front', ['a', 'b'], true]]]);
+  // The spine shares its photo with the back, so it's taken as seen at an angle: no thickness from it.
+  assert.deepEqual([(sidecar.measuredBy as Record<string, string>).depth, sidecar.depthEstimates], ['default', { photos: undefined, pages: undefined }]);
+  assert.deepEqual(vision.photos.map(({ answers }) => answers.map(({ model }) => model)), [['a', 'b', 'c'], ['a', 'b']]);
+  assert.ok(sidecar.review.every((item) => !item.includes('vision')), 'the dispute was settled');
+  assert.ok(authorizations.every((a) => a === 'Bearer secret-key-123') && !JSON.stringify(sidecar).includes('secret-key-123'), 'the key is sent, never recorded');
+
+  // Straightened, the covers carry none of the table.
+  const doc = await read(glb);
+  assert.ok(near(await colorOf(doc, [0, 0, 1]), '#1d2b53'), 'the front is the navy cover alone');
+  assert.ok(Math.min(...await colorOf(doc, [0, 0, -1])) > 180, 'the back is the cream cover alone');
+  assert.ok(near(await colorOf(doc, [-1, 0, 0]), '#c62828'), 'the spine is the red strip alone');
+});
+
+test('book: a thick book\'s spine photo still measures it', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const fetch = catalog({ physical_dimensions: '8 x 5 inches' });
+  t.after(() => fetch.mock.restore());
+  const [spine, front] = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_3.png')];
+  await sharp({ create: { width: 280, height: 800, channels: 3, background: '#c62828' } }).png().toFile(spine);
+  await sharp({ create: { width: 500, height: 800, channels: 3, background: '#1d2b53' } }).png().toFile(front);
+  const { sidecar } = await thicken([spine, fixture('book-back.jpg'), front]);
+  // 280/800 of the 203.2 mm height: 71.1 mm, more than half the 127 mm width, as a 950-page paperback is.
+  assert.deepEqual([sidecar.depthMm, (sidecar.measuredBy as Record<string, string>).depth], [71.1, 'photos']);
+});
+
 test('book: with no barcode, the front and back go by photo order, marked for review', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
-  const files = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
+  const files = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png'), path.join(folder, 'IMG_3.png')];
   await sharp({ create: { width: 500, height: 800, channels: 3, background: '#1d2b53' } }).png().toFile(files[0]);
   await sharp({ create: { width: 500, height: 800, channels: 3, background: '#2e7d32' } }).png().toFile(files[1]);
+  await sharp({ create: { width: 60, height: 800, channels: 3, background: '#c62828' } }).png().toFile(files[2]);
   const { sidecar } = await thicken(files, { profile: 'book' });
-  assert.deepEqual((sidecar.pictures as { role: string }[]).map(({ role }) => role), ['front', 'back']);
+  assert.deepEqual((sidecar.pictures as { role: string }[]).map(({ role }) => role), ['front', 'back', 'spine']);
   assert.match(sidecar.review.join('\n'), /^front and back \(no barcode: told apart only by photo order/m);
+  // No ISBN, so the height is a trim size guessed from the cover, and the spine's thickness scales with it.
+  assert.match(sidecar.review.join('\n'), /^thickness \(from the photos, but scaled to a guessed height\)$/m);
 });
 
 test('book: any number of photos, each on its face, the sharpest kept, the thickness measured, and all of it recorded', async (t) => {
@@ -348,10 +429,22 @@ test('preview: both sides of a model, drawn beside it as <name>.preview.png', as
   assert.ok(data[k + 1] > data[k] + 40 && data[k + 1] > data[k + 2] + 40, `front view center is ${[...data.subarray(k, k + 3)]}`);
 });
 
-/** Stand-in catalogs: Open Library knows one edition (and maybe its cover and catalog record), Google Books is out of quota. */
-function catalog(edition: object, { cover, data }: { cover?: Uint8Array; data?: object } = {}) {
-  return mock.method(globalThis, 'fetch', async (url: string | URL) => {
+/**
+ * Stand-in catalogs: Open Library knows one edition (and maybe its cover and catalog record), Google Books is out of
+ * quota. With `vision`, also a stand-in vision endpoint at http://vision.test/api, answering for each model and photo.
+ */
+function catalog(edition: object, { cover, data, vision }: {
+  cover?: Uint8Array; data?: object;
+  vision?: (request: { model: string; photo: Buffer; authorization: string | null }) => Promise<object | undefined>;
+} = {}) {
+  return mock.method(globalThis, 'fetch', async (url: string | URL, init?: RequestInit) => {
     const href = String(url);
+    if (vision && href === 'http://vision.test/api/chat/completions') {
+      const { model, messages } = JSON.parse(String(init!.body));
+      const photo = Buffer.from(messages[0].content[1].image_url.url.split(',')[1], 'base64');
+      const answer = await vision({ model, photo, authorization: new Headers(init!.headers).get('authorization') });
+      return answer ? Response.json({ choices: [{ message: { content: JSON.stringify(answer) } }] }) : new Response('', { status: 500 });
+    }
     if (href === 'https://openlibrary.org/isbn/9780140328721.json') return Response.json(edition);
     if (data && href.startsWith('https://openlibrary.org/api/books?bibkeys=ISBN:9780140328721')) return Response.json({ 'ISBN:9780140328721': data });
     if (cover && href.startsWith('https://covers.openlibrary.org/b/isbn/9780140328721-L.jpg')) return new Response(new Uint8Array(cover));

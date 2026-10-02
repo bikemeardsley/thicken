@@ -1,12 +1,16 @@
 // Which photo shows which face, for any number of photos of one object, from
-// what the photos show (file names are whatever the phone made up). In order:
-// codes place some (a book's ISBN barcode is on its back; a slab's QR code or
-// cert barcode is on its label); a book's narrow photos, shot standing or
-// lying down, are its spine if they show print and a page side if plain
-// paper; what's left is the front, then the back. Extra photos join the face
-// of the same shape whose color they match, and each face keeps its sharpest
-// photo, so more photos make a better model.
-import { measure, texture, type Picture } from './image.ts';
+// what the photos show (file names are whatever the phone made up). With a
+// vision roster (src/vision.ts), each photo is cut into the faces the models
+// found, straightened and placed. Otherwise, or for a photo they found
+// nothing in, the photo is used whole and, in order: codes place some (a
+// book's ISBN barcode is on its back; a slab's QR code or cert barcode is on
+// its label); a book's narrow photos, shot standing or lying down, are its
+// spine if they show print and a page side if plain paper; what's left is the
+// front, then the back. Extra photos join the face of the same shape whose
+// color they match, and each face keeps its sharpest photo, so more photos
+// make a better model.
+import { measure, straighten, texture, type Picture } from './image.ts';
+import type { Sight } from './vision.ts';
 
 export type Texture = Awaited<ReturnType<typeof texture>>;
 export interface Shot { picture: Picture; texture: Texture; sharpness: number; color: number[]; stripes: number }
@@ -19,6 +23,29 @@ const STRIPES = 4; // page lines this strong are pages, whatever their color
 const CALM = 7; // sharpness under which a light, unsaturated photo is plain paper, nothing printed on it
 const ACROSS = 1.2; // a page photo looking this much thicker than the spine runs across the book: top or bottom
 const SAME_FACE_COLOR = 60; // mean-color distance (0–441) within which an extra photo can be another shot of a face
+const MIN_FACE_PX = 24; // a face seen narrower than this (a sliver of spine past a cover) is no picture of it
+
+/**
+ * The pictures to place, each with the face it's placed on, if known: every face the vision models
+ * found in a photo, straightened; a photo they found none in, whole, placed by its codes if at all.
+ */
+export function cut(pictures: Picture[], sights: Sight[] = [], byCodes: string[] = []): { parts: Picture[]; placed: string[] } {
+  const parts: Picture[] = [];
+  const placed: string[] = [];
+  pictures.forEach((picture, i) => {
+    const faces = (sights[i]?.faces ?? []).filter(({ corners }) =>
+      corners.every((p, k) => Math.hypot(corners[(k + 1) % 4][0] - p[0], corners[(k + 1) % 4][1] - p[1]) >= MIN_FACE_PX));
+    if (!faces.length) {
+      placed[parts.length] = byCodes[i];
+      parts.push(picture);
+    }
+    for (const { face, corners } of faces) {
+      placed[parts.length] = face;
+      parts.push({ ...straighten(picture, corners), source: { ...picture.source, face } });
+    }
+  });
+  return { parts, placed };
+}
 
 export const shots = (pictures: Picture[]): Promise<Shot[]> =>
   Promise.all(pictures.map(async (picture) => ({ picture, texture: await texture(picture), ...(await measure(picture)) })));

@@ -94,8 +94,9 @@ itself, and more photos make a better model. In order:
 
 A book wants three photos (front, back, spine) and a slab two (front, back).
 Top, bottom and page-edge photos are extras that replace the plain page
-color. Spine and page-edge photos also measure the thickness. A spine shot
-lying down is stood up as if the book lay face up.
+color. Spine and page-edge photos shot square on also measure the thickness
+(a face seen at an angle is foreshortened). A spine shot lying down is stood
+up as if the book lay face up.
 
 The page rules were set on real photos (43 spines and 13 page blocks, cropped
 from Wikimedia Commons), and get every spine and 10 of the 13 page blocks
@@ -117,14 +118,54 @@ untouched). The ISBN supplies the size and catalog data. Each sidecar's
 | `plastic` | Plain plastic (a slab with no back photo) |
 | `pages` | Plain page color (a book's top, bottom or page edge: an extra, not reviewed) |
 
+## Vision (optional)
+
+With a vision roster, photos needn't be cropped: shoot the book on the
+table, at an angle, two faces at once. Set these, or put them in a `.env`
+file where you run Thicken:
+
+```
+THICKEN_VISION_URL=http://your-open-webui:8080/api  # any OpenAI-compatible endpoint
+THICKEN_VISION_KEY=...
+THICKEN_VISION_MODELS=gemini-3.8-flash-high,gpt-6-luna,gpt-5.6-terra,gemini-3.1-pro-low
+```
+
+- Each photo goes to the first two models (primary and peer) at once,
+  letterboxed to 1000 × 1000 px so pixel and 0–1000 coordinates are the same
+  numbers. Each answers which faces it sees and their four corners, in the
+  face's own upright reading order, so which way up comes with it.
+- Thicken cuts each face out and straightens it (a perspective warp). The
+  table goes, and an angled shot gives two faces.
+- Two answers agreeing (corners within 3% of the photo's diagonal, in the
+  same order) is the confidence. When two put a face in different places or
+  turns, the next model is asked; if it can't settle it, the primary's answer
+  is used and the face goes on the review list. A face only one model names,
+  while another answered without it, is left out.
+- The rest of the roster stands in for a seat that fails or takes over 3
+  minutes. A fine-tuned model goes in by putting it first.
+- With no vision settings, nothing is asked and photos are used whole.
+
+**What leaves the machine:** with `THICKEN_VISION_URL` set, the photos
+themselves (re-encoded, so without their EXIF) go to that host. A LAN server
+you control still forwards each photo to the model's provider; a hosted
+endpoint sees every photo.
+
+Measured on four real phone photos of one book (2026-10-02): gemini-3.8-flash
+put the corners within 0.3–0.9% of the true ones and turned angled faces
+correctly. gpt-6-luna and gpt-5.6-terra were as close on position but turned
+some angled faces, which is what the peer check catches. Gemini models answer
+on a 0–1000 scale whatever they're asked, the reason for the square
+letterbox.
+
 ## Review
 
 Stand-ins and guesses are kept, and marked: each sidecar's `review` lists
 them, a batch ends with the list, and the preview caption shows it. That
 covers a stand-in front, a plain spine or back, a guessed trim size, a
-default thickness, an assumed slab holder, photos and page count
-disagreeing on the thickness, and a front and back told apart only by photo
-order. Add the photos (in a subfolder named after the item) or the
+default thickness, a thickness from photos scaled to a guessed height, an
+assumed slab holder, photos and page count disagreeing on the thickness, a
+front and back told apart only by photo order, and a face the vision models
+disagreed on. Add the photos (in a subfolder named after the item) or the
 measurement, run again, and only that model is remade, with its review
 cleared. A front and back the wrong way round are swapped by giving them in
 the other order (in a batch subfolder, file names set the order).
@@ -138,9 +179,13 @@ the other order (in a batch subfolder, file names set the order).
   `verifyUrl`; `identifiedBy`, how each was found.
 - **Photos:** for each, its file and page, format, original size, bytes,
   camera, lens, capture time (the camera's own clock and UTC offset),
-  sharpness, and the face it became.
+  sharpness, and the face it became; with vision, one entry per face cut
+  from it.
 - **Codes:** every barcode and QR code seen, and which photo it was on.
-- **Lookups:** every network call: host, path, status and time.
+- **Lookups:** every catalog call: host, path, status and time.
+- **Vision:** where the photos went (host and path, never the key), the
+  roster, every model's answer with its status and time, and what was
+  settled: the evidence for judging a model, or for training one.
 - **Build:** Thicken's version, when, how long, the GLB's size, and a
   fingerprint of the photos used (`inputsKey`).
 - **Never recorded:** GPS, serial numbers, and the text of any code Thicken
@@ -180,7 +225,7 @@ better:
 | --- | --- | --- |
 | A badge or object without its background | Long-press the subject in Photos, then Copy or Share (PNG) | Samsung: long-press in Gallery (Image Clipper). Pixel: long-press in Google Photos, Copy sticker |
 | A straight, cropped cover or slab | Notes or Files, Scan Documents (PDF) | Google Drive, Scan (choose JPEG or PDF) |
-| Just a photo | HEIC or JPEG, straight-on, cropped to the object | JPEG, straight-on, cropped to the object |
+| Just a photo | HEIC or JPEG, straight-on, cropped to the object (or anyhow, with [vision](#vision-optional)) | JPEG, straight-on, cropped to the object (or anyhow, with [vision](#vision-optional)) |
 
 On Windows, Paint's Remove background does the same as subject lifting. A
 lifted subject is cropped to itself, and its see-through corners are filled
@@ -226,7 +271,9 @@ whose shape is off the holder's by more than 4% warns.
 | Running the preview browser | Dependency | [microsoft/playwright](https://github.com/microsoft/playwright) (`playwright-core`, Apache-2.0): drives an installed Chrome or Edge, no browser download |
 | Book dimension sources | Write | Read [palmerabollo/node-isbn](https://github.com/palmerabollo/node-isbn)'s provider fallback. Ours is per dimension, not first-provider-wins. |
 | Profiles, box, classifier, CLI | Write | |
-| Straightening handheld photos (planned) | Adapt, don't depend | [puffinsoft/jscanify](https://github.com/puffinsoft/jscanify) (MIT): read the corner-ranking approach. Slabs give competing rectangles (acrylic edge, card border, label) and glare. |
+| Finding faces in photos | Write | Vision models over any OpenAI-compatible endpoint, primary and peer (src/vision.ts): one POST each, no SDK. Kitbash, 2026-10-02. |
+| Straightening faces | Adapt, don't depend | [jlouthan/perspective-transform](https://github.com/jlouthan/perspective-transform) (MIT): the 4-point homography; the resampling over sharp's pixels is ours. sharp has no perspective warp, and OpenCV.js is megabytes for one. |
+| Snapping corners to edges (planned) | Adapt, don't depend | [puffinsoft/jscanify](https://github.com/puffinsoft/jscanify) (MIT): read the corner-ranking approach, for moving a model's corners (about 1% off) onto the real edges. Slabs give competing rectangles (acrylic edge, card border, label) and glare. |
 
 For refractor and holo effects in a viewer, `simeydotme/pokemon-cards-css` is
 a reference only. It is GPL-3.0, so read it and don't copy it.

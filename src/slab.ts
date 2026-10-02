@@ -1,10 +1,12 @@
 // The graded-card profile: a slab at its holder's size, with the front and
-// back photos on its faces and clear-plastic edges. The photos are used as
-// they are, so crop them to the slab's edges (or use a scanner app).
-import { assignFaces, pictureRecord, shots } from './faces.ts';
+// back photos on its faces and clear-plastic edges. Without a vision roster
+// (src/vision.ts) the photos are used as they are, so crop them to the slab's
+// edges (or use a scanner app).
+import { assignFaces, cut, pictureRecord, shots } from './faces.ts';
 import { box, type Side } from './glb.ts';
 import type { Picture } from './image.ts';
 import type { Code, Faces } from './thicken.ts';
+import type { Sight } from './vision.ts';
 
 // ponytail: graders don't publish exterior holder sizes, and the figures online disagree by 1–5 mm across
 // sources and holder generations. These are the best found (2026-10-01); measure real holders and correct
@@ -25,15 +27,16 @@ const SHAPE_TOLERANCE = 0.04;
 export interface Label { grader?: string; cert?: string; verifyUrl?: string }
 
 /**
- * Pictures in any number and order (src/faces.ts). Every one showing the
- * grader's QR code is the front, or for CGC, which prints its QR code on the
- * back of the label, the back; every one showing the cert barcode is the
- * front. With no holder named or read off a QR code, a PSA-size holder is
- * assumed and the model marked for review.
+ * Pictures in any number and order (src/faces.ts), with what the vision models
+ * saw in each (`sights`), if asked. A whole photo showing the grader's QR code
+ * is the front, or for CGC, which prints its QR code on the back of the label,
+ * the back; one showing the cert barcode is the front. With no holder named or
+ * read off a QR code, a PSA-size holder is assumed and the model marked for
+ * review.
  */
 export async function slab(
   pictures: Picture[],
-  { holder, sizeMm = [], label = {}, codes = [] }: { holder?: string; sizeMm?: number[]; label?: Label; codes?: Code[] } = {},
+  { holder, sizeMm = [], label = {}, codes = [], sights }: { holder?: string; sizeMm?: number[]; label?: Label; codes?: Code[]; sights?: Sight[] } = {},
 ) {
   const warnings: string[] = [];
   const review: string[] = [];
@@ -43,11 +46,12 @@ export async function slab(
   if (size.some((mm) => mm === undefined)) {
     throw new Error(`no size on file for a "${holder}" holder (known: ${Object.keys(HOLDERS).join(', ')}): measure one and pass --size WxHxD in mm`);
   }
-  const all = await shots(pictures);
-  const placed: string[] = [];
+  const byCodes: string[] = [];
   for (const { picture, use } of codes) {
-    if (use === 'grader' || use === 'cert') placed[picture] = use === 'grader' && label.grader === 'cgc' ? 'back' : 'front';
+    if (use === 'grader' || use === 'cert') byCodes[picture] = use === 'grader' && label.grader === 'cgc' ? 'back' : 'front';
   }
+  const { parts, placed } = cut(pictures, sights, byCodes);
+  const all = await shots(parts);
   const { chosen, roles, guessedFrontBack } = assignFaces(all, ['front', 'back'], { placed });
   if (guessedFrontBack) review.push('front and back (no QR code or cert barcode: told apart only by photo order, so check they are the right way round)');
   const [front, back] = [chosen.front, chosen.back].map((i) => (i === undefined ? undefined : all[i].texture));

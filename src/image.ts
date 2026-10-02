@@ -30,6 +30,7 @@ export interface Source {
   camera?: string;
   lens?: string;
   takenAt?: string; // the camera's own clock, with its UTC offset when it wrote one
+  face?: string; // cut from the photo as this face, where the vision models found it
 }
 
 export interface Picture { data: Buffer; width: number; height: number; transparent: boolean; source: Source }
@@ -196,6 +197,57 @@ export async function texture(picture: Picture): Promise<{ jpeg: Buffer; width: 
     .jpeg({ quality: 90 })
     .toBuffer();
   return { jpeg, width, height, edge };
+}
+
+/**
+ * The part of a picture inside four corners (in pixels: the face's own top-left, top-right, bottom-right,
+ * bottom-left), straightened into an upright rectangle the size of its sides. A perspective warp, sampled
+ * bilinearly; corners past the picture's edge repeat its border.
+ */
+export function straighten(picture: Picture, corners: number[][]): Picture {
+  const [tl, tr, br, bl] = corners;
+  const side = (a: number[], b: number[]) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const width = Math.max(1, Math.round((side(tl, tr) + side(bl, br)) / 2));
+  const height = Math.max(1, Math.round((side(tl, bl) + side(tr, br)) / 2));
+  const [a, b, c, d, e, f, g, h] = homography([[0, 0], [width, 0], [width, height], [0, height]], corners);
+  const { data: from, width: w, height: hh } = picture;
+  const data = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      // Pixel centers both ways: (x + 0.5, y + 0.5) out, minus 0.5 back to the picture's pixel grid.
+      const [px, py] = [x + 0.5, y + 0.5];
+      const z = g * px + h * py + 1;
+      const u = Math.min(w - 1, Math.max(0, (a * px + b * py + c) / z - 0.5));
+      const v = Math.min(hh - 1, Math.max(0, (d * px + e * py + f) / z - 0.5));
+      const [x0, y0] = [Math.floor(u), Math.floor(v)];
+      const [x1, y1] = [Math.min(w - 1, x0 + 1), Math.min(hh - 1, y0 + 1)];
+      const [fx, fy] = [u - x0, v - y0];
+      for (let k = 0; k < 4; k++) {
+        const top = from[(y0 * w + x0) * 4 + k] * (1 - fx) + from[(y0 * w + x1) * 4 + k] * fx;
+        const bottom = from[(y1 * w + x0) * 4 + k] * (1 - fx) + from[(y1 * w + x1) * 4 + k] * fx;
+        data[(y * width + x) * 4 + k] = Math.round(top * (1 - fy) + bottom * fy);
+      }
+    }
+  }
+  return { data, width, height, transparent: false, source: picture.source };
+}
+
+/** The 3 × 3 perspective transform (last entry 1) taking four points to four others: eight equations, solved by elimination. */
+function homography(from: number[][], to: number[][]): number[] {
+  const rows = from.flatMap(([x, y], i) => {
+    const [u, v] = to[i];
+    return [[x, y, 1, 0, 0, 0, -x * u, -y * u, u], [0, 0, 0, x, y, 1, -x * v, -y * v, v]];
+  });
+  for (let col = 0; col < 8; col++) {
+    const pivot = rows.slice(col).reduce((best, row, i) => (Math.abs(row[col]) > Math.abs(rows[best][col]) ? col + i : best), col);
+    [rows[col], rows[pivot]] = [rows[pivot], rows[col]];
+    for (let r = 0; r < 8; r++) {
+      if (r === col) continue;
+      const factor = rows[r][col] / rows[col][col];
+      for (let k = col; k < 9; k++) rows[r][k] -= factor * rows[col][k];
+    }
+  }
+  return rows.map((row, i) => row[8] / row[i]);
 }
 
 /** A texture turned a quarter turn clockwise. */

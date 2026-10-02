@@ -6,10 +6,11 @@
 // often spent; set GOOGLE_BOOKS_API_KEY), the cover's shape, a standard trim
 // size, then for thickness the spine and page-edge photos and the page count.
 // With an ISBN the sidecar also gets Open Library's catalog record.
-import { assignFaces, pictureRecord, shots } from './faces.ts';
+import { assignFaces, cut, pictureRecord, shots } from './faces.ts';
 import { box, type Side } from './glb.ts';
 import { load, texture, turned, type Picture } from './image.ts';
 import type { Code, Faces } from './thicken.ts';
+import type { Sight } from './vision.ts';
 
 const PAGE_MM = 0.075; // per page: trade paper runs 300–400 pages to the inch
 const BOARDS_MM = 4; // a hardcover's two boards
@@ -25,16 +26,21 @@ export interface Lookup { host: string; path: string; status: number | 'unreacha
 interface Log { warnings: string[]; lookups: Lookup[] }
 
 /**
- * Pictures in any number and order (src/faces.ts). Every one showing the ISBN
- * barcode is the back. With no front, Open Library's cover stands in, so a
- * photo of the back is enough to start.
+ * Pictures in any number and order (src/faces.ts), with what the vision models
+ * saw in each (`sights`), if asked. A whole photo showing the ISBN barcode is
+ * the back. With no front, Open Library's cover stands in, so a photo of the
+ * back is enough to start.
  */
-export async function book(pictures: Picture[], { isbn, sizeMm = [], codes = [] }: { isbn?: string; sizeMm?: number[]; codes?: Code[] } = {}) {
+export async function book(
+  pictures: Picture[],
+  { isbn, sizeMm = [], codes = [], sights }: { isbn?: string; sizeMm?: number[]; codes?: Code[]; sights?: Sight[] } = {},
+) {
   const log: Log = { warnings: [], lookups: [] };
   const review: string[] = [];
-  const all = await shots(pictures);
-  const placed: string[] = [];
-  for (const { picture, use } of codes) if (use === 'isbn') placed[picture] = 'back';
+  const byCodes: string[] = [];
+  for (const { picture, use } of codes) if (use === 'isbn') byCodes[picture] = 'back';
+  const { parts, placed } = cut(pictures, sights, byCodes);
+  const all = await shots(parts);
   const { chosen, roles, guessedFrontBack } = assignFaces(all, ['front', 'back', 'spine', 'top', 'bottom', 'edge'], { placed, byShape: true });
   if (guessedFrontBack) review.push('front and back (no barcode: told apart only by photo order, so check they are the right way round)');
   const photo = (face: string) => (chosen[face] === undefined ? undefined : all[chosen[face]].texture);
@@ -102,15 +108,22 @@ export async function book(pictures: Picture[], { isbn, sizeMm = [], codes = [] 
     review.push('size (a standard trim size, guessed from the cover\'s shape)');
   }
 
-  // Thickness from the spine and page-edge photos (thickness per unit height, times the height;
-  // a crop wider than half the book is no spine), else the page count, else a default.
+  // Thickness from spine and page-edge photos shot square on (thickness per unit height, times the height),
+  // else the page count, else a default. A face cut from a photo that shows another is seen at an angle, so
+  // foreshortened; a crop wider than the book is no spine.
   const { width = 0, height = 0 } = size;
-  const fromPhotos = median([spine, edge].flatMap((t) => (t ? [height * (t.width / t.height)] : [])).filter((mm) => mm > 1 && mm < width / 2));
+  const squareOn = (face: string) => {
+    const { file, page } = all[chosen[face]].picture.source;
+    return all.filter(({ picture: { source } }) => source.file === file && source.page === page).length === 1;
+  };
+  const fromPhotos = median(([['spine', spine], ['edge', edge]] as const)
+    .flatMap(([face, t]) => (t && squareOn(face) ? [height * (t.width / t.height)] : [])).filter((mm) => mm > 1 && mm < width));
   const fromPages = pages ? pages * PAGE_MM + (hardcover ? BOARDS_MM : 0) : undefined;
   take('photos', { depth: fromPhotos });
   take('pages', { depth: fromPages });
   take('default', { depth: DEFAULT_DEPTH_MM });
   if (measuredBy.depth === 'default') review.push('thickness (a default 20 mm)');
+  if (measuredBy.depth === 'photos' && measuredBy.height === 'trim') review.push('thickness (from the photos, but scaled to a guessed height)');
   if (fromPhotos && fromPages && Math.abs(fromPhotos / fromPages - 1) > ESTIMATES_DISAGREE) {
     review.push(`thickness (the photos say ${round(fromPhotos)} mm, the page count ${round(fromPages)} mm: check the spine photo's crop)`);
   }

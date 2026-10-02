@@ -24,7 +24,13 @@ Batch: each picture or PDF in the folder is one model, and each subfolder one mo
 pictures in it; models go to <folder>/thicken unless -o says otherwise. A model already made
 from exactly these pictures is left alone, hand edits and all; --force remakes it. Afterwards
 it lists the faces still to photograph.
---preview, or the preview command, writes <name>.preview.png beside each model (needs Chrome or Edge).`;
+--preview, or the preview command, writes <name>.preview.png beside each model (needs Chrome or Edge).
+Vision: with THICKEN_VISION_URL (an OpenAI-compatible endpoint), THICKEN_VISION_KEY and
+THICKEN_VISION_MODELS (primary,peer,backups...) set, or in a .env file here, photos needn't be
+cropped: the models find each face, and it is cut out and straightened.`;
+
+// Settings such as the vision roster can live in a .env file where Thicken is run.
+if (existsSync('.env')) process.loadEnvFile();
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
@@ -76,6 +82,7 @@ async function build(files: string[], out?: string) {
   const { glb, sidecar } = await thicken(files, options);
   const named = files[0] ? path.join(path.dirname(files[0]), path.parse(files[0]).name) : `${sidecar.isbn}`;
   out ??= `${named}.glb`;
+  await mkdir(path.dirname(path.resolve(out)), { recursive: true });
   await writeFile(out, glb);
   await writeFile(sidecarOf(out), `${JSON.stringify({ ...sidecar, inputsKey: await inputsKey(files) }, null, 2)}\n`);
   console.log(`${out}: ${sidecar.profile}, ${sidecar.widthMm} × ${sidecar.heightMm} × ${sidecar.depthMm} mm`);
