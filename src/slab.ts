@@ -15,9 +15,9 @@ export const HOLDERS: Record<string, number[]> = { // width, height, depth in mm
   bgs: [83, 131, 8.5],
   cgc: [80.5, 135, 7.5],
   sgc: [86.5, 138.5, 8.5],
-  tag: [79.5, 133.5, 7.5], // TAG's help centre: 3.125 × 5.25 in, 7.5 mm at the raised lip
+  tag: [79.5, 133.5, 7.5], // TAG's help center: 3.125 × 5.25 in, 7.5 mm at the raised lip
 };
-const PLASTIC: Side = { colour: '#dfe3e6', roughness: 0.15 };
+const PLASTIC: Side = { color: '#dfe3e6', roughness: 0.15 };
 const SHAPE_TOLERANCE = 0.04;
 
 /** What the label's codes said: grader, cert number, and the grader's verification page. */

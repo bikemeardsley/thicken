@@ -1,5 +1,5 @@
 // Geometry to GLB, shared by every profile, and the textured box that books
-// and slabs are made of. Units are metres (glTF's), front faces +Z, Y up.
+// and slabs are made of. Units are meters (glTF's), front faces +Z, Y up.
 import { ColorUtils, Document, NodeIO, type Material, type Mesh, type TypedArray, type vec4 } from '@gltf-transform/core';
 import { KHRMaterialsUnlit } from '@gltf-transform/extensions';
 
@@ -27,10 +27,10 @@ export function pictureMaterial(doc: Document, name: string, image: Uint8Array, 
     .setExtension('KHR_materials_unlit', doc.createExtension(KHRMaterialsUnlit).createUnlit());
 }
 
-/** A plain lit material in an sRGB colour (#rrggbb); glTF wants it linear. */
-export function colourMaterial(doc: Document, name: string, colour: string, roughness: number): Material {
+/** A plain lit material in an sRGB color (#rrggbb); glTF wants it linear. */
+export function colorMaterial(doc: Document, name: string, color: string, roughness: number): Material {
   return doc.createMaterial(name)
-    .setBaseColorFactor(ColorUtils.hexToFactor(parseInt(colour.slice(1), 16), [0, 0, 0, 1] as vec4))
+    .setBaseColorFactor(ColorUtils.hexToFactor(parseInt(color.slice(1), 16), [0, 0, 0, 1] as vec4))
     .setMetallicFactor(0)
     .setRoughnessFactor(roughness);
 }
@@ -42,11 +42,11 @@ export async function toGlb(doc: Document, mesh: Mesh): Promise<Uint8Array> {
 }
 
 export type Face = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom';
-/** A face shows a JPEG picture or a plain colour. Faces given the same Side object share a draw call. */
-export interface Side { picture?: Uint8Array; colour?: string; roughness?: number }
+/** A face shows a JPEG picture or a plain color. Faces given the same Side object share a draw call. */
+export interface Side { picture?: Uint8Array; color?: string; roughness?: number }
 
 /**
- * A box W × H × D mm, centred on the origin. Every picture reads the right
+ * A box W × H × D mm, centered on the origin. Every picture reads the right
  * way round from outside: the back's left edge is at +X (turn a book over
  * and the spine is on your right), and the left (-X) face's left edge is
  * at the back, so a spine photo stands upright with the front cover to its right.
@@ -69,7 +69,7 @@ export async function box(name: string, [widthMm, heightMm, depthMm]: number[], 
     const side = sides[face];
     const part = parts.get(side) ?? emptyPart();
     parts.set(side, part);
-    // Outward normal: down × right, normalised.
+    // Outward normal: down × right, normalized.
     const n = [down[1] * right[2] - down[2] * right[1], down[2] * right[0] - down[0] * right[2], down[0] * right[1] - down[1] * right[0]];
     const length = Math.hypot(...n);
     const v = part.position.length / 3;
@@ -87,7 +87,7 @@ export async function box(name: string, [widthMm, heightMm, depthMm]: number[], 
   for (const [side, part] of parts) {
     const material = side.picture
       ? pictureMaterial(doc, `${name}-${i++}`, side.picture, 'image/jpeg')
-      : colourMaterial(doc, `${name}-${i++}`, side.colour ?? '#808080', side.roughness ?? 0.9);
+      : colorMaterial(doc, `${name}-${i++}`, side.color ?? '#808080', side.roughness ?? 0.9);
     if (!side.picture) part.uv.length = 0;
     addPart(doc, mesh, part, material);
   }

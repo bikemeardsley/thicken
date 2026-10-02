@@ -1,6 +1,6 @@
 // The outline of a badge image, traced from its transparency: one outer
 // boundary per separate opaque region (a medal and a ribbon that doesn't
-// touch it are two), in pixel coordinates (y down), plus the colour just
+// touch it are two), in pixel coordinates (y down), plus the color just
 // inside the edge for the badge's sides. Holes inside a region are left to
 // the front face's alpha mask. Ported from michaelbeardsley-now's
 // src/lib/badge-shape.ts, minus its site-path cache and string format.
@@ -10,7 +10,7 @@ export type Point = [number, number];
 const ALPHA_CUTOFF = 128; // pixels at least half opaque are part of the badge
 const MIN_REGION = 0.01; // regions smaller than this share of the opaque area are specks, not parts
 const SIMPLIFY_PX = 1.25; // Douglas–Peucker tolerance, in source pixels
-const EDGE_INSET_PX = 4; // where to sample the edge colour, inside the outline
+const EDGE_INSET_PX = 4; // where to sample the edge color, inside the outline
 
 /** Trace raw image data (sharp's .raw() output, with alpha). */
 export function trace(data: Buffer, width: number, height: number, channels: number): { outlines: Point[][]; edge: string } {
@@ -28,7 +28,7 @@ export function trace(data: Buffer, width: number, height: number, channels: num
     .filter((points) => points.length >= 3); // a region one or two pixels across has no area to extrude
   if (outlines.length === 0) throw new Error('no opaque shape found to trace');
 
-  return { outlines, edge: edgeColour(data, width, channels, outlines, opaque) };
+  return { outlines, edge: edgeColor(data, width, channels, outlines, opaque) };
 }
 
 /**
@@ -96,20 +96,20 @@ function labelRegions(opaque: (x: number, y: number) => boolean, width: number, 
 }
 
 /**
- * Moore-neighbour tracing of a region's outer boundary from its first pixel
+ * Moore-neighbor tracing of a region's outer boundary from its first pixel
  * in raster order, with Jacob's stopping criterion — stop on re-entering the
  * start the way we first left it — so a one-pixel spike or bridge at the
  * start can't end the trace early.
  */
 function outerBoundary(inRegion: (x: number, y: number) => boolean, start: Point): Point[] {
-  // Clockwise neighbours, starting west.
+  // Clockwise neighbors, starting west.
   const around: Point[] = [[-1, 0], [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1]];
   const next = (x: number, y: number, from: number): { x: number; y: number; from: number } | undefined => {
     for (let i = 0; i < 8; i++) {
       const dir = (from + i) % 8;
       const [dx, dy] = around[dir];
       if (inRegion(x + dx, y + dy)) {
-        // Resume from the last empty neighbour checked, seen from the new
+        // Resume from the last empty neighbor checked, seen from the new
         // pixel: two steps back after a straight move, three after a diagonal.
         return { x: x + dx, y: y + dy, from: (dir + (dir % 2 === 0 ? 6 : 5)) % 8 };
       }
@@ -168,11 +168,11 @@ function rdp(points: Point[], tolerance: number): Point[] {
 }
 
 /**
- * Average colour just inside the outlines. Each vertex is sampled along its
- * own inward normal — not towards the image centre, which points *out* of a
+ * Average color just inside the outlines. Each vertex is sampled along its
+ * own inward normal — not towards the image center, which points *out* of a
  * concave badge — stepping closer to the edge for thin parts.
  */
-function edgeColour(
+function edgeColor(
   data: Buffer, width: number, channels: number,
   outlines: Point[][], opaque: (x: number, y: number) => boolean,
 ): string {

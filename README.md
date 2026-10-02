@@ -77,7 +77,7 @@ cover until you photograph your own.
 ## Your photos, or stand-ins
 
 A model shows your copy, not one from the internet: every face you
-photograph carries your photo, exactly as taken (unlit, so its colours are
+photograph carries your photo, exactly as taken (unlit, so its colors are
 untouched). The ISBN only supplies the size. Faces you didn't photograph
 are filled in, and each sidecar's `faces` says which is which:
 
@@ -85,7 +85,7 @@ are filled in, and each sidecar's `faces` says which is which:
 | --- | --- |
 | `photo` | Your picture |
 | `openlibrary` | A stand-in front cover from Open Library, used only when you photographed the back but not the front |
-| `colour` | A plain colour from the cover's edge (a book's missing back or spine) |
+| `color` | A plain color from the cover's edge (a book's missing back or spine) |
 | `plastic` | Plain plastic (a slab with no back photo) |
 
 So a book wants three photos (front, back, spine) and a slab two (front,
@@ -102,9 +102,9 @@ face that isn't your photo. It never writes `<name>.png`, which may be your
 original. It is drawn by model-viewer in an installed Chrome or Edge, run
 headless, with nothing fetched from the network.
 
-Every output is a **GLB** at real-world size (glTF's unit is the metre, so a
+Every output is a **GLB** at real-world size (glTF's unit is the meter, so a
 50 mm badge is 0.05 across), plus a JSON sidecar. The sidecar holds the
-dimensions in millimetres, where each came from, any warnings, and the
+dimensions in millimeters, where each came from, any warnings, and the
 source images used.
 
 **Motion is not part of the asset.** Sway, spin and hover belong to whatever
@@ -131,7 +131,7 @@ better:
 
 On Windows, Paint's Remove background does the same as subject lifting. A
 lifted subject is cropped to itself, and its see-through corners are filled
-with its edge colour.
+with its edge color.
 
 ## Dimensions
 

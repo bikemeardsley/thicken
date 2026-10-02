@@ -12,7 +12,7 @@ const PAGE_MM = 0.075; // per page: trade paper runs 300–400 pages to the inch
 const BOARDS_MM = 4; // a hardcover's two boards
 const DEFAULT_DEPTH_MM = 20;
 const TRIMS_IN = [[4.25, 6.87], [5, 8], [5.5, 8.5], [6, 9], [7, 10], [8.5, 11], [8.5, 8.5]]; // width × height
-const PAGE_EDGES: Side = { colour: '#efe6d2', roughness: 0.9 }; // cream
+const PAGE_EDGES: Side = { color: '#efe6d2', roughness: 0.9 }; // cream
 const SPINE_SHAPE = 0.4; // width per unit height: spines are well under it, covers well over
 const LOOKUP_TIMEOUT_MS = 10_000;
 
@@ -33,7 +33,7 @@ export async function book(pictures: Picture[], { isbn, sizeMm = [], backAt }: {
   const back = backAt === undefined ? rest.shift() : textures[backAt];
   const spine = spineAt < 0 ? undefined : textures[spineAt];
   if (rest.length) warnings.push(`${rest.length} picture(s) not used: a book takes one front, back and spine`);
-  const faces: Faces = { front: front ? 'photo' : 'openlibrary', back: back ? 'photo' : 'colour', spine: spine ? 'photo' : 'colour' };
+  const faces: Faces = { front: front ? 'photo' : 'openlibrary', back: back ? 'photo' : 'color', spine: spine ? 'photo' : 'color' };
   const coverUrl = !front && isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg` : undefined;
   if (!front) {
     const cover = coverUrl && await fetchBytes(`${coverUrl}?default=false`, warnings);
@@ -86,7 +86,7 @@ export async function book(pictures: Picture[], { isbn, sizeMm = [], backAt }: {
     warnings.push(`the cover photo's shape (${aspect.toFixed(3)}) doesn't match the book's size (${(width / height).toFixed(3)}): is it cropped to the cover's edges, and the same edition?`);
   }
 
-  const plain: Side = { colour: front.edge, roughness: 0.6 }; // a wraparound cover carries on round the spine
+  const plain: Side = { color: front.edge, roughness: 0.6 }; // a wraparound cover carries on round the spine
   const glb = await box('book', [width, height, depth], {
     front: { picture: front.jpeg },
     back: back ? { picture: back.jpeg } : plain,
@@ -100,14 +100,14 @@ export async function book(pictures: Picture[], { isbn, sizeMm = [], backAt }: {
   };
 }
 
-/** "24.2 x 16.2 x 3.9 centimeters", "8.1 x 5.5 x 1.1 inches", "24 cm": millimetres, largest first. */
+/** "24.2 x 16.2 x 3.9 centimeters", "8.1 x 5.5 x 1.1 inches", "24 cm": millimeters, largest first. */
 export function parseDims(text: unknown): number[] {
   if (typeof text !== 'string') return [];
   const scale = /\bin(ch|ches)?\b|"/i.test(text) ? 25.4 : /\bcm\b|centimet/i.test(text) ? 10 : /\bmm\b|millimet/i.test(text) ? 1 : 0;
   return scale ? (text.match(/\d+(\.\d+)?/g) ?? []).map((n) => Number(n) * scale).sort((a, b) => b - a) : [];
 }
 
-/** Catalogues list sizes in any order: the longest side is the height, unless the cover is wider than tall. */
+/** Catalogs list sizes in any order: the longest side is the height, unless the cover is wider than tall. */
 function orient([longest, middle, shortest]: number[], aspect: number): Dims {
   return aspect > 1 ? { width: longest, height: middle, depth: shortest } : { width: middle, height: longest, depth: shortest };
 }
@@ -120,7 +120,7 @@ function nearestTrim(aspect: number): number[] {
 
 const positive = (n: unknown) => (typeof n === 'number' && n > 0 ? n : undefined);
 
-/** Catalogue JSON, whatever shape the catalogue sends. */
+/** Catalog JSON, whatever shape the catalog sends. */
 async function fetchJson(url: string, warnings: string[]): Promise<any> {
   const bytes = await fetchBytes(url, warnings);
   try { return bytes && JSON.parse(bytes.toString('utf8')); } catch { return undefined; }

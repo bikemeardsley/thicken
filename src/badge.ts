@@ -1,30 +1,30 @@
 // The badge profile: digital artwork made into an object. The picture's own
 // outline (src/outline.ts) is extruded to a solid at real-world size; the
 // front shows the picture exactly (unlit, its see-through parts cut out by
-// an alpha mask) and the sides and back are the colour just inside the
+// an alpha mask) and the sides and back are the color just inside the
 // outline. `widthMm` is the traced shape's width; its height follows.
 import { Document } from '@gltf-transform/core';
 import earcut from 'earcut';
 import sharp from 'sharp';
-import { addPart, colourMaterial, emptyPart, pictureMaterial, toGlb } from './glb.ts';
+import { addPart, colorMaterial, emptyPart, pictureMaterial, toGlb } from './glb.ts';
 import type { Picture } from './image.ts';
 import { trace, type Point } from './outline.ts';
 
 export async function badge({ data, width, height, transparent }: Picture, { widthMm = 50, depthMm = 3.5 } = {}) {
-  if (!(widthMm > 0 && depthMm > 0)) throw new Error('width and depth must be positive millimetres');
+  if (!(widthMm > 0 && depthMm > 0)) throw new Error('width and depth must be positive millimeters');
   const { outlines, edge } = trace(data, width, height, 4);
   const png = await sharp(data, { raw: { width, height, channels: 4 } }).png().toBuffer();
 
-  // Sized and centred on the traced shape: transparent padding isn't part of the badge.
+  // Sized and centered on the traced shape: transparent padding isn't part of the badge.
   let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
   for (const [x, y] of outlines.flat()) {
     minX = Math.min(minX, x); maxX = Math.max(maxX, x);
     minY = Math.min(minY, y); maxY = Math.max(maxY, y);
   }
   if (!(maxX > minX && maxY > minY)) throw new Error('the traced shape is a line, not an area');
-  const metres = widthMm / (maxX - minX) / 1000; // per pixel
+  const meters = widthMm / (maxX - minX) / 1000; // per pixel
   const z = depthMm / 2000;
-  const toModel = ([x, y]: Point): Point => [(x - (minX + maxX) / 2) * metres, ((minY + maxY) / 2 - y) * metres];
+  const toModel = ([x, y]: Point): Point => [(x - (minX + maxX) / 2) * meters, ((minY + maxY) / 2 - y) * meters];
 
   const face = emptyPart();
   const rim = emptyPart(); // back and walls
@@ -40,7 +40,7 @@ export async function badge({ data, width, height, transparent }: Picture, { wid
       const [x, y] = points[i];
       face.position.push(x, y, z);
       face.normal.push(0, 0, 1);
-      face.uv.push((px + 0.5) / width, (py + 0.5) / height); // pixel centres; glTF's UV origin is the image's top left
+      face.uv.push((px + 0.5) / width, (py + 0.5) / height); // pixel centers; glTF's UV origin is the image's top left
       rim.position.push(x, y, -z);
       rim.normal.push(0, 0, -1);
     });
@@ -67,7 +67,7 @@ export async function badge({ data, width, height, transparent }: Picture, { wid
   const doc = new Document();
   const mesh = doc.createMesh('badge');
   addPart(doc, mesh, face, pictureMaterial(doc, 'face', png, 'image/png').setAlphaMode('MASK').setAlphaCutoff(0.5));
-  addPart(doc, mesh, rim, colourMaterial(doc, 'rim', edge, 0.6));
+  addPart(doc, mesh, rim, colorMaterial(doc, 'rim', edge, 0.6));
 
   const round = (mm: number) => Math.round(mm * 100) / 100;
   return {
@@ -75,7 +75,7 @@ export async function badge({ data, width, height, transparent }: Picture, { wid
     sidecar: {
       profile: 'badge',
       widthMm: round(widthMm),
-      heightMm: round((maxY - minY) * metres * 1000),
+      heightMm: round((maxY - minY) * meters * 1000),
       depthMm: round(depthMm),
       edge,
       regions: outlines.length,

@@ -62,7 +62,7 @@ async function pdfPages(bytes: Buffer): Promise<Sharp[]> {
     const images = await extractImages(pdf, n);
     if (images.length === 0) throw new Error(`PDF page ${n} has no picture on it: only scanned PDFs work`);
     const { data, width, height, channels } = images.reduce((a, b) => (b.width * b.height > a.width * a.height ? b : a));
-    // ponytail: honours the page's /Rotate only; a scan drawn turned by its content stream would come out sideways.
+    // ponytail: honors the page's /Rotate only; a scan drawn turned by its content stream would come out sideways.
     const { rotate } = await pdf.getPage(n);
     pages.push(sharp(Buffer.from(data.buffer, data.byteOffset, data.byteLength), { raw: { width, height, channels } }).rotate(rotate));
   }
@@ -75,8 +75,8 @@ export async function codes({ data, width, height }: Picture): Promise<{ format:
   return found.filter((code) => code.isValid).map(({ format, text }) => ({ format, text }));
 }
 
-/** Average colour of the opaque pixels in columns [x0, x1), as #rrggbb. */
-export function columnColour({ data, width, height }: Picture, x0: number, x1: number): string {
+/** Average color of the opaque pixels in columns [x0, x1), as #rrggbb. */
+export function columnColor({ data, width, height }: Picture, x0: number, x1: number): string {
   let r = 0, g = 0, b = 0, n = 0;
   for (let y = 0; y < height; y++) {
     for (let x = Math.max(0, x0); x < Math.min(width, x1); x++) {
@@ -105,13 +105,13 @@ export function subjectBox({ data, width, height, transparent }: Picture): { lef
 }
 
 /**
- * A picture as a JPEG for a box face, with its size and the colour along its
+ * A picture as a JPEG for a box face, with its size and the color along its
  * left edge. A lifted subject is cropped to itself, and its see-through
- * corners are filled with that edge colour.
+ * corners are filled with that edge color.
  */
 export async function texture(picture: Picture): Promise<{ jpeg: Buffer; width: number; height: number; edge: string }> {
   const { left, top, width, height } = subjectBox(picture);
-  const edge = columnColour(picture, left, left + 4);
+  const edge = columnColor(picture, left, left + 4);
   const jpeg = await sharp(picture.data, { raw: { width: picture.width, height: picture.height, channels: 4 } })
     .extract({ left, top, width, height })
     .flatten({ background: edge })

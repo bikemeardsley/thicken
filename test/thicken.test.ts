@@ -17,7 +17,7 @@ const fixture = (name: string) => fileURLToPath(new URL(`fixtures/${name}`, impo
 
 // badge.png: 40 × 30, transparent, with two #3366cc regions: an L (x 2–19,
 // y 2–25 plus x 20–29, y 18–25) and a square (x 32–37, y 2–7). Through
-// boundary-pixel centres they span 35 × 23 px and enclose 466 + 25 px²
+// boundary-pixel centers they span 35 × 23 px and enclose 466 + 25 px²
 // (simplifying turns the L's inside corner into a slant).
 test('badge: cut-out artwork, its outline extruded to a closed solid at real-world size', async () => {
   const { glb, sidecar } = await thicken([fixture('badge.png')], { widthMm: 35, depthMm: 2 }); // 1 mm per pixel
@@ -56,13 +56,13 @@ test('badge: cut-out artwork, its outline extruded to a closed solid at real-wor
 // book-scan.pdf: two pages of 500 × 800 (a 5 × 8 in shape) as a scanner app
 // writes them: the front cover, then the back with ISBN 9780140328721's barcode.
 test('book: a scanned PDF, its ISBN read off the back cover, its size from Open Library', async (t) => {
-  const fetch = catalogue({ physical_dimensions: '8 x 5 x 1 inches', number_of_pages: 320 });
+  const fetch = catalog({ physical_dimensions: '8 x 5 x 1 inches', number_of_pages: 320 });
   t.after(() => fetch.mock.restore());
   const { glb, sidecar } = await thicken([fixture('book-scan.pdf')]);
   assert.deepEqual(sidecar, {
     profile: 'book', sources: ['book-scan.pdf'], isbn: '9780140328721', widthMm: 127, heightMm: 203.2, depthMm: 25.4,
     measuredBy: { width: 'openlibrary', height: 'openlibrary', depth: 'openlibrary' }, pages: 320,
-    faces: { front: 'photo', back: 'photo', spine: 'colour' }, warnings: [],
+    faces: { front: 'photo', back: 'photo', spine: 'color' }, warnings: [],
   });
   assert.equal(fetch.mock.callCount(), 1, 'Open Library had every dimension, so no backup was asked');
 
@@ -75,8 +75,8 @@ test('book: a scanned PDF, its ISBN read off the back cover, its size from Open 
   assert.deepEqual(cornerAt(doc, [0, 0, -1]), [1, 1, -1]);
 });
 
-test('book: dimensions the catalogue lacks fall through to the backup sources', async (t) => {
-  const fetch = catalogue({ physical_dimensions: '21 cm', number_of_pages: 300, physical_format: 'Hardcover' });
+test('book: dimensions the catalog lacks fall through to the backup sources', async (t) => {
+  const fetch = catalog({ physical_dimensions: '21 cm', number_of_pages: 300, physical_format: 'Hardcover' });
   t.after(() => fetch.mock.restore());
   const { sidecar } = await thicken([fixture('book-scan.pdf')]);
   assert.deepEqual(
@@ -88,35 +88,35 @@ test('book: dimensions the catalogue lacks fall through to the backup sources', 
 // book-back.jpg: the back cover alone, barcode and all, as a phone shoots it.
 test('book: a photo of the back alone is enough, the front cover coming from Open Library', async (t) => {
   const cover = await sharp({ create: { width: 500, height: 800, channels: 3, background: '#1d2b53' } }).jpeg().toBuffer();
-  const fetch = catalogue({ physical_dimensions: '8 x 5 x 1 inches' }, cover);
+  const fetch = catalog({ physical_dimensions: '8 x 5 x 1 inches' }, cover);
   t.after(() => fetch.mock.restore());
   const { glb, sidecar } = await thicken([fixture('book-back.jpg')]);
   assert.equal(sidecar.coverUrl, 'https://covers.openlibrary.org/b/isbn/9780140328721-L.jpg');
   assert.deepEqual([sidecar.widthMm, sidecar.heightMm, sidecar.warnings], [127, 203.2, []]);
   // The navy cover went on the front, the cream photo on the back.
   const doc = await read(glb);
-  assert.ok(near(await colourOf(doc, [0, 0, 1]), '#1d2b53'), 'front is the downloaded cover');
-  assert.ok(Math.min(...await colourOf(doc, [0, 0, -1])) > 180, 'back is the photo');
+  assert.ok(near(await colorOf(doc, [0, 0, 1]), '#1d2b53'), 'front is the downloaded cover');
+  assert.ok(Math.min(...await colorOf(doc, [0, 0, -1])) > 180, 'back is the photo');
 });
 
 test('book: pictures in any order are placed by what they show', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
-  const solid = async (name: string, width: number, colour: string) => {
+  const solid = async (name: string, width: number, color: string) => {
     const file = path.join(folder, name);
-    await sharp({ create: { width, height: 800, channels: 3, background: colour } }).png().toFile(file);
+    await sharp({ create: { width, height: 800, channels: 3, background: color } }).png().toFile(file);
     return file;
   };
-  const fetch = catalogue({ physical_dimensions: '8 x 5 x 1 inches' });
+  const fetch = catalog({ physical_dimensions: '8 x 5 x 1 inches' });
   t.after(() => fetch.mock.restore());
   // Spine first, back (the barcode) second, then the front and a fourth picture nobody needs.
   const pictures = [await solid('spine.png', 60, '#c62828'), fixture('book-back.jpg'), await solid('front.png', 500, '#1d2b53'), await solid('extra.png', 500, '#2e7d32')];
   const { glb, sidecar } = await thicken(pictures);
   assert.deepEqual(sidecar.warnings, ['1 picture(s) not used: a book takes one front, back and spine']);
   const doc = await read(glb);
-  assert.ok(near(await colourOf(doc, [0, 0, 1]), '#1d2b53'), 'the front is the first picture that is neither barcode nor spine');
-  assert.ok(Math.min(...await colourOf(doc, [0, 0, -1])) > 180, 'the back is the barcode picture');
-  assert.ok(near(await colourOf(doc, [-1, 0, 0]), '#c62828'), 'the spine is the tall narrow picture');
+  assert.ok(near(await colorOf(doc, [0, 0, 1]), '#1d2b53'), 'the front is the first picture that is neither barcode nor spine');
+  assert.ok(Math.min(...await colorOf(doc, [0, 0, -1])) > 180, 'the back is the barcode picture');
+  assert.ok(near(await colorOf(doc, [-1, 0, 0]), '#c62828'), 'the spine is the tall narrow picture');
 });
 
 // slab.jpg: 296 × 500, a PSA holder's shape, with a QR code to a psacard.com cert on the label.
@@ -225,11 +225,11 @@ test('preview: both sides of a model, drawn beside it as <name>.preview.png', as
   assert.deepEqual([info.width, info.height], [800, 574]);
   // The front view's middle is the slab's green card, not the background.
   const k = (300 * info.width + 200) * info.channels;
-  assert.ok(data[k + 1] > data[k] + 40 && data[k + 1] > data[k + 2] + 40, `front view centre is ${[...data.subarray(k, k + 3)]}`);
+  assert.ok(data[k + 1] > data[k] + 40 && data[k + 1] > data[k + 2] + 40, `front view center is ${[...data.subarray(k, k + 3)]}`);
 });
 
-/** Stand-in catalogues: Open Library knows one edition (and maybe its cover), Google Books is out of quota. */
-function catalogue(edition: object, cover?: Uint8Array) {
+/** Stand-in catalogs: Open Library knows one edition (and maybe its cover), Google Books is out of quota. */
+function catalog(edition: object, cover?: Uint8Array) {
   return mock.method(globalThis, 'fetch', async (url: string | URL) => {
     const href = String(url);
     if (href === 'https://openlibrary.org/isbn/9780140328721.json') return Response.json(edition);
@@ -239,8 +239,8 @@ function catalogue(edition: object, cover?: Uint8Array) {
   });
 }
 
-/** Mean colour [r, g, b] (0–255) of the picture on the face with this outward normal. */
-async function colourOf(doc: Document, normal: number[]): Promise<number[]> {
+/** Mean color [r, g, b] (0–255) of the picture on the face with this outward normal. */
+async function colorOf(doc: Document, normal: number[]): Promise<number[]> {
   for (const primitive of doc.getRoot().listMeshes()[0].listPrimitives()) {
     const image = primitive.getMaterial()?.getBaseColorTexture()?.getImage();
     const facing = primitive.getAttribute('NORMAL')!.getElement(0, [0, 0, 0]);
@@ -252,14 +252,14 @@ async function colourOf(doc: Document, normal: number[]): Promise<number[]> {
   throw new Error(`no picture on the face with normal ${normal}`);
 }
 
-/** Within JPEG's wobble of a #rrggbb colour. */
-const near = (colour: number[], hex: string) => colour.every((c, i) => Math.abs(c - parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16)) < 12);
+/** Within JPEG's wobble of a #rrggbb color. */
+const near = (color: number[], hex: string) => color.every((c, i) => Math.abs(c - parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16)) < 12);
 
 const read = (glb: Uint8Array) => new NodeIO().registerExtensions([KHRMaterialsUnlit]).readBinary(glb);
 
-function assertExtents(doc: Document, metres: number[]) {
+function assertExtents(doc: Document, meters: number[]) {
   const { min, max } = getBounds(doc.getRoot().getDefaultScene()!);
-  metres.forEach((size, i) => assert.ok(Math.abs(max[i] - min[i] - size) < 1e-6, `extent ${i}: ${max[i] - min[i]} m`));
+  meters.forEach((size, i) => assert.ok(Math.abs(max[i] - min[i] - size) < 1e-6, `extent ${i}: ${max[i] - min[i]} m`));
 }
 
 /** Closed and wound outward everywhere: the divergence-theorem volume is exactly the solid's. A missing, flipped or inward face breaks it. */

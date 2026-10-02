@@ -35,10 +35,10 @@ export interface Sidecar {
 }
 
 /** Where each face's picture came from: the user's own photo, or something standing in for one. */
-export type Faces = Record<string, 'photo' | 'openlibrary' | 'colour' | 'plastic'>;
-const STAND_IN = { openlibrary: 'Open Library\'s cover, not your copy', colour: 'plain colour', plastic: 'plain plastic' };
+export type Faces = Record<string, 'photo' | 'openlibrary' | 'color' | 'plastic'>;
+const STAND_IN = { openlibrary: 'Open Library\'s cover, not your copy', color: 'plain color', plastic: 'plain plastic' };
 
-/** The faces still to photograph, e.g. "spine (plain colour)": for the re-shoot list and preview captions. */
+/** The faces still to photograph, e.g. "spine (plain color)": for the re-shoot list and preview captions. */
 export const stillToShoot = (faces: Faces = {}) =>
   Object.entries(faces).flatMap(([face, from]) => (from === 'photo' ? [] : [`${face} (${STAND_IN[from]})`]));
 
@@ -50,7 +50,7 @@ const SLAB_SHAPE_TOLERANCE = 0.06;
 
 export async function thicken(inputs: string[], options: Options = {}): Promise<{ glb: Uint8Array; sidecar: Sidecar }> {
   const { sizeMm = [] } = options;
-  if (sizeMm.some((mm) => mm !== undefined && !(mm > 0))) throw new Error('sizes must be positive millimetres, e.g. 152x229x25');
+  if (sizeMm.some((mm) => mm !== undefined && !(mm > 0))) throw new Error('sizes must be positive millimeters, e.g. 152x229x25');
   const pictures = (await Promise.all(inputs.map((input) => load(input)))).flat();
 
   const found: Found = options.profile === 'badge' ? {} : await lookAtCodes(pictures);
