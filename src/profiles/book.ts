@@ -27,7 +27,8 @@ export const book: Profile = {
   build: async (pictures, { options, facts, codes, sights }) => {
     const isbn = options.isbn ? checkIsbn(options.isbn) : (facts.isbn as string | undefined);
     const { glb, sidecar } = await make(pictures, { isbn, sizeMm: options.sizeMm, codes, sights });
-    return { glb, sidecar: { ...sidecar, identifiedBy: { isbn: options.isbn ? 'given' : isbn ? 'barcode' : undefined } } };
+    const by = options.isbn ? 'given' : isbn ? 'barcode' : sidecar.match?.isbn ? 'title' : undefined;
+    return { glb, sidecar: { ...sidecar, identifiedBy: { isbn: by } } };
   },
 };
 
@@ -45,6 +46,9 @@ const CREAM = [0xef, 0xe6, 0xd2]; // page color
 const ROUNDED_MM = 1; // a paperback's soft edges
 const ESTIMATES_DISAGREE = 0.35; // photos against page count: beyond this, one of them is wrong
 const LOOKUP_TIMEOUT_MS = 10_000;
+const SURE = 0.8; // a title match this close, by the same author, needs no checking
+const LIKELY = 0.5; // below this, a title match is no match
+const ARTICLES = new Set(['the', 'a', 'an']); // catalogs file "The Worlds I See" as "Worlds I See"
 
 type Dims = { width?: number; height?: number; depth?: number }; // mm
 /** A network lookup, for the sidecar: host and path, never the query (it may hold an API key). */
@@ -55,14 +59,21 @@ interface Log { warnings: string[]; lookups: Lookup[] }
  * Pictures in any number and order (src/faces.ts), with what the vision models
  * saw in each (`sights`), if asked. A whole photo showing the ISBN barcode is
  * the back. With no front, Open Library's cover stands in, so a photo of the
- * back is enough to start.
+ * back is enough to start. With no ISBN, the book is looked for by the title
+ * and authors the models read.
  */
 async function make(
   pictures: Picture[],
-  { isbn, sizeMm = [], codes = [], sights }: { isbn?: string; sizeMm?: number[]; codes?: Code[]; sights?: Sight[] } = {},
+  { isbn: known, sizeMm = [], codes = [], sights }: { isbn?: string; sizeMm?: number[]; codes?: Code[]; sights?: Sight[] } = {},
 ) {
   const log: Log = { warnings: [], lookups: [] };
   const review: string[] = [];
+  // No ISBN: the book found by the title and authors the vision models read, with how sure the match is.
+  const read = sights?.find((sight) => sight.title);
+  const match = !known && read?.title ? await byTitle(read.title, read.authors ?? [], log) : undefined;
+  if (match && match.confidence < SURE) review.push(`which book this is (found by its title, ${Math.round(match.confidence * 100)}% sure: check it, or give --isbn)`);
+  if (read?.title && !known && !match) log.warnings.push(`no book in Open Library close to the title read, "${read.title}"`);
+  const isbn = known ?? match?.isbn;
   const byCodes: string[] = [];
   for (const { picture, use } of codes) if (use === 'isbn') byCodes[picture] = 'back';
   const { parts, placed } = cut(pictures, sights, byCodes);
@@ -110,6 +121,8 @@ async function make(
     catalog = data && catalogRecord(data);
     pages = positive(data?.number_of_pages) ?? paginated(data?.pagination);
   }
+  pages ??= match?.pages;
+  catalog ??= match && { title: match.title, authors: match.authors, openLibrary: match.openLibrary, editions: match.editions };
   if (isbn && missing()) {
     const edition = await fetchJson(`https://openlibrary.org/isbn/${isbn}.json`, log);
     take('openlibrary', orient(parseDims(edition?.physical_dimensions), aspect));
@@ -178,8 +191,44 @@ async function make(
       profile: 'book', isbn, ...(coverUrl && { coverUrl }),
       widthMm: round(width), heightMm: round(height), depthMm: round(depth), measuredBy,
       depthEstimates: { photos: fromPhotos && round(fromPhotos), pages: fromPages && round(fromPages) },
-      pages, faces, review, warnings: log.warnings, catalog, pictures: pictureRecord(all, roles), lookups: log.lookups,
+      pages, faces, review, warnings: log.warnings, catalog,
+      ...(match && { match: { by: 'title', read: { title: read!.title, authors: read!.authors }, ...match } }),
+      pictures: pictureRecord(all, roles), lookups: log.lookups,
     },
+  };
+}
+
+/**
+ * A book in Open Library by the title and authors read off it: the closest
+ * work and how sure the match is (title words in common, against the title
+ * and against title and subtitle, times an author's surname matching), its
+ * editions' ISBNs, the ISBN if it has only the one edition, and a page count
+ * from its editions. Nothing under LIKELY is a match.
+ */
+async function byTitle(title: string, authors: string[], log: Log) {
+  const words = (text: string) => new Set(text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter((w) => w && !ARTICLES.has(w)));
+  const surname = (name: string) => [...words(name)].at(-1);
+  const dice = (a: Set<string>, b: Set<string>) => (a.size + b.size ? (2 * [...a].filter((w) => b.has(w)).length) / (a.size + b.size) : 0);
+  const main = title.split(':')[0]; // the models often read the subtitle in too
+  const query = new URLSearchParams({ title: [...words(main)].join(' '), fields: 'key,title,subtitle,author_name,isbn,number_of_pages_median', limit: '5' });
+  if (authors[0]) query.set('author', surname(authors[0]) ?? '');
+  const docs: any[] = (await fetchJson(`https://openlibrary.org/search.json?${query}`, log))?.docs ?? [];
+  const [best] = docs.map((doc) => {
+    const titled = Math.max(dice(words(main), words(doc.title ?? '')), dice(words(title), words(`${doc.title ?? ''} ${doc.subtitle ?? ''}`)));
+    const byAuthor = !authors.length ? 0.8 : authors.some((a) => (doc.author_name ?? []).some((n: string) => surname(n) === surname(a))) ? 1 : 0.5;
+    return { doc, confidence: Math.round(titled * byAuthor * 100) / 100 };
+  }).sort((a, b) => b.confidence - a.confidence);
+  if (!best || best.confidence < LIKELY) return undefined;
+  const editions: string[] = (best.doc.isbn ?? []).filter((isbn: string) => /^97[89]\d{10}$/.test(isbn));
+  let pages = positive(best.doc.number_of_pages_median);
+  if (!pages && editions.length) {
+    const records = await fetchJson(`https://openlibrary.org/api/books?bibkeys=${editions.slice(0, 5).map((isbn) => `ISBN:${isbn}`).join(',')}&format=json&jscmd=data`, log);
+    pages = Object.values(records ?? {}).map((record: any) => positive(record?.number_of_pages) ?? paginated(record?.pagination)).find(Boolean);
+  }
+  return {
+    confidence: best.confidence, title: best.doc.title as string, authors: best.doc.author_name as string[] | undefined,
+    openLibrary: best.doc.key ? `https://openlibrary.org${best.doc.key}` : undefined, editions,
+    isbn: editions.length === 1 ? editions[0] : undefined, pages,
   };
 }
 

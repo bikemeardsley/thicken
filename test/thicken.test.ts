@@ -273,6 +273,46 @@ test('vision: with nothing else to go on, the models say what it is and roughly 
   assert.ok(near(await colorOf(await read(glb), [0, 0, 1]), '#26323a'), 'the front is the phone, cut from the table');
 });
 
+test('book: with no barcode, the title and authors the models read find it, with how sure the match is', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  // The front cover alone, on a table, no barcode in sight.
+  const photo = path.join(folder, 'IMG_1.png');
+  await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } })
+    .composite([{ input: await sharp({ create: { width: 420, height: 640, channels: 3, background: '#1d2b53' } }).png().toBuffer(), left: 240, top: 280 }])
+    .png().toFile(photo);
+  const front = [[240, 280], [660, 280], [660, 920], [240, 920]].map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]);
+  let title = 'THE WORLDS I SEE: CURIOSITY, EXPLORATION, AND DISCOVERY AT THE DAWN OF AI';
+  const fetch = catalog({}, {
+    vision: async ({ prompt }) => (prompt.includes('Which of these is it?') ? { object: 'book', sizeMm: [140, 210, 25] }
+      : { faces: [{ face: 'front', corners: front }], title, authors: ['Dr. Fei-Fei Li'] }),
+    // Open Library files it as "Worlds I See", with three editions; only one edition's record gives its pages.
+    search: { docs: [{ key: '/works/OL1W', title: 'Worlds I See', subtitle: 'Curiosity, Exploration, and Discovery at the Dawn of AI', author_name: ['Fei-Fei Li'],
+      isbn: ['9781250897947', '9781250897930', '9781250898104', '1250898102'] }] },
+    records: { 'ISBN:9781250897947': {}, 'ISBN:9781250897930': {}, 'ISBN:9781250898104': { pagination: '336' } },
+  });
+  t.after(() => fetch.mock.restore());
+
+  const { sidecar } = await thicken([photo]);
+  const query = new URL(String(fetch.mock.calls.find((call) => String(call.arguments[0]).includes('search.json'))!.arguments[0])).searchParams;
+  assert.deepEqual([query.get('title'), query.get('author')], ['worlds i see', 'li'], 'searched without the article, by surname');
+  const match = sidecar.match as { by: string; confidence: number; editions: string[]; isbn?: string; pages: number };
+  assert.deepEqual([match.by, match.confidence, match.editions.length, match.isbn, match.pages], ['title', 1, 3, undefined, 336]);
+  // Three editions, so no one ISBN; the page count still gives the thickness: 336 x 0.075 mm.
+  assert.deepEqual([sidecar.isbn, sidecar.identifiedBy, sidecar.depthMm, (sidecar.measuredBy as Record<string, string>).depth],
+    [undefined, { profile: 'vision', isbn: undefined }, 25.2, 'pages']);
+  assert.equal((sidecar.catalog as { title: string }).title, 'Worlds I See');
+  assert.ok(sidecar.review.every((item) => !item.startsWith('which book')), 'a sure match needs no checking');
+
+  // A title read slightly wrong is a match to check.
+  title = 'Worlds I Saw';
+  const second = await thicken([photo]);
+  assert.equal((second.sidecar.match as { confidence: number }).confidence, 0.67);
+  assert.ok(second.sidecar.review.includes('which book this is (found by its title, 67% sure: check it, or give --isbn)'));
+});
+
 test('book: a thick book\'s spine photo still measures it', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
@@ -506,8 +546,8 @@ test('preview: both sides of a model, drawn beside it as <name>.preview.png', as
  * Stand-in catalogs: Open Library knows one edition (and maybe its cover and catalog record), Google Books is out of
  * quota. With `vision`, also a stand-in vision endpoint at http://vision.test/api, answering for each model and photo.
  */
-function catalog(edition: object, { cover, data, vision }: {
-  cover?: Uint8Array; data?: object;
+function catalog(edition: object, { cover, data, search, records, vision }: {
+  cover?: Uint8Array; data?: object; search?: object; records?: object;
   vision?: (request: { model: string; prompt: string; photo: Buffer; authorization: string | null }) => Promise<object | undefined>;
 } = {}) {
   return mock.method(globalThis, 'fetch', async (url: string | URL, init?: RequestInit) => {
@@ -520,6 +560,8 @@ function catalog(edition: object, { cover, data, vision }: {
     }
     if (href === 'https://openlibrary.org/isbn/9780140328721.json') return Response.json(edition);
     if (data && href.startsWith('https://openlibrary.org/api/books?bibkeys=ISBN:9780140328721')) return Response.json({ 'ISBN:9780140328721': data });
+    if (search && href.startsWith('https://openlibrary.org/search.json?')) return Response.json(search);
+    if (records && href.startsWith('https://openlibrary.org/api/books?bibkeys=')) return Response.json(records);
     if (cover && href.startsWith('https://covers.openlibrary.org/b/isbn/9780140328721-L.jpg')) return new Response(new Uint8Array(cover));
     if (href.startsWith('https://www.googleapis.com/')) return new Response('{}', { status: 429 });
     return new Response('', { status: 404 });

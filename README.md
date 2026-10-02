@@ -272,6 +272,19 @@ with its edge color.
 
 ## Dimensions
 
+**Which book.** The ISBN comes from `--isbn`, else a barcode in the photos.
+With neither, and [vision](#vision-optional), the title and authors the
+models read off it are looked up in Open Library: by the title without its
+leading article (catalogs file "The Worlds I See" as "Worlds I See") and the
+first author's surname. Each result is scored for how sure the match is:
+title words in common (against the title, and against title and subtitle,
+as the models often read both), times an author's surname matching. Under
+50% is no match (warned); under 80% is a match to check (review); the
+sidecar's `match` keeps what was read, the score, the work and its editions.
+The match gives an ISBN only when the work has just one edition; with
+several, which one is yours is unknown, but their records still give the
+page count.
+
 **Book.** Each of width, height and depth comes from the first source that
 knows it, and the sidecar's `measuredBy` says which:
 
