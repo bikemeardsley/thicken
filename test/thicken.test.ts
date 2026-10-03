@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { mock, test } from 'node:test';
 import { getBounds, NodeIO, type Document, type Primitive, type vec2, type vec3 } from '@gltf-transform/core';
 import sharp, { type Sharp } from 'sharp';
+import { load, snap } from '../src/image.ts';
 import { startPreview } from '../src/preview.ts';
 import { batchItems, thicken } from '../src/thicken.ts';
 
@@ -311,6 +312,22 @@ test('book: with no barcode, the title and authors the models read find it, with
   const second = await thicken([photo]);
   assert.equal((second.sidecar.match as { confidence: number }).confidence, 0.67);
   assert.ok(second.sidecar.review.includes('which book this is (found by its title, 67% sure: check it, or give --isbn)'));
+});
+
+test('snap: a model\'s corners, a little off, move onto the cover\'s real edges, not onto print near them', async () => {
+  // A navy cover shot from low down on a brown table, with a white line of print just inside its top edge,
+  // running only the middle of the way across.
+  const truth = [[300, 150], [600, 150], [760, 1000], [140, 1000]];
+  const svg = `<svg width="900" height="1200"><polygon points="${truth.map((p) => p.join(',')).join(' ')}" fill="#1d2b53"/>`
+    + '<rect x="380" y="172" width="140" height="10" fill="#ffffff"/></svg>';
+  const png = await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } }).composite([{ input: Buffer.from(svg) }]).png().toBuffer();
+  const [picture] = await load(png);
+  const off = [[312, 141], [589, 162], [775, 990], [128, 1013]]; // 10–19 px out, as a model's 1–2%
+  const apart = (a: number[][], b: number[][]) => Math.max(...a.map((p, i) => Math.hypot(p[0] - b[i][0], p[1] - b[i][1])));
+  assert.ok(apart(snap(picture, off), truth) < 2, `snapped to ${JSON.stringify(snap(picture, off).map((p) => p.map(Math.round)))}`);
+  // Nothing to snap to: the corners stay put.
+  const [blank] = await load(await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } }).png().toBuffer());
+  assert.deepEqual(snap(blank, off), off);
 });
 
 test('book: a thick book\'s spine photo still measures it', async (t) => {

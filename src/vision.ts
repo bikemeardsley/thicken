@@ -8,7 +8,7 @@
 // agreeing is the confidence. Without THICKEN_VISION_URL nothing is asked,
 // and photos are used whole as before.
 import sharp from 'sharp';
-import type { Picture } from './image.ts';
+import { snap, type Picture } from './image.ts';
 
 const SIZE = 1000; // photos go out letterboxed to 1000 x 1000, so pixels and a 0-1000 scale are the same numbers
 const AGREE = 0.03; // corners within 3% of the diagonal, on average, are the same face in the same place and turn
@@ -22,8 +22,11 @@ export interface Answer {
   faces?: { face: string; corners: number[][] }[]; title?: string; authors?: string[]; // finding faces
   object?: string; sizeMm?: number[]; // saying what it is
 }
-/** A face as settled: its corners (top-left, top-right, bottom-right, bottom-left, upright), and who agreed. */
-export interface Seen { face: string; corners: number[][]; by: string[]; agreed: boolean }
+/**
+ * A face as settled: its corners (top-left, top-right, bottom-right, bottom-left, upright), snapped to its
+ * real edges; the corners as the models gave them; and who agreed.
+ */
+export interface Seen { face: string; corners: number[][]; asSeen: number[][]; by: string[]; agreed: boolean }
 export interface Sight { faces: Seen[]; title?: string; authors?: string[]; answers: Answer[]; disputed: string[] }
 /** What the models said the object is: a profile's name (none, if none fits), its estimated size, and whether they disagreed. */
 export interface Identity { profile?: string; sizeMm?: number[]; disputed: boolean; answers: Answer[] }
@@ -66,7 +69,8 @@ export async function look(picture: Picture, kind: Kind): Promise<Sight> {
   const back = <T extends { corners: number[][] }>(faces: T[]) => faces.map((f) => ({ ...f, corners: f.corners.map(toPicture) }));
   const named = answers.find((a) => a.title);
   return {
-    faces: back(settled.faces), title: named?.title, authors: named?.authors,
+    faces: back(settled.faces).map((f) => ({ ...f, corners: snap(picture, f.corners), asSeen: f.corners })),
+    title: named?.title, authors: named?.authors,
     answers: answers.map((a) => ({ ...a, faces: a.faces && back(a.faces) })), disputed: settled.disputed,
   };
 }
@@ -102,7 +106,8 @@ export async function identify(picture: Picture, kinds: Kind[]): Promise<Identit
  * answered and how long it took, and what was settled, corners rounded.
  */
 export const visionRecord = (sights?: Sight[], identity?: Identity) => {
-  const round = <T extends { corners: number[][] }>(f: T) => ({ ...f, corners: f.corners.map((p) => p.map(Math.round)) });
+  const round = <T extends { corners: number[][]; asSeen?: number[][] }>(f: T) =>
+    ({ ...f, corners: f.corners.map((p) => p.map(Math.round)), ...(f.asSeen && { asSeen: f.asSeen.map((p) => p.map(Math.round)) }) });
   const { host, pathname } = new URL(process.env.THICKEN_VISION_URL!);
   return {
     endpoint: `${host}${pathname.replace(/\/$/, '')}/chat/completions`,
@@ -178,10 +183,10 @@ function settle(answers: Answer[]): { faces: Seen[]; disputed: string[] } {
         }
       }
     }
-    if (best) faces.push({ face: name, corners: best.corners, by: best.by, agreed: true });
+    if (best) faces.push({ face: name, corners: best.corners, asSeen: best.corners, by: best.by, agreed: true });
     else if (each.length > 1 || usable.length === 1) {
       // Named twice in different places or turns (disputed), or by the only model that answered.
-      faces.push({ face: name, corners: each[0].corners, by: [each[0].model], agreed: false });
+      faces.push({ face: name, corners: each[0].corners, asSeen: each[0].corners, by: [each[0].model], agreed: false });
       if (each.length > 1) disputed.push(name);
     }
     // Named by one model while another answered without it: left out.

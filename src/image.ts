@@ -232,6 +232,97 @@ export function straighten(picture: Picture, corners: number[][]): Picture {
   return { data, width, height, transparent: false, source: picture.source };
 }
 
+/**
+ * A face's corners moved onto its real edges: the vision models' corners are
+ * about 1% off, enough to leave a sliver of table at a texture's border. At
+ * points along each side, every place across a narrow band where the
+ * brightness steps (a local peak) is a candidate; a candidate line is one
+ * through such places at most of the points, which a tilted side still is.
+ * Of those, the side takes the one nearest the models' line: print near the
+ * edge, or the page block beyond it, can step harder than the outline, but the
+ * models are only about 1% out. Neighboring lines meet at the new corners. A
+ * side with no line along most of its length keeps its own, and corners that
+ * would move further than the band keep their place.
+ */
+export function snap(picture: Picture, corners: number[][]): number[][] {
+  const { width: w, height: h, data } = picture;
+  const gray = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) gray[i] = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
+  const at = (x: number, y: number) => {
+    const [cx, cy] = [Math.min(w - 1.001, Math.max(0, x)), Math.min(h - 1.001, Math.max(0, y))];
+    const [x0, y0] = [Math.floor(cx), Math.floor(cy)];
+    const [fx, fy] = [cx - x0, cy - y0];
+    const k = y0 * w + x0;
+    return (gray[k] * (1 - fx) + gray[k + 1] * fx) * (1 - fy) + (gray[k + w] * (1 - fx) + gray[k + w + 1] * fx) * fy;
+  };
+  const sides = corners.map((a, i) => [a, corners[(i + 1) % 4]]);
+  const shortest = Math.min(...sides.map(([a, b]) => Math.hypot(b[0] - a[0], b[1] - a[1])));
+  const band = Math.max(2, Math.round(Math.min(0.02 * Math.hypot(w, h), 0.25 * shortest))); // px either side
+
+  // Each side as a line: a point on it and its direction.
+  const lines = sides.map(([a, b]) => {
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const d = [(b[0] - a[0]) / length, (b[1] - a[1]) / length];
+    const n = [-d[1], d[0]];
+    const along = [...Array(SNAP_SAMPLES).keys()].map((k) => length * (0.15 + (0.7 * k) / (SNAP_SAMPLES - 1)));
+    // The brightness step across the side at a point, over a few pixels, as a size.
+    const step = (s: number, t: number) => {
+      const [x, y] = [a[0] + s * d[0] + t * n[0], a[1] + s * d[1] + t * n[1]];
+      return Math.abs(at(x + 1.5 * n[0], y + 1.5 * n[1]) - at(x - 1.5 * n[0], y - 1.5 * n[1]));
+    };
+    // At each point along the side, the offsets across the band where the brightness step peaks hardest.
+    const peaks = along.map((s) => {
+      const sizes = [...Array(2 * band + 1).keys()].map((k) => step(s, k - band));
+      return sizes.flatMap((size, k) => (size >= SNAP_MIN_STEP && size >= (sizes[k - 1] ?? 0) && size > (sizes[k + 1] ?? 0) ? [[size, k - band]] : []))
+        .sort((x, y) => y[0] - x[0]).slice(0, SNAP_PEAKS).map(([, t]) => t);
+    });
+    // Candidate lines through a peak near each end of the side; one is an edge where most points have a peak on it.
+    let best: { points: number[][]; distance: number } | undefined;
+    for (let i = 0; i < SNAP_ENDS; i++) {
+      for (let j = SNAP_SAMPLES - SNAP_ENDS; j < SNAP_SAMPLES; j++) {
+        for (const t1 of peaks[i]) {
+          for (const t2 of peaks[j]) {
+            const lineAt = (s: number) => t1 + ((t2 - t1) * (s - along[i])) / (along[j] - along[i]);
+            const points = along.flatMap((s, k) => {
+              const t = peaks[k].find((p) => Math.abs(p - lineAt(s)) <= 1.5);
+              return t === undefined ? [] : [[s, t]];
+            });
+            if (points.length < SNAP_SAMPLES / 2) continue;
+            const distance = Math.abs(lineAt(along[0])) + Math.abs(lineAt(along[SNAP_SAMPLES - 1]));
+            if (!best || distance < best.distance || (distance === best.distance && points.length > best.points.length)) best = { points, distance };
+          }
+        }
+      }
+    }
+    if (!best) return { a, d, snapped: false };
+    // Least squares through its points, t as a line in s.
+    const on = best.points;
+    const [ms, mt] = [on.reduce((sum, p) => sum + p[0], 0) / on.length, on.reduce((sum, p) => sum + p[1], 0) / on.length];
+    const slope = on.reduce((sum, p) => sum + (p[0] - ms) * (p[1] - mt), 0) / (on.reduce((sum, p) => sum + (p[0] - ms) ** 2, 0) || 1);
+    const line = (s: number) => mt + slope * (s - ms);
+    const p0 = [a[0] + line(0) * n[0], a[1] + line(0) * n[1]];
+    const p1 = [a[0] + length * d[0] + line(length) * n[0], a[1] + length * d[1] + line(length) * n[1]];
+    const span = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+    return { a: p0, d: [(p1[0] - p0[0]) / span, (p1[1] - p0[1]) / span], snapped: true };
+  });
+
+  if (!lines.some(({ snapped }) => snapped)) return corners;
+  // Each corner where its two sides' lines meet.
+  const snapped = corners.map((corner, i) => {
+    const [l1, l2] = [lines[(i + 3) % 4], lines[i]];
+    const cross = l1.d[0] * l2.d[1] - l1.d[1] * l2.d[0];
+    if (Math.abs(cross) < 1e-6) return corner;
+    const u = ((l2.a[0] - l1.a[0]) * l2.d[1] - (l2.a[1] - l1.a[1]) * l2.d[0]) / cross;
+    return [l1.a[0] + u * l1.d[0], l1.a[1] + u * l1.d[1]];
+  });
+  return snapped.every((p, i) => Math.hypot(p[0] - corners[i][0], p[1] - corners[i][1]) <= 1.5 * band) ? snapped : corners;
+}
+
+const SNAP_SAMPLES = 41; // points along each side
+const SNAP_MIN_STEP = 4; // gray levels: a brightness step smaller than this is no edge
+const SNAP_PEAKS = 5; // the strongest steps kept at each point (wood grain and print make many)
+const SNAP_ENDS = 6; // points at each end of a side that candidate lines are drawn between
+
 /** The 3 × 3 perspective transform (last entry 1) taking four points to four others: eight equations, solved by elimination. */
 function homography(from: number[][], to: number[][]): number[] {
   const rows = from.flatMap(([x, y], i) => {
