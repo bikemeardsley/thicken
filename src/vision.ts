@@ -185,6 +185,7 @@ function settle(answers: Answer[]): { faces: Seen[]; disputed: string[] } {
   const names = [...new Set(usable.flatMap((a) => a.faces!.map((f) => f.face)))];
   const faces: Seen[] = [];
   const disputed: string[] = [];
+  const singles: { face: string; model: string; corners: number[][] }[] = [];
   for (const name of names) {
     const each = usable.flatMap((a) => a.faces!.filter((f) => f.face === name).slice(0, 1).map((f) => ({ model: a.model, corners: f.corners })));
     let best: { by: string[]; corners: number[][]; apart: number } | undefined;
@@ -201,8 +202,22 @@ function settle(answers: Answer[]): { faces: Seen[]; disputed: string[] } {
       // Named twice in different places or turns (disputed), or by the only model that answered.
       faces.push({ face: name, corners: each[0].corners, asSeen: each[0].corners, by: [each[0].model], agreed: false });
       if (each.length > 1) disputed.push(name);
+    } else {
+      singles.push({ face: name, ...each[0] });
     }
-    // Named by one model while another answered without it: left out.
+  }
+  // Named by one model while another answered without it: left out, unless the other put a face of another name in
+  // the same place. Then they agree where it is but not what it is (a slab's back called its front): the higher
+  // seat's name stands, disputed, so the next model is asked.
+  const seat = (model: string) => usable.findIndex((a) => a.model === model);
+  singles.sort((x, y) => seat(x.model) - seat(y.model));
+  for (const [i, single] of singles.entries()) {
+    const near = (corners: number[][]) => distance(corners, single.corners) < AGREE;
+    if (faces.some((f) => near(f.corners))) continue;
+    if (singles.some((other, j) => j > i && other.model !== single.model && near(other.corners))) {
+      faces.push({ face: single.face, corners: single.corners, asSeen: single.corners, by: [single.model], agreed: false });
+      disputed.push(single.face);
+    }
   }
   return { faces, disputed };
 }

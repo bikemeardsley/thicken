@@ -15,7 +15,8 @@ const USAGE = `usage: thicken [${PROFILES.map((p) => p.name).join('|')}] <pictur
        thicken batch [profile] <folder> [-o out-folder] [--preview] [--force]
        thicken preview <model.glb or folder>...
   book   front back spine (any order) [--isbn 978...] [--size WxHxD]  (mm; any left out are looked up or estimated)
-  slab   front [back]  [--holder psa|psa-thick|psa-tall|bgs|cgc|sgc|tag] [--size WxHxD]
+  slab   front [back]  [--holder psa|psa-thick|psa-tall|bgs|cgc|cgc-tall|sgc|tag] [--size WxHxD] [--pt N]
+  card   front [back]  [--size WxH] [--pt N]  (a raw trading card; --pt for a thick one: 55, 75, 100, 130, 180)
   badge  artwork       [--width mm] [--depth mm]
   box    front [back, sides]  [--size WxHxD]  (anything box-shaped; with vision, the size can be estimated)
 Pictures: JPEG, PNG, HEIC, WebP, AVIF, GIF, TIFF, SVG, or a scanner app's PDF (one picture per page).
@@ -43,6 +44,7 @@ const { positionals, values } = parseArgs({
     isbn: { type: 'string' },
     size: { type: 'string' },
     holder: { type: 'string' },
+    pt: { type: 'string' },
     width: { type: 'string' },
     depth: { type: 'string' },
     preview: { type: 'boolean' },
@@ -64,6 +66,7 @@ const options: Options = {
   isbn: values.isbn,
   sizeMm: values.size?.split(/x/i).map((n) => (n === '' ? undefined : Number(n))) as number[] | undefined,
   holder: values.holder,
+  pt: mm(values.pt),
   widthMm: mm(values.width),
   depthMm: mm(values.depth),
 };

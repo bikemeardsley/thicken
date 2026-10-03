@@ -249,6 +249,41 @@ test('box: anything box-shaped, at the size given, its sides plain until photogr
   assertExtents(await read(glb), [0.07, 0.15, 0.008]);
 });
 
+test('card: a raw trading card in uncropped photos, a thin plate with rounded corners; a thick one by its points', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  // The card's front (green) and back (blue), each lying on a brown table, 900 × 1200 px at 6 px a mm.
+  const quad = [[300, 330], [681, 330], [681, 863.4], [300, 863.4]];
+  const files = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
+  for (const [file, fill] of [[files[0], '#2e7d32'], [files[1], '#1d4f9e']]) {
+    const svg = `<svg width="900" height="1200"><polygon points="${quad.map((p) => p.join(',')).join(' ')}" fill="${fill}"/></svg>`;
+    await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } }).composite([{ input: Buffer.from(svg) }]).png().toFile(file);
+  }
+  const seen = quad.map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]); // letterboxed into 1000 × 1000
+  const fetch = catalog({}, {
+    vision: async ({ prompt, photo }) => {
+      if (prompt.includes('Which of these is it?')) return { object: 'card', sizeMm: [63, 88, 0.3] };
+      const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
+      const middle = (500 * info.width + 500) * info.channels; // green in the middle: the front
+      return { faces: [{ face: data[middle + 1] > data[middle + 2] ? 'front' : 'back', corners: seen }] };
+    },
+  });
+  t.after(() => fetch.mock.restore());
+
+  const { glb, sidecar } = await thicken(files);
+  assert.deepEqual(pick(sidecar, ['profile', 'widthMm', 'heightMm', 'depthMm', 'faces', 'review', 'identifiedBy']), {
+    profile: 'card', widthMm: 63.5, heightMm: 88.9, depthMm: 0.35, faces: { front: 'photo', back: 'photo' }, review: [], identifiedBy: { profile: 'vision' },
+  });
+  const doc = await read(glb);
+  assertExtents(doc, [0.0635, 0.0889, 0.00035]);
+  assertClosed(doc, (63.5 * 88.9 - (4 - Math.PI) * 3.2 ** 2) * 0.35, 5e-4); // rounded corners, 3.2 mm
+  // A thick patch card, sold as 130 pt: 3.3 mm.
+  const thick = await thicken(files, { profile: 'card', pt: 130 });
+  assert.deepEqual([thick.sidecar.depthMm, thick.sidecar.pt, (thick.sidecar.measuredBy as { depth: string }).depth], [3.3, 130, 'pt']);
+});
+
 test('vision: with nothing else to go on, the models say what it is and roughly how big; training mode keeps each question', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
@@ -470,7 +505,7 @@ test('book: any number of photos, each on its face, the sharpest kept, the thick
   assert.ok(near(await colorOf(doc, [0, 1, 0]), '#e8dcc0'), 'top photo on the top');
 });
 
-// slab.jpg: 296 × 500, a PSA holder's shape, with a QR code to a psacard.com cert on the label.
+// slab.jpg: 296 × 500, a PSA holder's shape, with a QR code to a psacard.com cert on its label.
 test('slab: a grader\'s QR code picks the holder, and the holder its size', async () => {
   const { glb, sidecar } = await thicken([fixture('slab.jpg')]);
   assert.deepEqual(pick(sidecar, ['profile', 'sources', 'holder', 'grader', 'cert', 'verifyUrl', 'widthMm', 'heightMm', 'depthMm', 'measuredBy', 'faces', 'review', 'warnings', 'identifiedBy']), {
@@ -496,28 +531,44 @@ test('slab: a grader\'s QR code picks the holder, and the holder its size', asyn
   assert.equal(materials['card-back'].getBaseColorTexture(), null);
 });
 
-test('slab: with vision, the card and label are found in an uncropped photo and set inside the clear holder', async (t) => {
+// A slab lying on a brown table, photographed at 5 px a mm (900 × 1200): its parts as rectangles in mm from its top
+// left; and the same rectangles' corners as the vision models see them, letterboxed into 1000 × 1000.
+const onTable = (x: number, y: number) => [250 + x * 5, 260 + y * 5];
+const quadOf = ([x0, y0, x1, y1]: number[]) => [onTable(x0, y0), onTable(x1, y0), onTable(x1, y1), onTable(x0, y1)];
+const letterboxed = (rect: number[]) => quadOf(rect).map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]);
+async function slabPhoto(file: string, rects: [number[], string][]) {
+  const svg = `<svg width="900" height="1200">${rects.map(([rect, fill]) => `<polygon points="${quadOf(rect).map((p) => p.join(',')).join(' ')}" fill="${fill}"/>`).join('')}</svg>`;
+  await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } }).composite([{ input: Buffer.from(svg) }]).png().toFile(file);
+}
+
+test('slab: with vision, the card and label are found in uncropped photos and set inside the clear holder', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
-  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b,c' });
   t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
-  // A PSA slab (80.5 × 136 mm, at 5 px a mm) on a brown table: its label across the top, and a green card a little
-  // lower than the usual layout has it (its top 33 mm down, where the layout says 32.3), and measuring a little big,
-  // 64.3 × 89.6 mm: near enough standard to be taken for it.
-  const at = (x: number, y: number) => [250 + x * 5, 260 + y * 5]; // mm from the slab's top left, to the photo's pixels
-  const rect = (x0: number, y0: number, x1: number, y1: number) => [at(x0, y0), at(x1, y0), at(x1, y1), at(x0, y1)];
-  const [slab, label, card] = [rect(0, 0, 80.5, 136), rect(4, 4.5, 76.5, 26.3), rect(8.1, 33, 72.4, 122.6)];
-  const svg = `<svg width="900" height="1200">${([[slab, '#c8ccd0'], [label, '#f8f8f8'], [card, '#2e7d32']] as [number[][], string][])
-    .map(([quad, fill]) => `<polygon points="${quad.map((p) => p.join(',')).join(' ')}" fill="${fill}"/>`).join('')}</svg>`;
-  const photo = path.join(folder, 'IMG_1.png');
-  await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } }).composite([{ input: Buffer.from(svg) }]).png().toFile(photo);
-  const seen = (quad: number[][]) => quad.map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]); // letterboxed into 1000 × 1000
+  // A PSA slab (80.5 × 136 mm): its label across the top, and a green card a little lower than the usual layout has it
+  // (its top 33 mm down, where the layout says 32.3), measuring a little big, 64.3 × 89.6 mm: near enough standard to be
+  // taken for it. Its back the same, the card's back blue.
+  const [slab, label, card] = [[0, 0, 80.5, 136], [4, 4.5, 76.5, 26.3], [8.1, 33, 72.4, 122.6]];
+  const [front, back] = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
+  await slabPhoto(front, [[slab, '#c8ccd0'], [label, '#f8f8f8'], [card, '#2e7d32']]);
+  await slabPhoto(back, [[slab, '#c8ccd0'], [label, '#f8f8f8'], [card, '#1d4f9e']]);
   const fetch = catalog({}, {
-    vision: async () => ({ faces: [{ face: 'front', corners: seen(slab) }, { face: 'card', corners: seen(card) }, { face: 'label', corners: seen(label) }] }),
+    vision: async ({ model, photo }) => {
+      const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
+      const middle = (500 * info.width + 500) * info.channels; // the card's middle: green on the front
+      // As with Mike's real slabs, b calls the back the front: same place, another name, so c is asked, and agrees with a.
+      const side = data[middle + 1] > data[middle + 2] || model === 'b' ? 'front' : 'back';
+      return { faces: [{ face: side, corners: letterboxed(slab) }, { face: 'card', corners: letterboxed(card) }, { face: 'label', corners: letterboxed(label) }] };
+    },
   });
   t.after(() => fetch.mock.restore());
 
-  const { glb, sidecar } = await thicken([photo], { profile: 'slab' });
+  const { glb, sidecar } = await thicken([front, back], { profile: 'slab' });
+  assert.deepEqual((sidecar.pictures as { file: string; role: string }[]).map(({ file, role }) => [file, role]), [['IMG_1.png', 'front'], ['IMG_2.png', 'back']]);
+  const photos = (sidecar.vision as { photos: { faces: { face: string; by: string[]; agreed: boolean }[] }[] }).photos;
+  assert.deepEqual(photos[1].faces.find(({ face }) => face === 'back'), { ...photos[1].faces.find(({ face }) => face === 'back'), by: ['a', 'c'], agreed: true });
+  assert.ok(sidecar.review.every((item) => !item.includes('disagree')), 'the name was settled');
   // Found, not laid out: the card where it really is, at the standard size, and the label above it.
   const inside = sidecar.inside as Record<string, { widthMm: number; heightMm: number; atMm: number[]; placedBy: string }>;
   assert.deepEqual([inside.card.placedBy, inside.card.widthMm, inside.card.heightMm, inside.label.placedBy], ['vision', 63.5, 88.9, 'vision']);
@@ -534,8 +585,28 @@ test('slab: with vision, the card and label are found in an uncropped photo and 
     return hits / (data.length / info.channels);
   };
   assert.ok(await share('card-front', (r, g, b) => g > 100 && r < 80 && b < 80) > 0.95, 'the card alone');
+  assert.ok(await share('card-back', (r, g, b) => b > 120 && r < 80 && g < 110) > 0.95, 'the card\'s back alone');
   assert.ok(await share('label-front', (r, g, b) => Math.min(r, g, b) > 230) > 0.95, 'the label alone');
   assertClosed(doc, roundedVolume([80.5, 136, 6.5], 1.5) + (63.5 * 88.9 - (4 - Math.PI) * 3.2 ** 2) * 0.35 + inside.label.widthMm * inside.label.heightMm * 0.3, 5e-4);
+});
+
+test('slab: a tall holder is told by its label, the same size on every holder but spanning much less of a tall one', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  const [slab, label, card] = [[0, 0, 80.5, 136], [15.25, 4.5, 65.25, 20], [12, 30, 68.5, 125]]; // the label spans 62%
+  const photo = path.join(folder, 'IMG_1.png');
+  await slabPhoto(photo, [[slab, '#c8ccd0'], [label, '#f8f8f8'], [card, '#2e7d32']]);
+  const fetch = catalog({}, {
+    vision: async () => ({ faces: [{ face: 'front', corners: letterboxed(slab) }, { face: 'card', corners: letterboxed(card) }, { face: 'label', corners: letterboxed(label) }] }),
+  });
+  t.after(() => fetch.mock.restore());
+  const { sidecar } = await thicken([photo], { profile: 'slab' });
+  assert.deepEqual([sidecar.holder, sidecar.widthMm, sidecar.heightMm], ['psa-tall', 108, 184]);
+  assert.ok(sidecar.warnings.some((w) => w.startsWith('taken for a tall holder (psa-tall): its label spans 62% of its width')), String(sidecar.warnings));
+  // A holder named is the holder made.
+  assert.equal((await thicken([photo], { profile: 'slab', holder: 'psa' })).sidecar.holder, 'psa');
 });
 
 test('slab: the cert is the first whole cert number in the QR link, not a tracking number after it', async (t) => {
@@ -551,24 +622,19 @@ test('slab: the cert is the first whole cert number in the QR link, not a tracki
   assert.deepEqual([sidecar.grader, sidecar.cert], ['psa', '12345678']);
 });
 
-test('slab: every photo showing the label\'s QR code or cert barcode is the front, whatever the order', async (t) => {
+test('slab: a label\'s codes say what it is, not which side a photo shows: without vision, photo order does, for review', async (t) => {
+  // Which side a grader prints its QR code on changes with label designs (Mike's PSA and CGC slabs: the back).
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
-  const back = path.join(folder, 'IMG_1.png');
-  await sharp({ create: { width: 296, height: 500, channels: 3, background: '#c8ccd0' } }).png().toFile(back);
-  const roles = async (files: string[]) =>
-    ((await thicken(files)).sidecar.pictures as { file: string; role: string }[]).map(({ file, role }) => [file, role]);
-  for (const front of ['slab.jpg', 'slab-barcode.jpg']) {
-    assert.deepEqual(await roles([back, fixture(front)]), [['IMG_1.png', 'back'], [front, 'front']]);
-    assert.deepEqual(await roles([fixture(front), fixture(front), back]), [[front, 'front'], [front, 'alternate front'], ['IMG_1.png', 'back']]);
-  }
-  // CGC prints its QR code on the back of the label, so that photo is the back.
-  const { prepareZXingModule, writeBarcode } = await import('zxing-wasm/full');
-  prepareZXingModule({ overrides: { wasmBinary: readFileSync(createRequire(import.meta.url).resolve('zxing-wasm/full/zxing_full.wasm')) } });
-  const qr = Buffer.from(await (await writeBarcode('https://www.cgccards.com/certlookup/4123456001/', { format: 'QRCode', scale: 3 })).image!.arrayBuffer());
-  const cgc = path.join(folder, 'IMG_2.png');
-  await sharp({ create: { width: 296, height: 500, channels: 3, background: '#e8eaec' } }).composite([{ input: qr, left: 40, top: 40 }]).png().toFile(cgc);
-  assert.deepEqual(await roles([cgc, back]), [['IMG_2.png', 'back'], ['IMG_1.png', 'front']]);
+  const plain = path.join(folder, 'IMG_1.png');
+  await sharp({ create: { width: 296, height: 500, channels: 3, background: '#c8ccd0' } }).png().toFile(plain);
+  const made = async (files: string[]) => {
+    const { sidecar } = await thicken(files);
+    return [(sidecar.pictures as { file: string; role: string }[]).map(({ file, role }) => [file, role]), sidecar.grader, sidecar.review];
+  };
+  const review = ['front and back (told apart only by photo order: check they are the right way round)'];
+  assert.deepEqual(await made([fixture('slab.jpg'), plain]), [[['slab.jpg', 'front'], ['IMG_1.png', 'back']], 'psa', review]);
+  assert.deepEqual(await made([plain, fixture('slab.jpg')]), [[['IMG_1.png', 'front'], ['slab.jpg', 'back']], 'psa', review]);
 });
 
 // slab-barcode.jpg: the same holder shape, but an older label with only a Code 128 cert barcode (BGS-style 0017041720).
@@ -626,7 +692,7 @@ test('batch: every model is made, and one that fails is reported without stoppin
   assert.match(first.stderr, /plain: failed: can't tell what this is/);
   assert.match(first.stdout, /3 made, 0 already up to date, 1 failed/);
   assert.match(first.stdout, /to review[^\n]*\n {2}lone-slab: back \(plain color\)$/m, 'the front-only slab is listed');
-  assert.doesNotMatch(first.stdout, /^ {2}slab:/m, 'the full one is not');
+  assert.match(first.stdout, /^ {2}slab: front and back \(told apart only by photo order/m, 'the full one, by photo order without vision');
   assert.deepEqual((await readdir(path.join(folder, 'thicken'))).sort(),
     ['badge.glb', 'badge.json', 'lone-slab.glb', 'lone-slab.json', 'slab.glb', 'slab.json']);
 
