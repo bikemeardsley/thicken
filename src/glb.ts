@@ -42,8 +42,8 @@ export const unlit = (doc: Document, material: Material): Material =>
  * transmission would refract only what's in the scene: on a page, behind a see-through canvas, the clear parts
  * came out white (model-viewer, 2026-10-03), and viewers without the extension draw it solid.
  */
-export const clearMaterial = (doc: Document, name: string): Material =>
-  doc.createMaterial(name).setBaseColorFactor([1, 1, 1, 0.12]).setAlphaMode('BLEND').setMetallicFactor(0).setRoughnessFactor(0.05);
+export const clearMaterial = (doc: Document, name: string, opacity = 0.12): Material =>
+  doc.createMaterial(name).setBaseColorFactor([1, 1, 1, opacity]).setAlphaMode('BLEND').setMetallicFactor(0).setRoughnessFactor(0.05);
 
 /** A plain material in an sRGB color (#rrggbb); glTF wants it linear. */
 export function colorMaterial(doc: Document, name: string, color: string, roughness: number): Material {
@@ -155,38 +155,77 @@ const CORNER_STEPS = 8; // segments in each rounded corner: smooth at a card's s
  * the origin in depth: a front (+Z) and a back for pictures, the back's left edge at +X as on box(), and the edge
  * all round. A rounded rectangle is convex, so each side is a fan from its middle.
  */
-export function plate([widthMm, heightMm, depthMm]: number[], radiusMm = 0, atMm = [0, 0]): { front: Part; back: Part; edge: Part } {
+export function plate([widthMm, heightMm, depthMm]: number[], radiusMm = 0, atMm = [0, 0], zMm = 0): { front: Part; back: Part; edge: Part } {
   const [w, h, z] = [widthMm / 2000, heightMm / 2000, depthMm / 2000];
-  const [cx, cy] = atMm.map((mm) => mm / 1000);
-  const r = Math.min(radiusMm / 1000, w, h);
-  // The outline, counter-clockwise from the right side's top end: each corner an arc, or a point when square.
-  const outline: number[][] = [];
-  for (const [k, [sx, sy]] of [[1, 1], [-1, 1], [-1, -1], [1, -1]].entries()) {
-    for (let s = 0; s <= (r ? CORNER_STEPS : 0); s++) {
-      const a = ((k + s / CORNER_STEPS) * Math.PI) / 2;
-      outline.push([sx * (w - r) + r * Math.cos(a), sy * (h - r) + r * Math.sin(a)]);
-    }
-  }
+  const at = [...atMm, zMm].map((mm) => mm / 1000);
+  const points = outline(w, h, radiusMm / 1000);
   const [front, back, edge] = [emptyPart(), emptyPart(), emptyPart()];
   for (const [side, sz, mirror] of [[front, 1, 1], [back, -1, -1]] as const) {
-    for (const [x, y] of [[0, 0], ...outline]) {
-      side.position.push(cx + x, cy + y, sz * z);
+    for (const [x, y] of [[0, 0], ...points]) {
+      side.position.push(at[0] + x, at[1] + y, at[2] + sz * z);
       side.normal.push(0, 0, sz);
       side.uv.push((1 + (mirror * x) / w) / 2, (1 - y / h) / 2); // glTF's UV origin is the picture's top left
     }
-    for (let i = 1; i <= outline.length; i++) {
-      const next = (i % outline.length) + 1;
+    for (let i = 1; i <= points.length; i++) {
+      const next = (i % points.length) + 1;
       side.index.push(...(sz > 0 ? [0, i, next] : [0, next, i]));
     }
   }
-  outline.forEach(([ax, ay], i) => {
-    const [bx, by] = outline[(i + 1) % outline.length];
+  walls(edge, points, at, z);
+  return { front, back, edge };
+}
+
+/**
+ * A flat ring W × H × D mm around a hole, both rounded rectangles with their own corner radii, centered on `atMm`
+ * and `zMm` in depth: a frame, closed all round (a holder's rim, the ridges framing what it holds).
+ */
+export function ring([widthMm, heightMm, depthMm]: number[], [holeWidthMm, holeHeightMm]: number[], [radiusMm, holeRadiusMm]: number[], atMm = [0, 0], zMm = 0): Part {
+  const part = emptyPart();
+  const at = [...atMm, zMm].map((mm) => mm / 1000);
+  const z = depthMm / 2000;
+  const outer = outline(widthMm / 2000, heightMm / 2000, radiusMm / 1000);
+  const inner = outline(holeWidthMm / 2000, holeHeightMm / 2000, holeRadiusMm / 1000);
+  // Front and back: a strip between the two outlines, point for point (they have as many).
+  for (const sz of [1, -1]) {
+    const first = part.position.length / 3;
+    for (const [x, y] of [...outer, ...inner]) {
+      part.position.push(at[0] + x, at[1] + y, at[2] + sz * z);
+      part.normal.push(0, 0, sz);
+    }
+    const n = outer.length;
+    for (let i = 0; i < n; i++) {
+      const [o0, o1, i0, i1] = [first + i, first + ((i + 1) % n), first + n + i, first + n + ((i + 1) % n)];
+      part.index.push(...(sz > 0 ? [o0, o1, i1, o0, i1, i0] : [o0, i1, o1, o0, i0, i1]));
+    }
+  }
+  walls(part, outer, at, z);
+  walls(part, inner, at, z, true);
+  return part;
+}
+
+/** A rounded rectangle's outline, half-size w × h (m), counter-clockwise from its right side's top end: the same number of points whatever the radius (a square corner repeats its point). */
+function outline(w: number, h: number, radius: number): number[][] {
+  const r = Math.max(0, Math.min(radius, w, h));
+  const points: number[][] = [];
+  for (const [k, [sx, sy]] of [[1, 1], [-1, 1], [-1, -1], [1, -1]].entries()) {
+    for (let s = 0; s <= CORNER_STEPS; s++) {
+      const a = ((k + s / CORNER_STEPS) * Math.PI) / 2;
+      points.push([sx * (w - r) + r * Math.cos(a), sy * (h - r) + r * Math.sin(a)]);
+    }
+  }
+  return points;
+}
+
+/** The walls along an outline, ±z deep around `at`: facing out, or into the hole it bounds. */
+function walls(part: Part, points: number[][], [cx, cy, cz]: number[], z: number, inward = false): void {
+  points.forEach(([ax, ay], i) => {
+    const [bx, by] = points[(i + 1) % points.length];
     const length = Math.hypot(bx - ax, by - ay);
     if (!length) return;
-    const v = edge.position.length / 3;
-    edge.position.push(cx + ax, cy + ay, z, cx + bx, cy + by, z, cx + bx, cy + by, -z, cx + ax, cy + ay, -z);
-    for (let k = 0; k < 4; k++) edge.normal.push((by - ay) / length, -(bx - ax) / length, 0);
-    edge.index.push(v, v + 3, v + 2, v, v + 2, v + 1);
+    const v = part.position.length / 3;
+    part.position.push(cx + ax, cy + ay, cz + z, cx + bx, cy + by, cz + z, cx + bx, cy + by, cz - z, cx + ax, cy + ay, cz - z);
+    const flip = inward ? -1 : 1;
+    for (let k = 0; k < 4; k++) part.normal.push((flip * (by - ay)) / length, (flip * -(bx - ax)) / length, 0);
+    part.index.push(...(inward ? [v, v + 2, v + 3, v, v + 1, v + 2] : [v, v + 3, v + 2, v, v + 2, v + 1]));
   });
-  return { front, back, edge };
 }
