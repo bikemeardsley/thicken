@@ -240,12 +240,14 @@ test('box: anything box-shaped, at the size given, its sides plain until photogr
   await sharp({ create: { width: 350, height: 750, channels: 3, background: '#26323a' } }).png().toFile(files[0]);
   await sharp({ create: { width: 350, height: 750, channels: 3, background: '#b0bec5' } }).png().toFile(files[1]);
   await assert.rejects(thicken(files, { profile: 'box' }), /a box needs its size/);
-  const { glb, sidecar } = await thicken(files, { profile: 'box', sizeMm: [70, 150, 8] });
+  // Two photos and no vision: nothing says which is the front, and photo order is no evidence.
+  await assert.rejects(thicken(files, { profile: 'box', sizeMm: [70, 150, 8] }), /a vision roster tells the sides apart/);
+  const { glb, sidecar } = await thicken([files[0]], { profile: 'box', sizeMm: [70, 150, 8] });
   assert.deepEqual(pick(sidecar, ['profile', 'widthMm', 'heightMm', 'depthMm', 'faces', 'warnings', 'identifiedBy']), {
     profile: 'box', widthMm: 70, heightMm: 150, depthMm: 8, warnings: [], identifiedBy: { profile: 'given' },
-    faces: { front: 'photo', back: 'photo', left: 'plain', right: 'plain', top: 'plain', bottom: 'plain' },
+    faces: { front: 'photo', back: 'color', left: 'plain', right: 'plain', top: 'plain', bottom: 'plain' },
   });
-  assert.deepEqual(sidecar.review, ['front and back (told apart only by photo order: check they are the right way round)']);
+  assert.deepEqual(sidecar.review, ['back (plain color)']);
   assertExtents(await read(glb), [0.07, 0.15, 0.008]);
 });
 
@@ -262,23 +264,30 @@ test('card: a raw trading card in uncropped photos, a thin plate with rounded co
     await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } }).composite([{ input: Buffer.from(svg) }]).png().toFile(file);
   }
   const seen = quad.map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]); // letterboxed into 1000 × 1000
+  let corners = 'rounded'; // what the models say of the card's corners
   const fetch = catalog({}, {
     vision: async ({ prompt, photo }) => {
       if (prompt.includes('Which of these is it?')) return { object: 'card', sizeMm: [63, 88, 0.3] };
       const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
       const middle = (500 * info.width + 500) * info.channels; // green in the middle: the front
-      return { faces: [{ face: data[middle + 1] > data[middle + 2] ? 'front' : 'back', corners: seen }] };
+      return { faces: [{ face: data[middle + 1] > data[middle + 2] ? 'front' : 'back', corners: seen }], corners };
     },
   });
   t.after(() => fetch.mock.restore());
 
   const { glb, sidecar } = await thicken(files);
-  assert.deepEqual(pick(sidecar, ['profile', 'widthMm', 'heightMm', 'depthMm', 'faces', 'review', 'identifiedBy']), {
-    profile: 'card', widthMm: 63.5, heightMm: 88.9, depthMm: 0.35, faces: { front: 'photo', back: 'photo' }, review: [], identifiedBy: { profile: 'vision' },
+  assert.deepEqual(pick(sidecar, ['profile', 'widthMm', 'heightMm', 'depthMm', 'corners', 'cornersBy', 'faces', 'review', 'identifiedBy']), {
+    profile: 'card', widthMm: 63.5, heightMm: 88.9, depthMm: 0.35, corners: 'rounded', cornersBy: 'vision',
+    faces: { front: 'photo', back: 'photo' }, review: [], identifiedBy: { profile: 'vision' },
   });
   const doc = await read(glb);
   assertExtents(doc, [0.0635, 0.0889, 0.00035]);
   assertClosed(doc, (63.5 * 88.9 - (4 - Math.PI) * 3.2 ** 2) * 0.35, 5e-4); // rounded corners, 3.2 mm
+  // A vintage card, cut square: the models say so, and its corners stay square.
+  corners = 'square';
+  const vintage = await thicken(files, { profile: 'card' });
+  assert.deepEqual([vintage.sidecar.corners, vintage.sidecar.cornersBy], ['square', 'vision']);
+  assertClosed(await read(vintage.glb), 63.5 * 88.9 * 0.35, 1e-4);
   // A thick patch card, sold as 130 pt: 3.3 mm.
   const thick = await thicken(files, { profile: 'card', pt: 130 });
   assert.deepEqual([thick.sidecar.depthMm, thick.sidecar.pt, (thick.sidecar.measuredBy as { depth: string }).depth], [3.3, 130, 'pt']);
@@ -423,16 +432,17 @@ test('book: a thick book\'s spine photo still measures it', async (t) => {
   assert.deepEqual([sidecar.depthMm, (sidecar.measuredBy as Record<string, string>).depth], [71.1, 'photos']);
 });
 
-test('book: with no barcode, the front and back go by photo order, marked for review', async (t) => {
+test('book: with no barcode and no vision, two covers can\'t be told apart, so the run stops rather than guess; one cover still makes a book', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
   const files = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png'), path.join(folder, 'IMG_3.png')];
   await sharp({ create: { width: 500, height: 800, channels: 3, background: '#1d2b53' } }).png().toFile(files[0]);
   await sharp({ create: { width: 500, height: 800, channels: 3, background: '#2e7d32' } }).png().toFile(files[1]);
   await sharp({ create: { width: 60, height: 800, channels: 3, background: '#c62828' } }).png().toFile(files[2]);
-  const { sidecar } = await thicken(files, { profile: 'book' });
-  assert.deepEqual((sidecar.pictures as { role: string }[]).map(({ role }) => role), ['front', 'back', 'spine']);
-  assert.match(sidecar.review.join('\n'), /^front and back \(no barcode: told apart only by photo order/m);
+  // Photo order is no evidence of which cover is the front.
+  await assert.rejects(thicken(files, { profile: 'book' }), /a vision roster tells the sides apart/);
+  const { sidecar } = await thicken([files[0], files[2]], { profile: 'book' });
+  assert.deepEqual((sidecar.pictures as { role: string }[]).map(({ role }) => role), ['front', 'spine']);
   // No ISBN, so the height is a trim size guessed from the cover, and the spine's thickness scales with it:
   // warned, not for review, as the model still shows the book's faces.
   assert.ok(sidecar.warnings.includes('the thickness is from the photos, scaled to a guessed height'));
@@ -622,19 +632,15 @@ test('slab: the cert is the first whole cert number in the QR link, not a tracki
   assert.deepEqual([sidecar.grader, sidecar.cert], ['psa', '12345678']);
 });
 
-test('slab: a label\'s codes say what it is, not which side a photo shows: without vision, photo order does, for review', async (t) => {
-  // Which side a grader prints its QR code on changes with label designs (Mike's PSA and CGC slabs: the back).
+test('slab: a label\'s codes say what it is, not which side a photo shows: without vision, two photos stop the run', async (t) => {
+  // Which side a grader prints its QR code on changes with label designs (Mike's PSA and CGC slabs: the back), and
+  // photo order is no evidence either: the vision models tell the sides apart.
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
   const plain = path.join(folder, 'IMG_1.png');
   await sharp({ create: { width: 296, height: 500, channels: 3, background: '#c8ccd0' } }).png().toFile(plain);
-  const made = async (files: string[]) => {
-    const { sidecar } = await thicken(files);
-    return [(sidecar.pictures as { file: string; role: string }[]).map(({ file, role }) => [file, role]), sidecar.grader, sidecar.review];
-  };
-  const review = ['front and back (told apart only by photo order: check they are the right way round)'];
-  assert.deepEqual(await made([fixture('slab.jpg'), plain]), [[['slab.jpg', 'front'], ['IMG_1.png', 'back']], 'psa', review]);
-  assert.deepEqual(await made([plain, fixture('slab.jpg')]), [[['IMG_1.png', 'front'], ['slab.jpg', 'back']], 'psa', review]);
+  await assert.rejects(thicken([fixture('slab.jpg'), plain]), /a vision roster tells the sides apart/);
+  await assert.rejects(thicken([plain, fixture('slab.jpg')]), /a vision roster tells the sides apart/);
 });
 
 // slab-barcode.jpg: the same holder shape, but an older label with only a Code 128 cert barcode (BGS-style 0017041720).
@@ -690,18 +696,18 @@ test('batch: every model is made, and one that fails is reported without stoppin
   const first = batch();
   assert.equal(first.status, 1, 'a failed model fails the batch');
   assert.match(first.stderr, /plain: failed: can't tell what this is/);
-  assert.match(first.stdout, /3 made, 0 already up to date, 1 failed/);
+  // Two photos of a slab, and no vision roster to say which is the front: stopped, not guessed.
+  assert.match(first.stderr, /slab: failed: nothing in the photos says which one shows the front/);
+  assert.match(first.stdout, /2 made, 0 already up to date, 2 failed/);
   assert.match(first.stdout, /to review[^\n]*\n {2}lone-slab: back \(plain color\)$/m, 'the front-only slab is listed');
-  assert.match(first.stdout, /^ {2}slab: front and back \(told apart only by photo order/m, 'the full one, by photo order without vision');
-  assert.deepEqual((await readdir(path.join(folder, 'thicken'))).sort(),
-    ['badge.glb', 'badge.json', 'lone-slab.glb', 'lone-slab.json', 'slab.glb', 'slab.json']);
+  assert.deepEqual((await readdir(path.join(folder, 'thicken'))).sort(), ['badge.glb', 'badge.json', 'lone-slab.glb', 'lone-slab.json']);
 
   // Run again: made from exactly these pictures, so left alone, until a picture changes,
   // even to one dated earlier (a camera keeps its photos' capture dates).
-  assert.match(batch().stdout, /0 made, 3 already up to date, 1 failed/);
+  assert.match(batch().stdout, /0 made, 2 already up to date, 2 failed/);
   const earlier = new Date(2001, 0, 1);
-  await utimes(path.join(folder, 'slab', 'IMG_2.jpg'), earlier, earlier);
-  assert.match(batch().stdout, /1 made, 2 already up to date, 1 failed/);
+  await utimes(path.join(folder, 'lone-slab.jpg'), earlier, earlier);
+  assert.match(batch().stdout, /1 made, 1 already up to date, 2 failed/);
 });
 
 test('preview: both sides of a model, drawn beside it as <name>.preview.png', async (t) => {

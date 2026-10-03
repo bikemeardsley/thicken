@@ -5,12 +5,12 @@
 // (or use a scanner app), and the card and label go where a holder usually
 // has them.
 import { Document } from '@gltf-transform/core';
-import { assignFaces, cut, pictureRecord, shots } from '../faces.ts';
+import { assignFaces, cut, pictureRecord, shots, sidesUnknown } from '../faces.ts';
 import { addPart, clearMaterial, colorMaterial, pictureMaterial, plate, roundedBox, toGlb, type Side } from '../glb.ts';
 import { mapping, straighten, subjectBox, texture, type Picture } from '../image.ts';
 import type { Faces, Profile, Scanned } from '../thicken.ts';
 import type { Sight } from '../vision.ts';
-import { CARD_CORNER_MM, CARD_DEPTH_MM, CARD_MM, CARDSTOCK, PT_MM } from './card.ts';
+import { CARD_DEPTH_MM, CARD_MM, CARDSTOCK, CORNERS_ASK, cornersOf, PT_MM } from './card.ts';
 
 // A grader's QR code points at its own verification page, which says whose holder this is.
 const GRADER_SITES: Record<string, string> = { 'psacard.com': 'psa', 'beckett.com': 'bgs', 'cgccards.com': 'cgc', 'gosgc.com': 'sgc', 'taggrading.com': 'tag' };
@@ -28,6 +28,7 @@ export const slab: Profile = {
     label: 'the label inside the holder, front or back',
   },
   note: 'The card and the label are inside the holder, on whichever side is shown: give their corners in the holder\'s own order (top-left as it stands with its label at the top), even when the card is printed sideways.',
+  asks: { corners: CORNERS_ASK },
   read: (scanned, [picture]) => {
     const { use, grader, cert, certFrom, verifyUrl } = readLabel(scanned);
     // A grader's QR code says it's a slab; a cert barcode alone only on a photo shaped like a holder.
@@ -138,8 +139,8 @@ export interface Label { grader?: string; cert?: string; verifyUrl?: string }
 /**
  * Pictures in any number and order (src/faces.ts), with what the vision models
  * saw in each (`sights`), if asked. The models say which side each photo shows
- * (the front shows the grade); without them, photo order does, marked for
- * review. A label's codes say what the slab is, not which side they're on: that
+ * (the front shows the grade); without them, a lone photo is the front, and
+ * two stop the run. A label's codes say what the slab is, not which side they're on: that
  * changes with label designs over the years (Mike's PSA and CGC slabs put the QR
  * code on the back, and PSA its cert barcode on both sides). With no holder named
  * or read off a QR code, a PSA-size holder is assumed, warned; a tall one is told
@@ -159,8 +160,8 @@ async function make(
   const outer = sights?.map((sight) => ({ ...sight, faces: sight.faces.filter(({ face }) => face === 'front' || face === 'back') }));
   const { parts, placed, from } = cut(pictures, outer);
   const all = await shots(parts);
-  const { chosen, roles, guessedFrontBack } = assignFaces(all, ['front', 'back'], { placed });
-  if (guessedFrontBack) review.push('front and back (told apart only by photo order: check they are the right way round)');
+  const { chosen, roles, undecided } = assignFaces(all, ['front', 'back'], { placed });
+  if (undecided) throw sidesUnknown(Boolean(sights));
   if (chosen.front === undefined) throw new Error('a slab needs a photo of its front');
   // A tall holder, told by its label: the same size on every holder, it spans much less of a tall one.
   const front = from[chosen.front];
@@ -236,7 +237,8 @@ async function make(
   shell.uv.length = 0;
   addPart(doc, mesh, shell, clearMaterial(doc, 'acrylic'));
   const cardDepth = Math.min(pt ? pt * PT_MM : CARD_DEPTH_MM, size[2] - 2 * WALL_MM); // a thick card, by its points, as fits
-  const plates = { card: { depth: cardDepth, corner: CARD_CORNER_MM, edge: CARDSTOCK }, label: { depth: LABEL_DEPTH_MM, corner: 0, edge: LABEL_EDGE } };
+  const { radiusMm, corners, cornersBy } = cornersOf(sights);
+  const plates = { card: { depth: cardDepth, corner: radiusMm, edge: CARDSTOCK }, label: { depth: LABEL_DEPTH_MM, corner: 0, edge: LABEL_EDGE } };
   for (const part of ['card', 'label'] as const) {
     const r = rects[part];
     const { depth, corner, edge: color } = plates[part];
@@ -258,7 +260,10 @@ async function make(
       // The card and label inside: their size, where their middles are (mm from the holder's middle, y up), and what placed them.
       inside: Object.fromEntries((['card', 'label'] as const).map((part) => {
         const r = rects[part];
-        return [part, { widthMm: round(r.x1 - r.x0), heightMm: round(r.y1 - r.y0), atMm: [round((r.x0 + r.x1) / 2), round((r.y0 + r.y1) / 2)], placedBy: placedBy[part] }];
+        return [part, {
+          widthMm: round(r.x1 - r.x0), heightMm: round(r.y1 - r.y0), atMm: [round((r.x0 + r.x1) / 2), round((r.y0 + r.y1) / 2)], placedBy: placedBy[part],
+          ...(part === 'card' && { corners, cornersBy }),
+        }];
       })),
       review, warnings, pictures: pictureRecord(all, roles),
     },

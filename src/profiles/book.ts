@@ -7,7 +7,7 @@
 // size, then for thickness the spine and page-edge photos and the page count.
 // With an ISBN the sidecar also gets Open Library's catalog record.
 import sharp from 'sharp';
-import { assignFaces, cut, pictureRecord, shots } from '../faces.ts';
+import { assignFaces, cut, pictureRecord, shots, sidesUnknown } from '../faces.ts';
 import { box, type Side } from '../glb.ts';
 import { load, texture, turned, type Picture } from '../image.ts';
 import type { Code, Faces, Profile } from '../thicken.ts';
@@ -77,8 +77,8 @@ async function make(
   const proofs = codes.filter(({ use }) => use === 'isbn').map(({ picture, at = [] }) => ({ picture, face: 'back', at }));
   const { parts, placed } = cut(pictures, sights, proofs);
   const all = await shots(parts);
-  const { chosen, roles, guessedFrontBack } = assignFaces(all, ['front', 'back', 'spine', 'top', 'bottom', 'edge'], { placed, byShape: true });
-  if (guessedFrontBack) review.push('front and back (no barcode: told apart only by photo order, so check they are the right way round)');
+  const { chosen, roles, undecided } = assignFaces(all, ['front', 'back', 'spine', 'top', 'bottom', 'edge'], { placed, byShape: true });
+  if (undecided) throw sidesUnknown(Boolean(sights));
   const photo = (face: string) => (chosen[face] === undefined ? undefined : all[chosen[face]].texture);
   // Narrow photos turned to run along their faces, as if the book lay face up: then the book's top is at a
   // lying spine's left (turned clockwise to stand it up) and at a lying page edge's right (counterclockwise).

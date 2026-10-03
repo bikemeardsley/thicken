@@ -3,12 +3,13 @@
 // vision roster (src/vision.ts), each photo is cut into the faces the models
 // found, straightened and placed. Otherwise, or for a photo they found
 // nothing in, the photo is used whole and, in order: codes place some (a
-// book's ISBN barcode is on its back; a slab's QR code or cert barcode is on
-// its label); a book's narrow photos, shot standing or lying down, are its
-// spine if they show print and a page side if plain paper; what's left is the
-// front, then the back. Extra photos join the face of the same shape whose
-// color they match, and each face keeps its sharpest photo, so more photos
-// make a better model.
+// book's ISBN barcode is on its back); a book's narrow photos, shot standing
+// or lying down, are its spine if they show print and a page side if plain
+// paper; a lone photo left is the front, and with one side proven the other
+// follows. Photo order is no evidence: two photos left that nothing tells
+// apart are for the vision models (sidesUnknown). Extra photos join the face
+// of the same shape whose color they match, and each face keeps its sharpest
+// photo, so more photos make a better model.
 import { inside, isQuad, measure, straighten, texture, type Picture } from './image.ts';
 import type { Sight } from './vision.ts';
 
@@ -71,9 +72,9 @@ export function looksLikePages({ stripes, sharpness, color }: Shot): boolean {
 
 /**
  * Each face's chosen shot, every shot's role for the record (its face,
- * "alternate <face>" or "unused"), and whether front and back were told apart
- * only by photo order, which needs a human to check. `placed[i]` is the face
- * a code put shot i on; `byShape` is for books.
+ * "alternate <face>" or "unused"), and whether front and back are undecided:
+ * nothing but photo order to tell them apart. `placed[i]` is the face the
+ * models or a code put shot i on; `byShape` is for books.
  */
 export function assignFaces(all: Shot[], faces: string[], { placed = [], byShape = false }: { placed?: string[]; byShape?: boolean } = {}) {
   const candidates = new Map<string, number[]>();
@@ -117,9 +118,17 @@ export function assignFaces(all: Shot[], faces: string[], { placed = [], byShape
     chosen[face] = best;
     for (const i of list) roles[i] = i === best ? face : `alternate ${face}`;
   }
-  // Front and back both placed by order alone: nothing in the photos said which is which.
-  return { chosen, roles, guessedFrontBack: byOrder === 2 };
+  // Front and back both left to photo order: nothing in the photos said which is which.
+  return { chosen, roles, undecided: byOrder === 2 };
 }
+
+/**
+ * Photo order is no evidence of which side is which (Mike, 2026-10-03): when nothing else tells them apart, the
+ * vision models must, so a run without them stops. A lone photo is the front; one side proven, the other follows.
+ */
+export const sidesUnknown = (vision: boolean) => new Error(vision
+  ? 'the vision models didn\'t say which photo shows the front: run again'
+  : 'nothing in the photos says which one shows the front: a vision roster tells the sides apart (see the README), or give just the front');
 
 /** The record of each photo for the sidecar: where it came from, how sharp, and what it became. */
 export const pictureRecord = (all: Shot[], roles: string[]) =>
