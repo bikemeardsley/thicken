@@ -42,6 +42,8 @@ jobs:
         run: |
           node diag-preview.mts chrome || true
           node diag-preview.mts msedge || true
+          node diag-two.mts chrome || true
+          node diag-two.mts msedge || true
       - uses: actions/upload-artifact@v4
         if: always() && runner.os == 'Windows'
         with:
