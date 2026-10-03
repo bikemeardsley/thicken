@@ -475,12 +475,67 @@ test('slab: a grader\'s QR code picks the holder, and the holder its size', asyn
   const { glb, sidecar } = await thicken([fixture('slab.jpg')]);
   assert.deepEqual(pick(sidecar, ['profile', 'sources', 'holder', 'grader', 'cert', 'verifyUrl', 'widthMm', 'heightMm', 'depthMm', 'measuredBy', 'faces', 'review', 'warnings', 'identifiedBy']), {
     profile: 'slab', sources: ['slab.jpg'], holder: 'psa', grader: 'psa', cert: '12345678', verifyUrl: 'https://www.psacard.com/cert/12345678',
-    widthMm: 80.5, heightMm: 136, depthMm: 6.5, measuredBy: 'table', faces: { front: 'photo', back: 'plastic' },
-    review: ['back (plain plastic)'], warnings: [], identifiedBy: { profile: 'recognized', grader: 'qr', cert: 'qr' },
+    widthMm: 80.5, heightMm: 136, depthMm: 6.5, measuredBy: 'table', faces: { front: 'photo', back: 'color' }, review: ['back (plain color)'],
+    warnings: ['the card and label are placed where a psa holder usually has them: with a vision roster they\'re found in the photos'],
+    identifiedBy: { profile: 'recognized', grader: 'qr', cert: 'qr' },
   });
   const doc = await read(glb);
   assertExtents(doc, [0.0805, 0.136, 0.0065]);
-  assertClosed(doc, roundedVolume([80.5, 136, 6.5], 1.5), 5e-4); // the holder's molded edges
+  // Three closed solids: the holder (its molded edges rounded), and the card and label inside it.
+  const { card, label } = sidecar.inside as Record<string, { widthMm: number; heightMm: number; placedBy: string }>;
+  assert.deepEqual([card.widthMm, card.heightMm, card.placedBy, label.placedBy], [63.5, 88.9, 'layout', 'layout']);
+  const plates = (63.5 * 88.9 - (4 - Math.PI) * 3.2 ** 2) * 0.35 + label.widthMm * label.heightMm * 0.3;
+  assertClosed(doc, roundedVolume([80.5, 136, 6.5], 1.5) + plates, 5e-4);
+  // The holder is clear: blended, so a page shows through it.
+  const materials = Object.fromEntries(doc.getRoot().listMaterials().map((material) => [material.getName(), material]));
+  assert.deepEqual([materials.acrylic.getAlphaMode(), materials.acrylic.getAlpha()], ['BLEND', 0.12]);
+  // The card is cut from the photo (green there), and its back, never photographed, is plain card stock.
+  const front = await sharp(materials['card-front'].getBaseColorTexture()!.getImage()!).raw().toBuffer({ resolveWithObject: true });
+  const middle = (Math.floor(front.info.height / 2) * front.info.width + Math.floor(front.info.width / 2)) * front.info.channels;
+  assert.ok(front.data[middle + 1] > 2 * front.data[middle], 'the card plate shows the green card');
+  assert.equal(materials['card-back'].getBaseColorTexture(), null);
+});
+
+test('slab: with vision, the card and label are found in an uncropped photo and set inside the clear holder', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  // A PSA slab (80.5 × 136 mm, at 5 px a mm) on a brown table: its label across the top, and a green card a little
+  // lower than the usual layout has it (its top 33 mm down, where the layout says 32.3), and measuring a little big,
+  // 64.3 × 89.6 mm: near enough standard to be taken for it.
+  const at = (x: number, y: number) => [250 + x * 5, 260 + y * 5]; // mm from the slab's top left, to the photo's pixels
+  const rect = (x0: number, y0: number, x1: number, y1: number) => [at(x0, y0), at(x1, y0), at(x1, y1), at(x0, y1)];
+  const [slab, label, card] = [rect(0, 0, 80.5, 136), rect(4, 4.5, 76.5, 26.3), rect(8.1, 33, 72.4, 122.6)];
+  const svg = `<svg width="900" height="1200">${([[slab, '#c8ccd0'], [label, '#f8f8f8'], [card, '#2e7d32']] as [number[][], string][])
+    .map(([quad, fill]) => `<polygon points="${quad.map((p) => p.join(',')).join(' ')}" fill="${fill}"/>`).join('')}</svg>`;
+  const photo = path.join(folder, 'IMG_1.png');
+  await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } }).composite([{ input: Buffer.from(svg) }]).png().toFile(photo);
+  const seen = (quad: number[][]) => quad.map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]); // letterboxed into 1000 × 1000
+  const fetch = catalog({}, {
+    vision: async () => ({ faces: [{ face: 'front', corners: seen(slab) }, { face: 'card', corners: seen(card) }, { face: 'label', corners: seen(label) }] }),
+  });
+  t.after(() => fetch.mock.restore());
+
+  const { glb, sidecar } = await thicken([photo], { profile: 'slab' });
+  // Found, not laid out: the card where it really is, at the standard size, and the label above it.
+  const inside = sidecar.inside as Record<string, { widthMm: number; heightMm: number; atMm: number[]; placedBy: string }>;
+  assert.deepEqual([inside.card.placedBy, inside.card.widthMm, inside.card.heightMm, inside.label.placedBy], ['vision', 63.5, 88.9, 'vision']);
+  assert.ok(Math.abs(inside.card.atMm[0]) <= 0.2 && Math.abs(inside.card.atMm[1] - (68 - 77.8)) <= 0.2, `card at ${inside.card.atMm}`);
+  assert.ok(Math.abs(inside.label.widthMm - 72.5) <= 0.3 && Math.abs(inside.label.heightMm - 21.8) <= 0.3, `label ${inside.label.widthMm} × ${inside.label.heightMm}`);
+  assert.ok(sidecar.review.every((item) => !item.includes('didn\'t find')), 'nothing laid out by guess');
+  // Each picture is its part alone: no table, no clear border.
+  const doc = await read(glb);
+  const materials = Object.fromEntries(doc.getRoot().listMaterials().map((material) => [material.getName(), material]));
+  const share = async (name: string, wanted: (r: number, g: number, b: number) => boolean) => {
+    const { data, info } = await sharp(materials[name].getBaseColorTexture()!.getImage()!).raw().toBuffer({ resolveWithObject: true });
+    let hits = 0;
+    for (let i = 0; i < data.length; i += info.channels) if (wanted(data[i], data[i + 1], data[i + 2])) hits++;
+    return hits / (data.length / info.channels);
+  };
+  assert.ok(await share('card-front', (r, g, b) => g > 100 && r < 80 && b < 80) > 0.95, 'the card alone');
+  assert.ok(await share('label-front', (r, g, b) => Math.min(r, g, b) > 230) > 0.95, 'the label alone');
+  assertClosed(doc, roundedVolume([80.5, 136, 6.5], 1.5) + (63.5 * 88.9 - (4 - Math.PI) * 3.2 ** 2) * 0.35 + inside.label.widthMm * inside.label.heightMm * 0.3, 5e-4);
 });
 
 test('slab: the cert is the first whole cert number in the QR link, not a tracking number after it', async (t) => {
@@ -570,7 +625,7 @@ test('batch: every model is made, and one that fails is reported without stoppin
   assert.equal(first.status, 1, 'a failed model fails the batch');
   assert.match(first.stderr, /plain: failed: can't tell what this is/);
   assert.match(first.stdout, /3 made, 0 already up to date, 1 failed/);
-  assert.match(first.stdout, /to review[^\n]*\n {2}lone-slab: back \(plain plastic\)$/m, 'the front-only slab is listed');
+  assert.match(first.stdout, /to review[^\n]*\n {2}lone-slab: back \(plain color\)$/m, 'the front-only slab is listed');
   assert.doesNotMatch(first.stdout, /^ {2}slab:/m, 'the full one is not');
   assert.deepEqual((await readdir(path.join(folder, 'thicken'))).sort(),
     ['badge.glb', 'badge.json', 'lone-slab.glb', 'lone-slab.json', 'slab.glb', 'slab.json']);

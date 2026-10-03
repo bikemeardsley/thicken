@@ -344,6 +344,15 @@ const SNAP_MIN_STEP = 4; // gray levels: a brightness step smaller than this is 
 const SNAP_PEAKS = 5; // the strongest steps kept at each point (wood grain and print make many)
 const SNAP_ENDS = 6; // points at each end of a side that candidate lines are drawn between
 
+/** Points inside four corners taken to the same places inside four others, by the perspective transform between them. */
+export function mapping(from: number[][], to: number[][]): (point: number[]) => number[] {
+  const [a, b, c, d, e, f, g, h] = homography(from, to);
+  return ([x, y]) => {
+    const z = g * x + h * y + 1;
+    return [(a * x + b * y + c) / z, (d * x + e * y + f) / z];
+  };
+}
+
 /** The 3 × 3 perspective transform (last entry 1) taking four points to four others: eight equations, solved by elimination. */
 function homography(from: number[][], to: number[][]): number[] {
   const rows = from.flatMap(([x, y], i) => {

@@ -32,24 +32,27 @@ const MIN_FACE_PX = 24; // a face seen narrower than this (a sliver of spine pas
  * found in a photo, straightened; a photo they found none in, whole, placed by its codes if at all.
  * A code outranks the models: the face it's printed on is the face it proves, whatever they called it.
  */
-export function cut(pictures: Picture[], sights: Sight[] = [], proofs: Proof[] = []): { parts: Picture[]; placed: string[] } {
+export function cut(pictures: Picture[], sights: Sight[] = [], proofs: Proof[] = []) {
   const parts: Picture[] = [];
   const placed: string[] = [];
+  const from: { picture: number; corners?: number[][] }[] = []; // each part's picture, and its corners there if cut out
   pictures.forEach((picture, i) => {
     const faces = (sights[i]?.faces ?? []).filter(({ corners }) => isQuad(corners) &&
       corners.every((p, k) => Math.hypot(corners[(k + 1) % 4][0] - p[0], corners[(k + 1) % 4][1] - p[1]) >= MIN_FACE_PX));
     const proven = proofs.filter((proof) => proof.picture === i);
     if (!faces.length) {
       placed[parts.length] = proven[0]?.face;
+      from.push({ picture: i });
       parts.push(picture);
     }
     for (const { face, corners } of faces) {
       const named = proven.find(({ at }) => inside(at, corners))?.face ?? face;
       placed[parts.length] = named;
+      from.push({ picture: i, corners });
       parts.push({ ...straighten(picture, corners), source: { ...picture.source, face: named } });
     }
   });
-  return { parts, placed };
+  return { parts, placed, from };
 }
 
 export const shots = (pictures: Picture[]): Promise<Shot[]> =>
