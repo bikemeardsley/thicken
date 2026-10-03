@@ -295,6 +295,70 @@ test('card: a raw trading card in uncropped photos, a thin plate with rounded co
   assert.deepEqual([thick.sidecar.depthMm, thick.sidecar.pt, (thick.sidecar.measuredBy as { depth: string }).depth], [3.3, 130, 'pt']);
 });
 
+const hasFfmpeg = spawnSync('ffmpeg', ['-version']).status === 0;
+
+test('video: its sharpest frames, upright, join the photos for the vision models, and a photo still beats a frame', { skip: !hasFfmpeg && 'ffmpeg isn\'t installed' }, async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  // The card on its table from the card test at half the size, with a white mark top left to show which way up.
+  const quad = [[150, 165], [340.5, 165], [340.5, 431.7], [150, 431.7]];
+  const scene = async (fill: string) => sharp(await sharp({ create: { width: 450, height: 600, channels: 3, background: '#8b5a2b' } })
+    .composite([{ input: Buffer.from(`<svg width="450" height="600"><rect width="50" height="50" fill="#fff"/><polygon points="${quad.map((p) => p.join(',')).join(' ')}" fill="${fill}"/></svg>`) }])
+    .png().toBuffer());
+  // Its front in a photo a little soft; then a phone video, held upright, turning it over: four seconds, front then
+  // back, most frames blurred by the moving phone. A phone stores an upright video sideways with a note to turn it,
+  // and an iPhone's is HDR (HLG).
+  const photo = path.join(folder, 'IMG_1.png');
+  await (await scene('#2e7d32')).blur(1).toFile(photo);
+  for (let k = 0; k < 24; k++) {
+    const frame = await scene(k < 12 ? '#2e7d32' : '#1d4f9e');
+    await (k % 4 === 2 ? frame : frame.blur(3)).rotate(90).png().toFile(path.join(folder, `f${String(k).padStart(2, '0')}.png`));
+  }
+  const ffmpeg = (...args: string[]) => assert.equal(spawnSync('ffmpeg', ['-v', 'error', '-y', ...args]).status, 0);
+  ffmpeg('-framerate', '6', '-i', path.join(folder, 'f%02d.png'), '-c:v', 'mpeg4', '-q:v', '2', '-pix_fmt', 'yuv420p', path.join(folder, 'sideways.mp4'));
+  const video = path.join(folder, 'IMG_2.MOV');
+  // Tagged when the turn is noted: tags given while encoding from PNG don't stick.
+  ffmpeg('-display_rotation', '90', '-i', path.join(folder, 'sideways.mp4'), '-c', 'copy',
+    '-color_trc', 'arib-std-b67', '-color_primaries', 'bt2020', '-colorspace', 'bt2020nc', video);
+
+  // Six frames, the sharp one of each stretch of four, turned upright.
+  const frames = await load(video);
+  assert.deepEqual(frames.map(({ source }) => source.time), [0.3, 1, 1.7, 2.3, 3, 3.7]);
+  const { file, format, width, height } = frames[0].source;
+  assert.deepEqual({ file, format, width, height }, { file: 'IMG_2.MOV', format: 'mpeg4', width: 450, height: 600 });
+  for (const frame of frames) {
+    assert.deepEqual([frame.width, frame.height], [450, 600]);
+    const [red, blue] = [0, 2].map((k) => (x: number, y: number) => frame.data[(y * frame.width + x) * 4 + k]);
+    assert.ok(blue(25, 25) > 150, 'the white mark is top left');
+    assert.ok(red(425, 25) > 165, 'toned down from HDR: the brown table, read as HLG, comes out lighter (red about 190, not 139)');
+  }
+
+  const seen = quad.map(([x, y]) => [125 + (x * 5) / 3, (y * 5) / 3]); // letterboxed into 1000 × 1000
+  const fetch = catalog({}, {
+    vision: async ({ photo: sent }) => {
+      const { data, info } = await sharp(sent).raw().toBuffer({ resolveWithObject: true });
+      const middle = (500 * info.width + 500) * info.channels; // green in the middle: the front
+      return { faces: [{ face: data[middle + 1] > data[middle + 2] ? 'front' : 'back', corners: seen }], corners: 'square' };
+    },
+  });
+  t.after(() => fetch.mock.restore());
+  const { sidecar } = await thicken([photo, video], { profile: 'card' });
+  assert.deepEqual(sidecar.faces, { front: 'photo', back: 'photo' });
+  const pictures = sidecar.pictures as { file: string; time?: number; sharpness: number; role: string }[];
+  const fronts = pictures.filter(({ role }) => role.endsWith('front'));
+  assert.deepEqual(fronts.map(({ file: name, time, role }) => [name, time, role]), [
+    ['IMG_1.png', undefined, 'front'], ['IMG_2.MOV', 0.3, 'alternate front'], ['IMG_2.MOV', 1, 'alternate front'], ['IMG_2.MOV', 1.7, 'alternate front'],
+  ]);
+  assert.ok(Math.max(...fronts.slice(1).map(({ sharpness }) => sharpness)) > fronts[0].sharpness, 'the photo wins though a frame scores sharper');
+  assert.ok([2.3, 3, 3.7].includes(pictures.find(({ role }) => role === 'back')?.time ?? 0), 'the back, which no photo shows, is a frame');
+
+  // Without vision, a video is no use: said, not ignored.
+  delete process.env.THICKEN_VISION_URL;
+  await assert.rejects(thicken([photo, video], { profile: 'card' }), /a video is for the vision models/);
+});
+
 test('vision: with nothing else to go on, the models say what it is and roughly how big; training mode keeps each question', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
@@ -668,11 +732,11 @@ test('a picture with nothing to go on is refused, not guessed', async () => {
   await assert.rejects(thicken([fixture('plain.jpg')]), /can't tell what this is/);
 });
 
-test('batch: a folder is one model per picture, PDF or subfolder, none overwriting another', async (t) => {
+test('batch: a folder is one model per picture, PDF, video or subfolder, none overwriting another', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
   for (const name of [
-    'IMG_10.jpg', 'IMG_2.jpg', 'img_2.PNG', 'notes.txt', '.x.jpg', 'pair/b.jpg', 'pair/a.jpg', 'pair/._a.jpg',
+    'IMG_10.jpg', 'IMG_2.jpg', 'img_2.PNG', 'clip.MOV', 'notes.txt', '.x.jpg', 'pair/b.jpg', 'pair/a.jpg', 'pair/c.mp4', 'pair/._a.jpg',
     'nested/photos/b.jpg', 'nested/a.jpg', 'nested/photos/.thumbs/c.jpg', 'empty/readme.md', '.hidden/c.jpg', 'thicken/old.jpg',
   ]) {
     await mkdir(path.dirname(path.join(folder, name)), { recursive: true });
@@ -680,11 +744,12 @@ test('batch: a folder is one model per picture, PDF or subfolder, none overwriti
   }
   const items = await batchItems(folder, path.join(folder, 'thicken'));
   assert.deepEqual(items.map(({ name, files }) => [name, files.map((file) => path.relative(folder, file).replaceAll('\\', '/'))]), [
+    ['clip', ['clip.MOV']],
     ['IMG_2', ['IMG_2.jpg']],
     ['img_2-2', ['img_2.PNG']], // the same name but for case, which Windows and macOS treat as one file
     ['IMG_10', ['IMG_10.jpg']],
     ['nested', ['nested/a.jpg', 'nested/photos/b.jpg']],
-    ['pair', ['pair/a.jpg', 'pair/b.jpg']],
+    ['pair', ['pair/a.jpg', 'pair/b.jpg', 'pair/c.mp4']],
   ]);
 });
 

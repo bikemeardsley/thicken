@@ -6,7 +6,8 @@ Blender.
 
 **Status:** badge, book, graded slab, raw card and a generic box work, and
 Thicken picks between them itself, from codes or by asking vision models.
-With a vision roster, uncropped photos are cut into straightened faces.
+With a vision roster, uncropped photos are cut into straightened faces, and
+a phone video can add more views.
 
 ```
 npm install
@@ -16,7 +17,8 @@ node src/cli.ts --isbn 9780061120084              # no photo: cover and size fro
 node src/cli.ts slab front.jpg back.jpg --holder bgs
 node src/cli.ts card front.jpg back.jpg --pt 130    # a thick patch card
 node src/cli.ts badge badge.png --width 50 --depth 3.5
-node src/cli.ts batch ~/Pictures/books --preview  # one model per photo, PDF or subfolder, each with a preview
+node src/cli.ts book front.heic back.heic IMG_0042.MOV  # with vision: the video's frames show the spine
+node src/cli.ts batch ~/Pictures/books --preview  # one model per photo, PDF, video or subfolder, each with a preview
 node src/cli.ts preview ~/Pictures/books/thicken  # previews for models already made
 npm test
 ```
@@ -95,8 +97,8 @@ marked for review, so one photo of the back is enough to start a book.
 
 ## Batch
 
-`thicken batch <folder>` makes a model from each picture or PDF in the
-folder, and one from each subfolder's pictures. Put a book's front, back and
+`thicken batch <folder>` makes a model from each picture, PDF or video in
+the folder, and one from each subfolder's files. Put a book's front, back and
 spine shots in a subfolder, or scan them into one PDF. Each model is
 classified on its own; `thicken batch book <folder>` forces a profile.
 
@@ -241,6 +243,36 @@ some angled faces, which is what the peer check catches. Gemini models answer
 on a 0–1000 scale whatever they're asked, the reason for the square
 letterbox.
 
+## Video (optional)
+
+A short phone video can join the photos, or stand in for them: turn the
+object in your hand, or walk round it. Its frames go to the vision models as
+more pictures, so a video needs a [vision roster](#vision-optional).
+
+- Thicken samples 24 frames spread across the video and keeps the sharpest
+  of each four (a moving phone blurs some): six frames, from six stretches of
+  the turn. Each is turned as the phone was held and scaled to fit 2048 px.
+- HDR video (an iPhone's HLG, or HDR10) is toned down to an ordinary
+  picture: BT.2100's curves to light, reference white (BT.2408: 75% HLG,
+  203 nits PQ) just under full white, brighter highlights rolled off, and
+  BT.2020's colors to BT.709's.
+- A photo always beats a frame for a face, however sharp the frame: frames
+  are smaller, compressed and toned down. So a frame shows a face only where
+  no photo does: a book's spine or page edge, a box's sides, a slab's back.
+  A frame the models found nothing in is left out.
+- The sidecar records each frame as its video and the seconds into it
+  (`"time": 2.3`).
+
+Video needs **ffmpeg**, installed on its own and found on the `PATH`. It is
+GPL; Thicken (MIT) runs it, never bundles it. Photos never need it.
+
+| Windows | macOS | Linux |
+| --- | --- | --- |
+| `winget install Gyan.FFmpeg` | `brew install ffmpeg` | `sudo apt install ffmpeg`, or your distribution's package |
+
+Any build will do: the HDR tone-down uses only filters every build has (the
+usual one, zscale, isn't in Homebrew's).
+
 ## Training mode (off by default)
 
 Thicken can keep what it asks the vision models as training examples, for
@@ -285,10 +317,10 @@ assumed slab holder. A size off by a few millimeters still shows the object;
 - **Identity:** `isbn` and `catalog` (title, authors, publishers, publish
   date, subjects, Dewey and LC classification), or `grader`, `cert` and
   `verifyUrl`; `identifiedBy`, how each was found.
-- **Photos:** for each, its file and page, format, original size, bytes,
-  camera, lens, capture time (the camera's own clock and UTC offset),
-  sharpness, and the face it became; with vision, one entry per face cut
-  from it.
+- **Photos:** for each, its file and page (or, for a video's frame, the
+  seconds into it), format, original size, bytes, camera, lens, capture time
+  (the camera's own clock and UTC offset), sharpness, and the face it became;
+  with vision, one entry per face cut from it.
 - **Codes:** every barcode and QR code seen, and which photo it was on.
 - **Lookups:** every catalog call: host, path, status and time.
 - **Vision:** where the photos went (host and path, never the key), the
@@ -325,7 +357,8 @@ images onto it. No point clouds, no neural reconstruction.
 
 JPEG, PNG, HEIC, WebP, AVIF, GIF, TIFF, SVG, or a scanner app's PDF, where
 each page is a picture in order (front, back, spine). Every picture is turned
-upright and scaled to fit 2048 px.
+upright and scaled to fit 2048 px. A video (MOV, MP4) adds a handful of its
+frames, with a vision roster and ffmpeg ([Video](#video-optional)).
 
 Thicken does no background removal of its own. Both phones already do it
 better:
@@ -415,6 +448,7 @@ holder it fits, not its own thickness.
 | Decoding HEIC | Dependency | [catdad-experiments/libheif-js](https://github.com/catdad-experiments/libheif-js) (LGPL-3.0, used unmodified). sharp's binaries leave out HEVC. |
 | Reading barcodes | Dependency | [Sec-ant/zxing-wasm](https://github.com/Sec-ant/zxing-wasm) (MIT). Its `.wasm` is loaded from `node_modules`, not its default CDN. |
 | Pictures from scanner PDFs | Dependency | [unjs/unpdf](https://github.com/unjs/unpdf) (MIT, pdf.js inside) |
+| Frames from video | Outside program | [FFmpeg](https://ffmpeg.org), run from the `PATH`, never bundled: it is GPL, Thicken MIT. Kitbash, 2026-10-03: [eugeneware/ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (GPL-3.0) would put a GPL binary in every install, video or not; [ffmpegwasm/ffmpeg.wasm](https://github.com/ffmpegwasm/ffmpeg.wasm) is built for browsers. Choosing the frames is ours. |
 | Reading camera details (EXIF) | Dependency | [devongovett/exif-reader](https://github.com/devongovett/exif-reader) (MIT): parses the EXIF block sharp returns |
 | Drawing previews | Dependency | [google/model-viewer](https://github.com/google/model-viewer) (Apache-2.0): frames and lights a GLB; three.js inside |
 | Running the preview browser | Dependency | [microsoft/playwright](https://github.com/microsoft/playwright) (`playwright-core`, Apache-2.0): drives an installed Chrome or Edge, no browser download |

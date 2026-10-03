@@ -1,12 +1,14 @@
 // Any picture a phone or scanner hands over, as upright RGBA pixels no
 // larger than MAX_PX a side: whatever sharp reads (JPEG, PNG, WebP, AVIF,
 // GIF, TIFF, SVG), HEIC (sharp's binaries leave out the HEVC decoder, so
-// libheif does it) and document-scan PDFs (iPhone Notes and Files scan only
-// to PDF), one picture per page. Also the barcodes in a picture, which is
-// how a book or a slab announces itself.
+// libheif does it), document-scan PDFs (iPhone Notes and Files scan only
+// to PDF), one picture per page, and a handful of frames from a phone video.
+// Also the barcodes in a picture, which is how a book or a slab announces itself.
+import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import exifReader from 'exif-reader';
 import sharp, { type Sharp } from 'sharp';
@@ -30,13 +32,32 @@ export interface Source {
   camera?: string;
   lens?: string;
   takenAt?: string; // the camera's own clock, with its UTC offset when it wrote one
+  time?: number; // seconds into a video, for one of its frames
   face?: string; // cut from the photo as this face, where the vision models found it
 }
 
 export interface Picture { data: Buffer; width: number; height: number; transparent: boolean; source: Source }
 
-/** Every picture in a file or encoded image (`name` labels a buffer): one, or one per page of a PDF. */
+/** A video, by its name: an iPhone shoots MOV, Android MP4. */
+export const VIDEO = /\.(mov|mp4|m4v|3gp|mkv|webm|avi)$/i;
+const FRAMES = 6; // kept from a video, spread across it: a handful of angles for the vision models
+const SAMPLES = 4; // looked at for each frame kept, the sharpest kept: a moving phone blurs some
+// HDR video (an iPhone's HLG, HDR10's PQ) toned down to an ordinary picture with filters every ffmpeg build has (the
+// usual zscale is missing from Homebrew's): ITU-R BT.2100's curves to linear light, reference white (BT.2408) at a
+// fifth of full scale; BT.2020's colors to BT.709's; then reference white just under full, highlights rolled off
+// above it, and the sRGB curve.
+const LINEAR: Record<string, string> = {
+  'arib-std-b67': 'maxval*0.7548*if(lte(val/maxval,0.5),pow(val/maxval,2)/3,(exp((val/maxval-0.55991073)/0.17883277)+0.28466892)/12)',
+  smpte2084: 'maxval*min(1,9.8522*pow(max(pow(val/maxval,0.012683313)-0.8359375,0)/(18.8515625-18.6875*pow(val/maxval,0.012683313)),6.2773946))',
+};
+const WHITE = 'if(lte(5*val/maxval,0.8),5*val/maxval,1-0.2*exp(4-25*val/maxval))'; // reference white 1, rolled off above 0.8
+const SDR = `maxval*if(lte(${WHITE},0.0031308),12.92*${WHITE},1.055*pow(${WHITE},0.41666667)-0.055)`;
+const TO_BT709 = 'colorchannelmixer=rr=1.6605:rg=-0.5876:rb=-0.0728:gr=-0.1246:gg=1.1329:gb=-0.0083:br=-0.0182:bg=-0.1006:bb=1.1187';
+const lut = (curve: string) => `lutrgb=r='${curve}':g='${curve}':b='${curve}'`;
+
+/** Every picture in a file or encoded image (`name` labels a buffer): one, one per page of a PDF, or a video's frames. */
 export async function load(input: string | Buffer, name = 'picture'): Promise<Picture[]> {
+  if (typeof input === 'string' && VIDEO.test(input)) return frames(input);
   const bytes = typeof input === 'string' ? await readFile(input) : input;
   const file = typeof input === 'string' ? path.basename(input) : name;
   if (bytes.subarray(0, 5).toString('latin1') === '%PDF-') {
@@ -58,6 +79,51 @@ async function upright(image: Sharp, source: Source): Promise<Picture> {
   let transparent = false;
   for (let i = 3; i < data.length && !transparent; i += 4) transparent = data[i] < 128;
   return { data, width: info.width, height: info.height, transparent, source };
+}
+
+/**
+ * A handful of a video's frames, spread across it, each the sharpest of its stretch, turned as the phone
+ * was held, HDR toned down. ffmpeg decodes them: a program of its own (GPL; run, never bundled, so Thicken
+ * stays MIT), found on the PATH, and needed only for video.
+ */
+async function frames(file: string): Promise<Picture[]> {
+  const run = (program: string, args: string[]) => new Promise<string>((resolve, reject) => {
+    execFile(program, ['-v', 'error', ...args], (error, stdout, stderr) => {
+      if (!error) resolve(stdout);
+      else if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        reject(new Error('reading a video needs ffmpeg installed (winget install Gyan.FFmpeg, brew install ffmpeg, or apt install ffmpeg), or leave the video out'));
+      } else reject(new Error(`${program} couldn't read ${path.basename(file)}: ${stderr.trim().split('\n').pop()}`));
+    });
+  });
+  const input = `file:${path.resolve(file)}`; // file:, so no name is ever taken for a URL or another protocol
+  const probe = JSON.parse(await run('ffprobe', ['-select_streams', 'v:0', '-show_entries',
+    'stream=codec_name,width,height,color_transfer:stream_side_data=rotation:format=duration', '-of', 'json', '-i', input]));
+  const video = probe.streams?.[0];
+  if (!video) throw new Error(`${path.basename(file)} has no video in it`);
+  const turned = Math.abs(video.side_data_list?.find((d: { rotation?: number }) => d.rotation !== undefined)?.rotation ?? 0) % 180 === 90;
+  const source = { file: path.basename(file), format: video.codec_name, width: turned ? video.height : video.width, height: turned ? video.width : video.height, bytes: (await stat(file)).size };
+  const rate = (FRAMES * SAMPLES) / (Number(probe.format?.duration) || 10);
+  const dir = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  try {
+    const linear = LINEAR[video.color_transfer]; // HDR: BT.2020 colors, whether or not the frames themselves say so
+    const filters = [`fps=${rate}`, `scale=w='min(${MAX_PX},iw)':h='min(${MAX_PX},ih)':force_original_aspect_ratio=decrease${linear ? ':in_color_matrix=bt2020' : ''}`,
+      ...(linear ? ['format=rgb48le', lut(linear), TO_BT709, lut(SDR)] : []), 'format=rgb24'];
+    // PNG, so the colors arrive as ffmpeg made them; capped at the frames wanted, whatever a broken duration says.
+    await run('ffmpeg', ['-nostdin', '-i', input, '-vf', filters.join(','), '-frames:v', String(FRAMES * SAMPLES), path.join(dir, '%03d.png')]);
+    const names = (await readdir(dir)).sort();
+    if (!names.length) throw new Error(`no frames could be read from ${path.basename(file)}`);
+    const kept: { picture: Picture; sharpness: number }[] = [];
+    for (const [k, name] of names.entries()) {
+      const stretch = Math.floor((k * FRAMES) / names.length);
+      // Read whole, so no file is left open: Windows won't delete an open file.
+      const picture = await upright(sharp(await readFile(path.join(dir, name))), { ...source, time: Math.round((k / rate) * 10) / 10 });
+      const { sharpness } = await measure(picture);
+      if (!kept[stretch] || sharpness > kept[stretch].sharpness) kept[stretch] = { picture, sharpness };
+    }
+    return kept.filter(Boolean).map(({ picture }) => picture);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {}); // a temp folder left behind costs disk, not the run
+  }
 }
 
 /**
@@ -93,8 +159,10 @@ function camera(exif?: Buffer): Pick<Source, 'camera' | 'lens' | 'takenAt'> {
  */
 export async function measure(picture: Picture): Promise<{ sharpness: number; color: number[]; stripes: number }> {
   const box = subjectBox(picture);
-  const crop = () => sharp(picture.data, { raw: { width: picture.width, height: picture.height, channels: 4 } })
-    .extract(box).resize(512, 512, { fit: 'inside' });
+  // Shrunk once, not once per measure: three times faster, which a video's frames, each measured, need.
+  const small = await sharp(picture.data, { raw: { width: picture.width, height: picture.height, channels: 4 } })
+    .extract(box).resize(512, 512, { fit: 'inside' }).raw().toBuffer({ resolveWithObject: true });
+  const crop = () => sharp(small.data, { raw: small.info });
   // stats() reads a pipeline's input, not its result, so each result is rendered first.
   const stats = async (image: Sharp) => {
     const { data, info } = await image.raw().toBuffer({ resolveWithObject: true });
