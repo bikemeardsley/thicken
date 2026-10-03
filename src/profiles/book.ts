@@ -152,8 +152,8 @@ async function make(
   // foreshortened; a crop wider than the book is no spine.
   const { width = 0, height = 0 } = size;
   const squareOn = (face: string) => {
-    const { file, page } = all[chosen[face]].picture.source;
-    return all.filter(({ picture: { source } }) => source.file === file && source.page === page).length === 1;
+    const { file, page, time } = all[chosen[face]].picture.source;
+    return all.filter(({ picture: { source } }) => source.file === file && source.page === page && source.time === time).length === 1;
   };
   const fromPhotos = median(([['spine', spine], ['edge', edge]] as const)
     .flatMap(([face, t]) => (t && squareOn(face) ? [height * (t.width / t.height)] : [])).filter((mm) => mm > 1 && mm < width));

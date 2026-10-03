@@ -9,7 +9,9 @@
 // follows. Photo order is no evidence: two photos left that nothing tells
 // apart are for the vision models (sidesUnknown). Extra photos join the face
 // of the same shape whose color they match, and each face keeps its sharpest
-// photo, so more photos make a better model.
+// photo, so more photos make a better model. A video's frames are for the
+// models: one they found no face in is left out, and a frame shows a face only
+// where no photo does.
 import { inside, isQuad, measure, straighten, texture, type Picture } from './image.ts';
 import type { Sight } from './vision.ts';
 
@@ -41,7 +43,7 @@ export function cut(pictures: Picture[], sights: Sight[] = [], proofs: Proof[] =
     const faces = (sights[i]?.faces ?? []).filter(({ corners }) => isQuad(corners) &&
       corners.every((p, k) => Math.hypot(corners[(k + 1) % 4][0] - p[0], corners[(k + 1) % 4][1] - p[1]) >= MIN_FACE_PX));
     const proven = proofs.filter((proof) => proof.picture === i);
-    if (!faces.length) {
+    if (!faces.length && picture.source.time === undefined) { // a frame shows the whole scene: never a face whole
       placed[parts.length] = proven[0]?.face;
       from.push({ picture: i });
       parts.push(picture);
@@ -114,7 +116,9 @@ export function assignFaces(all: Shot[], faces: string[], { placed = [], byShape
   const roles = all.map(() => 'unused');
   for (const [face, list] of candidates) {
     if (!faces.includes(face)) continue;
-    const best = list.reduce((a, b) => (all[b].sharpness > all[a].sharpness ? b : a));
+    // A photo beats a video's frame, however sharp the frame scores: frames are smaller, compressed and toned down.
+    const photos = list.filter((i) => all[i].picture.source.time === undefined);
+    const best = (photos.length ? photos : list).reduce((a, b) => (all[b].sharpness > all[a].sharpness ? b : a));
     chosen[face] = best;
     for (const i of list) roles[i] = i === best ? face : `alternate ${face}`;
   }

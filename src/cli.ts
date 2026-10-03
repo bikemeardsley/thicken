@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// thicken [profile] <picture or PDF>... [-o out.glb] [--preview] [options]
+// thicken [profile] <picture, PDF or video>... [-o out.glb] [--preview] [options]
 // thicken batch [profile] <folder> [-o out-folder] [--preview] [--force] [options]
 // thicken preview <model.glb or folder>...
 // With no profile named, Thicken picks one per model (see src/thicken.ts).
@@ -11,7 +11,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { batchItems, PROFILES, thicken, type Options, type Sidecar } from './thicken.ts';
 
-const USAGE = `usage: thicken [${PROFILES.map((p) => p.name).join('|')}] <picture or PDF>... [-o out.glb] [--preview]
+const USAGE = `usage: thicken [${PROFILES.map((p) => p.name).join('|')}] <picture, PDF or video>... [-o out.glb] [--preview]
        thicken batch [profile] <folder> [-o out-folder] [--preview] [--force]
        thicken preview <model.glb or folder>...
   book   front back spine (any order) [--isbn 978...] [--size WxHxD]  (mm; any left out are looked up or estimated)
@@ -20,11 +20,13 @@ const USAGE = `usage: thicken [${PROFILES.map((p) => p.name).join('|')}] <pictur
   badge  artwork       [--width mm] [--depth mm]
   box    front [back, sides]  [--size WxHxD]  (anything box-shaped; with vision, the size can be estimated)
 Pictures: JPEG, PNG, HEIC, WebP, AVIF, GIF, TIFF, SVG, or a scanner app's PDF (one picture per page).
+Video (MOV, MP4), with a vision roster and ffmpeg installed: a handful of its sharpest frames go
+to the models as more pictures, and show any face no photo does.
 With no profile named: an ISBN barcode or --isbn means a book, a grader's QR code (or a cert
 barcode on a holder-shaped photo) a slab, cut-out artwork a badge; else, with vision, the
 models say which it is (box for anything else box-shaped).
-Batch: each picture or PDF in the folder is one model, and each subfolder one model from the
-pictures in it; models go to <folder>/thicken unless -o says otherwise. A model already made
+Batch: each picture, PDF or video in the folder is one model, and each subfolder one model from
+the files in it; models go to <folder>/thicken unless -o says otherwise. A model already made
 from exactly these pictures is left alone, hand edits and all; --force remakes it. Afterwards
 it lists the faces still to photograph.
 --preview, or the preview command, writes <name>.preview.png beside each model (needs Chrome or Edge).
@@ -155,7 +157,7 @@ try {
     const [folder] = positionals;
     const outFolder = values.out ?? path.join(folder, 'thicken');
     const items = await batchItems(folder, outFolder);
-    if (items.length === 0) throw new Error(`no pictures or PDFs in ${folder}`);
+    if (items.length === 0) throw new Error(`no pictures, PDFs or videos in ${folder}`);
     await mkdir(outFolder, { recursive: true });
     const preview = values.preview ? await previewer() : undefined;
     // ponytail: one at a time, which is polite to Open Library and loses little (HEIC decoding is single-threaded wasm); a small pool if big batches drag.

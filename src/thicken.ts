@@ -11,7 +11,7 @@
 import { readFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
-import { codes, load, type Picture } from './image.ts';
+import { codes, load, VIDEO, type Picture } from './image.ts';
 import { badge } from './profiles/badge.ts';
 import { book } from './profiles/book.ts';
 import { box } from './profiles/box.ts';
@@ -98,7 +98,10 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
   if (sizeMm.some((mm) => mm !== undefined && !(mm > 0))) throw new Error('sizes must be positive millimeters, e.g. 152x229x25');
   const named = options.profile ? PROFILES.find((p) => p.name === options.profile) : options.isbn ? book : undefined;
   if (options.profile && !named) throw new Error(`no "${options.profile}" profile (known: ${PROFILES.map((p) => p.name).join(', ')})`);
-  const pictures = (await Promise.all(inputs.map((input) => load(input)))).flat();
+  if (!visionOn() && inputs.some((input) => VIDEO.test(input))) {
+    throw new Error('a video is for the vision models, which find the object in its frames: set up a vision roster (see the README), or leave the video out');
+  }
+  const pictures =(await Promise.all(inputs.map((input) => load(input)))).flat();
   if (!pictures.length) throw new Error('give a picture to make it from');
 
   const scanned = named === badge ? [] : await scan(pictures);
@@ -117,14 +120,18 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
   const sights = visionOn() && Object.keys(profile.faces).length ? await lookAll(pictures, profile) : undefined;
   const built = await profile.build(pictures, { options, facts, codes: recorded.map((code, i) => ({ ...code, at: scanned[i].at })), sights, estimateMm: identity?.sizeMm });
 
-  const named_ = (i: number) => `${pictures[i].source.file}${pictures[i].source.page ? ` page ${pictures[i].source.page}` : ''}`;
+  const named_ = (i: number) => {
+    const { file, page, time } = pictures[i].source;
+    return `${file}${page ? ` page ${page}` : ''}${time === undefined ? '' : ` at ${time} s`}`;
+  };
   const unsure = [
     ...(identity?.disputed ? [`what this is (the vision models disagree; made as a ${profile.name}: name the profile if that's wrong)`] : []),
     ...(sights ?? []).flatMap((sight, i) => [
       ...sight.disputed.map((face) => `${face} in ${named_(i)} (the vision models disagree where it is or which way up: check it)`),
       ...sight.faces.filter(({ face, agreed }) => !agreed && !sight.disputed.includes(face))
         .map(({ face, by }) => `${face} in ${named_(i)} (only ${by[0]} answered, so no second model checked it: check it)`),
-      ...(sight.answers.some((a) => a.faces) ? [] : [`${named_(i)} (no vision model answered, so it was used whole: run again, or crop it)`]),
+      // A frame no model answered for is just left out (src/faces.ts): one of a handful, nothing to review.
+      ...(sight.answers.some((a) => a.faces) || pictures[i].source.time !== undefined ? [] : [`${named_(i)} (no vision model answered, so it was used whole: run again, or crop it)`]),
     ]),
   ];
   const own = built.sidecar;
@@ -152,13 +159,14 @@ async function scan(pictures: Picture[]): Promise<Scanned[]> {
 }
 
 const PICTURE = /\.(jpe?g|png|heic|heif|webp|avif|gif|tiff?|svg|pdf)$/i;
+const usable = (name: string) => PICTURE.test(name) || VIDEO.test(name);
 // Numeric (IMG_2 before IMG_10) and case-blind, with a plain tiebreak so the order is the same on every filesystem.
 const byName = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }) || (a < b ? -1 : a > b ? 1 : 0);
 
 /**
- * A folder as the models to make from it, for a batch: each picture or PDF
- * in it is one, from that file alone, and each subfolder is one, from every
- * picture under it in name order (a phone names shots in the order taken).
+ * A folder as the models to make from it, for a batch: each picture, PDF or
+ * video in it is one, from that file alone, and each subfolder is one, from
+ * every one under it in name order (a phone names shots in the order taken).
  * Hidden names and `skip` (the output folder) are left out, and output
  * names are made unique, ignoring case, so no model overwrites another.
  */
@@ -173,10 +181,10 @@ export async function batchItems(folder: string, skip?: string): Promise<{ name:
       const files = (await readdir(full, { recursive: true, withFileTypes: true }))
         .filter((inner) => inner.isFile())
         .map((inner) => path.join(inner.parentPath, inner.name))
-        .filter((file) => visible(path.relative(full, file)) && PICTURE.test(file))
+        .filter((file) => visible(path.relative(full, file)) && usable(file))
         .sort(byName);
       if (files.length) items.push({ name: entry.name, files });
-    } else if (entry.isFile() && PICTURE.test(entry.name)) {
+    } else if (entry.isFile() && usable(entry.name)) {
       items.push({ name: path.parse(entry.name).name, files: [full] });
     }
   }

@@ -8,18 +8,20 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { chromium, type Browser } from 'playwright-core';
+import sharp from 'sharp';
 import { stillToShoot, type Sidecar } from './thicken.ts';
 
 const require = createRequire(import.meta.url);
 const VIEWER = require.resolve('@google/model-viewer/dist/model-viewer.min.js');
 const [VIEW_W, VIEW_H, CAPTION_H] = [400, 540, 34]; // px; portrait views, as books and slabs are
 const RENDER_TIMEOUT_MS = 30_000;
+const BACKGROUND = [0x9a, 0xa4, 0xae]; // the page's mid slate
 // Neutral tone mapping keeps the photos' colors as they are where the light falls full on them; the
 // soft shadow under the model is the preview's own, not part of the asset.
 const VIEW = 'tone-mapping="neutral" shadow-intensity="1" shadow-softness="1" interaction-prompt="none"';
 const PAGE = `<!doctype html><meta charset="utf-8">
 <style>
-  body{margin:0;width:${2 * VIEW_W}px;background:#9aa4ae;font:14px system-ui,sans-serif;color:#1f2933} /* mid slate: light plastic, cream pages and dark covers all stand out */
+  body{margin:0;width:${2 * VIEW_W}px;background:rgb(${BACKGROUND});font:14px system-ui,sans-serif;color:#1f2933} /* mid slate: light plastic, cream pages and dark covers all stand out */
   model-viewer{display:inline-block;width:${VIEW_W}px;height:${VIEW_H}px}
   p{margin:0;height:${CAPTION_H}px;line-height:${CAPTION_H}px;padding:0 12px;background:#fff;white-space:nowrap;overflow:hidden}
 </style>
@@ -45,6 +47,7 @@ export async function startPreview(): Promise<{ render(glb: string): Promise<str
   return {
     async render(glb) {
       model = glb;
+      const deadline = performance.now() + RENDER_TIMEOUT_MS;
       await page.evaluate(async ([src, caption, timeoutMs]) => {
         const deadline = performance.now() + timeoutMs;
         const late = () => new Error('the model did not draw in time (is WebGL available?)');
@@ -65,12 +68,32 @@ export async function startPreview(): Promise<{ render(glb: string): Promise<str
         }
         await new Promise(requestAnimationFrame);
       }, [`/model.glb?${Date.now()}`, caption(glb), RENDER_TIMEOUT_MS] as const); // a fresh URL, so a new model loads
+      // Drawn as seen, not as model-viewer reports: a software renderer (a machine with no GPU) can still be drawing
+      // when it says visible, so the picture is taken again until neither view is bare background.
       const png = previewPath(glb);
-      await page.screenshot({ path: png });
+      while (!(await drawn(await page.screenshot({ path: png })))) {
+        if (performance.now() > deadline) throw new Error('the model did not draw in time (is WebGL available?)');
+        await page.waitForTimeout(100);
+      }
       return png;
     },
     close: () => browser.close(),
   };
+}
+
+/** Whether both views in a screenshot show more than the page's background: a model drawn, not just loaded. */
+async function drawn(screenshot: Buffer): Promise<boolean> {
+  const { data, info } = await sharp(screenshot).raw().toBuffer({ resolveWithObject: true });
+  return [0, VIEW_W].every((left) => {
+    let shown = 0;
+    for (let y = 0; y < VIEW_H; y += 4) {
+      for (let x = left; x < left + VIEW_W; x += 4) {
+        const k = (y * info.width + x) * info.channels;
+        if (BACKGROUND.reduce((sum, c, i) => sum + Math.abs(data[k + i] - c), 0) > 12) shown++;
+      }
+    }
+    return shown > 100; // of 13,500 points looked at
+  });
 }
 
 /** The real size, and any face that isn't the user's photo, from the sidecar beside the model. */
