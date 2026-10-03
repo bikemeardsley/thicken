@@ -30,6 +30,8 @@ export interface Profile {
   note?: string;
   /** Short questions the vision models answer along with the faces, each a JSON field (a card's "corners"). */
   asks?: Record<string, string>;
+  /** Faces left where the models put them, not snapped to the nearest strong edge (it's often the wrong one). */
+  unsnapped?: string[];
   /** Unaided: whether its codes or pictures give it away, each code's use, and what they say. */
   read?(scanned: Scanned[], pictures: Picture[]): Facts;
   build(pictures: Picture[], job: Job): Promise<{ glb: Uint8Array; sidecar: Built }>;

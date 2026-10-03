@@ -18,7 +18,7 @@ const MAX_FACES = 12; // twice a box's six: more is noise, and settling compares
 
 /** What the models are told about a kind of object: a profile (src/profiles). */
 /** A profile: its faces, a note on how it stands, and short questions to answer as well, each answer one word. */
-export interface Kind { name: string; about?: string; faces: Record<string, string>; note?: string; asks?: Record<string, string> }
+export interface Kind { name: string; about?: string; faces: Record<string, string>; note?: string; asks?: Record<string, string>; unsnapped?: string[] }
 /** One model's answer, corners in the picture's own pixels. */
 export interface Answer {
   model: string; ms: number; status?: number; error?: string;
@@ -81,7 +81,9 @@ export async function look(picture: Picture, kind: Kind): Promise<Sight> {
     const count = (value: string) => said.filter((s) => s === value).length;
     return said.length ? [[key, said.reduce((best, value) => (count(value) > count(best) ? value : best))]] : [];
   }));
-  const faces = back(settled.faces).map((f) => ({ ...f, corners: snap(picture, f.corners), asSeen: f.corners }));
+  // Snapped onto the real edges, but for faces among lines nearer than the models' slip (a slab's label: its border,
+  // the frame inside it and the ridge around it), where the nearest strong edge is often the wrong one.
+  const faces = back(settled.faces).map((f) => ({ ...f, corners: kind.unsnapped?.includes(f.face) ? f.corners : snap(picture, f.corners), asSeen: f.corners }));
   if (trainingOn()) {
     const label = { faces: faces.map(({ face, corners, agreed }) => ({ face, corners: corners.map((p) => toSent(p).map(Math.round)), agreed })), title: named?.title, authors: named?.authors, ...(keys.length && { asked }) };
     await keep(jpeg, { task: 'faces', profile: kind.name, prompt, answers, label, disputed: settled.disputed });

@@ -25,10 +25,11 @@ export const slab: Profile = {
     front: 'the side showing the grade: the label that names the card and gives its grade, and the card\'s face',
     back: 'the reverse: the back of the label (a logo, hologram or QR code, no grade) and the back of the card',
     card: 'the card inside the holder',
-    label: 'the label inside the holder, front or back',
+    label: 'the grade label insert inside the holder, front or back, to its outer edges: its whole colored border included, none of the clear plastic around it',
   },
   note: 'The card and the label are inside the holder, on whichever side is shown: give their corners in the holder\'s own order (top-left as it stands with its label at the top), even when the card is printed sideways.',
   asks: { corners: CORNERS_ASK },
+  unsnapped: ['label'],
   read: (scanned, [picture]) => {
     const { use, grader, cert, certFrom, verifyUrl } = readLabel(scanned);
     // A grader's QR code says it's a slab; a cert barcode alone only on a photo shaped like a holder.
@@ -225,13 +226,16 @@ async function make(
   if (missed.length && sights) review.push(`${missed.join(' and ')} (the vision models didn't find ${missed.length > 1 ? 'them' : 'it'}: placed where a ${holder} holder usually has ${missed.length > 1 ? 'them' : 'it'})`);
   else if (missed.length) warnings.push(`the card and label are placed where a ${holder} holder usually has them: with a vision roster they're found in the photos`);
 
-  // Each side's card and label pictures, straightened from where the models put them, or from where they were placed.
+  // Each side's card and label pictures. The card's from where the models put it on that side (a card can sit a
+  // little askew in its well); the label's, one insert printed both sides, from the one rectangle placed for it, so
+  // front and back match each other and their plate.
   const pictured: Partial<Record<'front' | 'back', Record<Inside, Buffer>>> = {};
   for (const { side, picture, mirror, found, toPhoto } of sides) {
     const of = async (part: Inside) => {
       const r = rects[part];
       const [left, right] = mirror > 0 ? [r.x0, r.x1] : [r.x1, r.x0];
-      const corners = found.get(part) ?? [[left, r.y1], [right, r.y1], [right, r.y0], [left, r.y0]].map(toPhoto);
+      const placed = [[left, r.y1], [right, r.y1], [right, r.y0], [left, r.y0]].map(toPhoto);
+      const corners = part === 'card' ? found.get(part) ?? placed : placed;
       return (await texture(straighten(pictures[picture], corners))).jpeg;
     };
     pictured[side] = { card: await of('card'), label: await of('label') };
