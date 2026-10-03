@@ -528,14 +528,18 @@ test('slab: a grader\'s QR code picks the holder, and the holder its size', asyn
   });
   const doc = await read(glb);
   assertExtents(doc, [0.0805, 0.136, 0.0065]);
-  // Three closed solids: the holder (its molded edges rounded), and the card and label inside it.
+  // Closed solids, built as a holder is: a rim standing proud of a recessed window, ridges framing the label and
+  // the card inside, and the card and label themselves.
   const { card, label } = sidecar.inside as Record<string, { widthMm: number; heightMm: number; placedBy: string }>;
   assert.deepEqual([card.widthMm, card.heightMm, card.placedBy, label.placedBy], [63.5, 88.9, 'layout', 'layout']);
-  const plates = (63.5 * 88.9 - (4 - Math.PI) * 1.6 ** 2) * 0.35 + label.widthMm * label.heightMm * 0.3; // corners taken as slight
-  assertClosed(doc, roundedVolume([80.5, 136, 6.5], 1.5) + plates, 5e-4);
-  // The holder is clear: blended, so a page shows through it.
+  assertWatertight(doc);
+  // The holder is clear: blended, so a page shows through it; its rim and ridges denser, as their edges catch the light.
   const materials = Object.fromEntries(doc.getRoot().listMaterials().map((material) => [material.getName(), material]));
-  assert.deepEqual([materials.acrylic.getAlphaMode(), materials.acrylic.getAlpha()], ['BLEND', 0.12]);
+  assert.deepEqual([materials.acrylic.getAlphaMode(), materials.acrylic.getAlpha(), materials['acrylic-edges'].getAlpha()], ['BLEND', 0.12, 0.2]);
+  // The window is recessed: the rim alone reaches the holder's full depth.
+  const zs = (name: string) => doc.getRoot().listMeshes()[0].listPrimitives().filter((p) => p.getMaterial()?.getName() === name)
+    .flatMap((p) => { const positions = p.getAttribute('POSITION')!; return [...Array(positions.getCount()).keys()].map((i) => positions.getElement(i, [0, 0, 0])[2]); });
+  assert.deepEqual([Math.max(...zs('acrylic-edges')), Math.max(...zs('acrylic'))].map((z) => Math.round(z * 1e5) / 100), [3.25, 2.75]);
   // The card is cut from the photo (green there), and its back, never photographed, is plain card stock.
   const front = await sharp(materials['card-front'].getBaseColorTexture()!.getImage()!).raw().toBuffer({ resolveWithObject: true });
   const middle = (Math.floor(front.info.height / 2) * front.info.width + Math.floor(front.info.width / 2)) * front.info.channels;
@@ -599,7 +603,7 @@ test('slab: with vision, the card and label are found in uncropped photos and se
   assert.ok(await share('card-front', (r, g, b) => g > 100 && r < 80 && b < 80) > 0.95, 'the card alone');
   assert.ok(await share('card-back', (r, g, b) => b > 120 && r < 80 && g < 110) > 0.95, 'the card\'s back alone');
   assert.ok(await share('label-front', (r, g, b) => Math.min(r, g, b) > 230) > 0.95, 'the label alone');
-  assertClosed(doc, roundedVolume([80.5, 136, 6.5], 1.5) + (63.5 * 88.9 - (4 - Math.PI) * 1.6 ** 2) * 0.35 + inside.label.widthMm * inside.label.heightMm * 0.3, 5e-4); // corners taken as slight
+  assertWatertight(doc);
 });
 
 test('slab: a tall holder is told by its label, the same size on every holder but spanning much less of a tall one', async (t) => {
@@ -807,6 +811,23 @@ function assertClosed(doc: Document, mm3: number, tolerance = 1e-4) {
     }
   }
   assert.ok(Math.abs(volume * 1e9 - mm3) < mm3 * tolerance, `volume ${volume * 1e9} mm³, expected ${mm3}`);
+}
+
+/** Closed surfaces, however many: across every primitive, each edge (by position) walked once each way. */
+function assertWatertight(doc: Document) {
+  const walked = new Map<string, number>();
+  const key = (p: number[]) => p.map((c) => Math.round(c * 1e6)).join(',');
+  for (const primitive of doc.getRoot().listMeshes()[0].listPrimitives()) {
+    for (const [a, b, c] of triangles(primitive)) {
+      for (const [p, q] of [[a, b], [b, c], [c, a]]) {
+        if (key(p) !== key(q)) walked.set(`${key(p)} ${key(q)}`, (walked.get(`${key(p)} ${key(q)}`) ?? 0) + 1);
+      }
+    }
+  }
+  for (const [edge, n] of walked) {
+    const [p, q] = edge.split(' ');
+    assert.equal(walked.get(`${q} ${p}`) ?? 0, n, `open edge ${edge}`);
+  }
 }
 
 /** A W × H × D mm box's volume in mm³ with its edges and corners rounded to r: the shrunk box swept by a ball (Steiner's formula). */

@@ -6,7 +6,7 @@
 // has them.
 import { Document } from '@gltf-transform/core';
 import { assignFaces, cut, pictureRecord, shots, sidesUnknown } from '../faces.ts';
-import { addPart, clearMaterial, colorMaterial, pictureMaterial, plate, roundedBox, toGlb, type Side } from '../glb.ts';
+import { addPart, clearMaterial, colorMaterial, pictureMaterial, plate, ring, toGlb } from '../glb.ts';
 import { mapping, straighten, subjectBox, texture, type Picture } from '../image.ts';
 import type { Faces, Profile, Scanned } from '../thicken.ts';
 import type { Sight } from '../vision.ts';
@@ -95,7 +95,15 @@ const HOLDERS: Record<string, number[]> = { // width, height, depth in mm
 // of a tall one's (Mike's PSA and CGC slabs, 2026-10-03). Under this, the holder is the grader's tall one.
 const TALL_LABEL = 0.75;
 const SHAPE_TOLERANCE = 0.04;
-const ROUNDED_MM = 1.5; // a holder's molded edges
+// A holder's build, from Mike's PSA and CGC slabs straightened at 10 px a mm (2026-10-03). ponytail: one build
+// for every holder but its corners; measure others' as their slabs turn up.
+const RIM_MM = 2.5; // the rim all round
+const RIM_PROUD_MM = 0.5; // how far the rim stands above the window, each face
+const FRAME_MM = 1.2; // the ridges framing the label and the card
+const FRAME_GAP_MM = 1.2; // between a ridge and what it frames
+const SEAM_MM = 0.1; // between pieces that would otherwise share a surface
+const EDGE_OPACITY = 0.2; // the rim and ridges, denser than the window's plastic, as their edges catch the light (0.3 looked milky)
+const HOLDER_CORNER_MM: Record<string, number> = { psa: 2, 'psa-thick': 2, 'psa-tall': 2, cgc: 4, 'cgc-tall': 4 }; // others 3
 // A card shaped like a standard one (cards are cut more exactly than holders are measured) and near its size is one.
 const STANDARD_SHAPE = 0.02;
 const STANDARD_SIZE = 0.1;
@@ -229,13 +237,31 @@ async function make(
     pictured[side] = { card: await of('card'), label: await of('label') };
   }
 
-  // The model: the clear shell, and the card and label inside it, halfway through its depth.
+  // The model, built as a holder is: a rim all round, standing proud of the window it frames, and inside, the
+  // label and the card in their compartments, each framed by a ridge. All clear plastic, the rim and ridges a
+  // little denser so they read as the edges they are; the card and label halfway through its depth.
   const doc = new Document();
   const mesh = doc.createMesh('slab');
-  const clear: Side = {};
-  const [shell] = roundedBox(size, { front: clear, back: clear, left: clear, right: clear, top: clear, bottom: clear }, ROUNDED_MM).values();
-  shell.uv.length = 0;
-  addPart(doc, mesh, shell, clearMaterial(doc, 'acrylic'));
+  const d = size[2];
+  const corner = HOLDER_CORNER_MM[holder] ?? 3;
+  const windowCorner = Math.max(corner - RIM_MM, 0.5);
+  const acrylic = clearMaterial(doc, 'acrylic');
+  const ridges = clearMaterial(doc, 'acrylic-edges', EDGE_OPACITY);
+  addPart(doc, mesh, ring([w, h, d], [w - 2 * RIM_MM, h - 2 * RIM_MM], [corner, windowCorner]), ridges);
+  // The window, a hair inside the rim, so no two surfaces coincide.
+  const pane = plate([w - 2 * RIM_MM - SEAM_MM, h - 2 * RIM_MM - SEAM_MM, d - 2 * RIM_PROUD_MM], windowCorner);
+  for (const piece of [pane.front, pane.back, pane.edge]) {
+    piece.uv.length = 0;
+    addPart(doc, mesh, piece, acrylic);
+  }
+  const windowBox: Rect = { x0: -w / 2 + RIM_MM + SEAM_MM, x1: w / 2 - RIM_MM - SEAM_MM, y0: -h / 2 + RIM_MM + SEAM_MM, y1: h / 2 - RIM_MM - SEAM_MM };
+  for (const part of ['card', 'label'] as const) {
+    const r = rects[part];
+    // A ridge round each, inside the window and within its depth; where it meets the rim, it stops there.
+    const outer = { x0: Math.max(r.x0 - FRAME_GAP_MM - FRAME_MM, windowBox.x0), x1: Math.min(r.x1 + FRAME_GAP_MM + FRAME_MM, windowBox.x1), y0: Math.max(r.y0 - FRAME_GAP_MM - FRAME_MM, windowBox.y0), y1: Math.min(r.y1 + FRAME_GAP_MM + FRAME_MM, windowBox.y1) };
+    const [ow, oh] = [outer.x1 - outer.x0, outer.y1 - outer.y0];
+    addPart(doc, mesh, ring([ow, oh, d - 2 * RIM_PROUD_MM - 2 * SEAM_MM], [ow - 2 * FRAME_MM, oh - 2 * FRAME_MM], [0.6, 0.3], [(outer.x0 + outer.x1) / 2, (outer.y0 + outer.y1) / 2]), ridges);
+  }
   const cardDepth = Math.min(pt ? pt * PT_MM : CARD_DEPTH_MM, size[2] - 2 * WALL_MM); // a thick card, by its points, as fits
   const { radiusMm, corners, cornersBy } = cornersOf(sights);
   const plates = { card: { depth: cardDepth, corner: radiusMm, edge: CARDSTOCK }, label: { depth: LABEL_DEPTH_MM, corner: 0, edge: LABEL_EDGE } };

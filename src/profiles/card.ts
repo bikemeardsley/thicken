@@ -10,16 +10,19 @@ import type { Faces, Profile } from '../thicken.ts';
 
 export const CARD_MM = [63.5, 88.9]; // a standard card, 2.5 × 3.5 in
 export const CARD_DEPTH_MM = 0.35; // a standard card's stock, about 14 pt (35 pt is the holder it fits, not its own thickness)
-// How a card's corners are cut depends on the card, so the vision models are asked. Trading-card-game cards are
-// clearly rounded, 1/8 in (Pokémon's spec); sports cards less so; many vintage cards were cut square.
-// ponytail: "slight" is an estimate, 1/16 in, from no published spec; measure a few modern sports cards.
+// How a card's corners are cut is read off the card in the photo, never assumed from its year or kind (Mike,
+// 2026-10-03). Round is 1/8 in (Pokémon's spec); ponytail: slight is an estimate, 1/16 in; measure a few cards.
 const CORNER_MM: Record<string, number> = { square: 0, slight: 1.6, round: 3.2 };
-export const CORNERS_ASK = 'how are the card\'s corners cut: "square" (sharp, as on most vintage cards), "slight" (just rounded, as on most modern sports cards) or "round" (clearly rounded, as on Pokémon and other trading-card-game cards)?';
-/** A card's corners from what the models answered, with their radius: slight when no one said. */
-export const cornersOf = (sights?: { asked?: Record<string, string> }[]) => {
-  const said = sights?.map((sight) => sight.asked?.corners).find((answer) => answer && answer in CORNER_MM);
-  const corners = said ?? 'slight';
-  return { radiusMm: CORNER_MM[corners], corners, cornersBy: said ? 'vision' : 'assumed' };
+export const CORNERS_ASK = 'look at this card\'s own corners in the photo: are they "square" (each corner a sharp point), "slight" (a small curve, about 2 mm across) or "round" (a clear curve, about 3 mm or more)? Judge the corners you see, not what cards of its kind usually have.';
+/**
+ * A card's corners, with their radius: one fact, so every model's answer on every photo of it counts, the most
+ * given winning (on a tie, the first given: the primary's on the first photo). Slight when no one said.
+ */
+export const cornersOf = (sights?: { answers: { asked?: Record<string, string> }[] }[]) => {
+  const said = (sights ?? []).flatMap(({ answers }) => answers.flatMap(({ asked }) => (asked?.corners && asked.corners in CORNER_MM ? [asked.corners] : [])));
+  const count = (value: string) => said.filter((answer) => answer === value).length;
+  const most = said.reduce<string | undefined>((best, value) => (best === undefined || count(value) > count(best) ? value : best), undefined);
+  return { radiusMm: CORNER_MM[most ?? 'slight'], corners: most ?? 'slight', cornersBy: most ? 'vision' : 'assumed' };
 };
 export const CARDSTOCK = '#ece8df';
 export const PT_MM = 0.0254; // a point: a thousandth of an inch
