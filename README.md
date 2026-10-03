@@ -99,7 +99,9 @@ itself, and more photos make a better model. In order:
 
 1. **Codes:** every photo showing a book's ISBN barcode is its back; every
    photo showing a slab label's grader QR code or cert barcode is its front
-   (its back, for CGC, which prints the QR code there).
+   (its back, for CGC, which prints the QR code there). With vision, it's the
+   face the code is printed on, whatever the models called it: a code
+   outranks them.
 2. **Narrow photos, for books,** shot standing or lying down: one with print
    on it is the spine; plain paper (calm, light and pale, or showing page
    lines) is a page side. A page side as thin as the spine runs down the
@@ -143,7 +145,9 @@ Each sidecar's `faces` says where every face came from:
 
 **How it looks.** The photos sit on a matte, non-metal surface (glTF's
 metallic-roughness, roughness 0.6), lit, so a model shades as it turns, like
-the object; the photo's colors show where the light falls full on it. Edges
+the object; the photo's colors show where the light falls full on it.
+Artwork (a badge's face) is unlit instead, its own colors in any viewer,
+with only its rim shading. Edges
 and corners are rounded, 1 mm on a book and 1.5 mm on a slab, and each face's
 photo wraps halfway round its edges. The model still measures its full size
 across the faces. Page sides with no photo get stacked page lines, generated
@@ -171,7 +175,10 @@ THICKEN_VISION_MODELS=gemini-3.8-flash-high,gpt-6-luna,gpt-5.6-terra,gemini-3.1-
   same order) is the confidence. When two put a face in different places or
   turns, the next model is asked; if it can't settle it, the primary's answer
   is used and the face goes on the review list. A face only one model names,
-  while another answered without it, is left out.
+  while another answered without it, is left out. When only one model
+  answers for a photo at all, its faces are used, and go on the review list.
+- Only the profile's own faces count; an answer's corners that cross or
+  fold make no face, and aren't cut out.
 - When nothing else says what the object is, the first photo also goes to
   the roster with the list of profiles: which is it, and roughly how big?
   Two agreeing settle it, the same way; the size estimate stands in only

@@ -9,11 +9,13 @@
 // front, then the back. Extra photos join the face of the same shape whose
 // color they match, and each face keeps its sharpest photo, so more photos
 // make a better model.
-import { measure, straighten, texture, type Picture } from './image.ts';
+import { inside, isQuad, measure, straighten, texture, type Picture } from './image.ts';
 import type { Sight } from './vision.ts';
 
 export type Texture = Awaited<ReturnType<typeof texture>>;
 export interface Shot { picture: Picture; texture: Texture; sharpness: number; color: number[]; stripes: number }
+/** A code proving which face it's printed on (a book's ISBN barcode is on its back), and where in which picture. */
+export interface Proof { picture: number; face: string; at: number[] }
 
 // Set on crops of real photos (Wikimedia Commons, 2026-10-02): 43 spines scored sharpness 8.7–39 and
 // stripes 0.5–3.6; 13 page blocks 2.4–13 and 0.5–7.2, the plain modern ones calm (sharpness under 6).
@@ -28,20 +30,23 @@ const MIN_FACE_PX = 24; // a face seen narrower than this (a sliver of spine pas
 /**
  * The pictures to place, each with the face it's placed on, if known: every face the vision models
  * found in a photo, straightened; a photo they found none in, whole, placed by its codes if at all.
+ * A code outranks the models: the face it's printed on is the face it proves, whatever they called it.
  */
-export function cut(pictures: Picture[], sights: Sight[] = [], byCodes: string[] = []): { parts: Picture[]; placed: string[] } {
+export function cut(pictures: Picture[], sights: Sight[] = [], proofs: Proof[] = []): { parts: Picture[]; placed: string[] } {
   const parts: Picture[] = [];
   const placed: string[] = [];
   pictures.forEach((picture, i) => {
-    const faces = (sights[i]?.faces ?? []).filter(({ corners }) =>
+    const faces = (sights[i]?.faces ?? []).filter(({ corners }) => isQuad(corners) &&
       corners.every((p, k) => Math.hypot(corners[(k + 1) % 4][0] - p[0], corners[(k + 1) % 4][1] - p[1]) >= MIN_FACE_PX));
+    const proven = proofs.filter((proof) => proof.picture === i);
     if (!faces.length) {
-      placed[parts.length] = byCodes[i];
+      placed[parts.length] = proven[0]?.face;
       parts.push(picture);
     }
     for (const { face, corners } of faces) {
-      placed[parts.length] = face;
-      parts.push({ ...straighten(picture, corners), source: { ...picture.source, face } });
+      const named = proven.find(({ at }) => inside(at, corners))?.face ?? face;
+      placed[parts.length] = named;
+      parts.push({ ...straighten(picture, corners), source: { ...picture.source, face: named } });
     }
   });
   return { parts, placed };

@@ -74,9 +74,8 @@ async function make(
   if (match && match.confidence < SURE) review.push(`which book this is (found by its title, ${Math.round(match.confidence * 100)}% sure: check it, or give --isbn)`);
   if (read?.title && !known && !match) log.warnings.push(`no book in Open Library close to the title read, "${read.title}"`);
   const isbn = known ?? match?.isbn;
-  const byCodes: string[] = [];
-  for (const { picture, use } of codes) if (use === 'isbn') byCodes[picture] = 'back';
-  const { parts, placed } = cut(pictures, sights, byCodes);
+  const proofs = codes.filter(({ use }) => use === 'isbn').map(({ picture, at = [] }) => ({ picture, face: 'back', at }));
+  const { parts, placed } = cut(pictures, sights, proofs);
   const all = await shots(parts);
   const { chosen, roles, guessedFrontBack } = assignFaces(all, ['front', 'back', 'spine', 'top', 'bottom', 'edge'], { placed, byShape: true });
   if (guessedFrontBack) review.push('front and back (no barcode: told apart only by photo order, so check they are the right way round)');

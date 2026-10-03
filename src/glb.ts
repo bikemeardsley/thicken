@@ -1,8 +1,10 @@
 // Geometry to GLB, shared by every profile, and the softly rounded, textured
 // box that books and slabs are made of. Units are meters (glTF's), front faces
-// +Z, Y up. Materials are lit (glTF's metallic-roughness), so a model shades
-// as it turns, the way the object does.
+// +Z, Y up. Photos and plain materials are lit (glTF's metallic-roughness), so
+// a model shades as it turns, the way the object does; artwork is unlit, its
+// own colors in any viewer.
 import { ColorUtils, Document, NodeIO, type Material, type Mesh, type TypedArray, type vec4 } from '@gltf-transform/core';
+import { ALL_EXTENSIONS, KHRMaterialsUnlit } from '@gltf-transform/extensions';
 
 export interface Part { position: number[]; normal: number[]; uv: number[]; index: number[] }
 export const emptyPart = (): Part => ({ position: [], normal: [], uv: [], index: [] });
@@ -31,6 +33,10 @@ export function pictureMaterial(doc: Document, name: string, image: Uint8Array, 
     .setRoughnessFactor(roughness);
 }
 
+/** Artwork exactly as it is: unlit, so it shows its own colors whatever the viewer's lights. */
+export const unlit = (doc: Document, material: Material): Material =>
+  material.setExtension('KHR_materials_unlit', doc.createExtension(KHRMaterialsUnlit).createUnlit());
+
 /** A plain material in an sRGB color (#rrggbb); glTF wants it linear. */
 export function colorMaterial(doc: Document, name: string, color: string, roughness: number): Material {
   return doc.createMaterial(name)
@@ -42,7 +48,8 @@ export function colorMaterial(doc: Document, name: string, color: string, roughn
 export async function toGlb(doc: Document, mesh: Mesh): Promise<Uint8Array> {
   const scene = doc.createScene().addChild(doc.createNode(mesh.getName()).setMesh(mesh));
   doc.getRoot().setDefaultScene(scene);
-  return new NodeIO().writeBinary(doc);
+  // An extension the writer doesn't know is left out with only a console warning: register them all.
+  return new NodeIO().registerExtensions(ALL_EXTENSIONS).writeBinary(doc);
 }
 
 export type Face = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom';

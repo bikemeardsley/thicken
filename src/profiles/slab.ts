@@ -105,11 +105,9 @@ async function make(
   if (size.some((mm) => mm === undefined)) {
     throw new Error(`no size on file for a "${holder}" holder (known: ${Object.keys(HOLDERS).join(', ')}): measure one and pass --size WxHxD in mm`);
   }
-  const byCodes: string[] = [];
-  for (const { picture, use } of codes) {
-    if (use === 'grader' || use === 'cert') byCodes[picture] = use === 'grader' && label.grader === 'cgc' ? 'back' : 'front';
-  }
-  const { parts, placed } = cut(pictures, sights, byCodes);
+  const proofs = codes.filter(({ use }) => use === 'grader' || use === 'cert')
+    .map(({ picture, use, at = [] }) => ({ picture, face: use === 'grader' && label.grader === 'cgc' ? 'back' : 'front', at }));
+  const { parts, placed } = cut(pictures, sights, proofs);
   const all = await shots(parts);
   const { chosen, roles, guessedFrontBack } = assignFaces(all, ['front', 'back'], { placed });
   if (guessedFrontBack) review.push('front and back (no QR code or cert barcode: told apart only by photo order, so check they are the right way round)');

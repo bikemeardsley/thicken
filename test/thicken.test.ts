@@ -8,8 +8,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mock, test } from 'node:test';
 import { getBounds, NodeIO, type Document, type Primitive, type vec2, type vec3 } from '@gltf-transform/core';
+import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import sharp, { type Sharp } from 'sharp';
-import { load, snap } from '../src/image.ts';
+import { cut } from '../src/faces.ts';
+import { codes, load, snap } from '../src/image.ts';
 import { startPreview } from '../src/preview.ts';
 import { batchItems, thicken } from '../src/thicken.ts';
 
@@ -31,8 +33,9 @@ test('badge: cut-out artwork, its outline extruded to a closed solid at real-wor
   const faceMaterial = face.getMaterial()!;
   assert.equal(faceMaterial.getAlphaMode(), 'MASK');
   assert.equal(faceMaterial.getBaseColorTexture()?.getMimeType(), 'image/png');
-  // Lit, so it shades as it turns: a matte, non-metal surface.
-  assert.deepEqual([faceMaterial.getExtension('KHR_materials_unlit'), faceMaterial.getMetallicFactor(), faceMaterial.getRoughnessFactor()], [null, 0, 0.6]);
+  // Artwork is unlit, its own colors in any viewer; the rim is lit, so the thickness shades as it turns.
+  assert.ok(faceMaterial.getExtension('KHR_materials_unlit'), 'the art is unlit');
+  assert.deepEqual([rim.getMaterial()!.getExtension('KHR_materials_unlit'), rim.getMaterial()!.getMetallicFactor()], [null, 0]);
   // #3366cc in linear light, as glTF factors are; unconverted it would be 0.2, 0.4, 0.8.
   rim.getMaterial()!.getBaseColorFactor().slice(0, 3).forEach((c, i) => assert.ok(Math.abs(c - [0.0331, 0.1329, 0.6038][i]) < 1e-3));
 
@@ -199,9 +202,10 @@ test('book: vision models find the faces in uncropped photos, which are cut out 
         return model === 'a' ? { faces: [{ face: 'front', corners: seen(front) }, { face: 'spine', corners: seen([[130, 150], [180, 150], [160, 980], [110, 980]]) }] }
           : { faces: [{ face: 'front', corners: seen(front, 1) }] };
       }
-      // b has the back's outline but the wrong way up, so c is asked, and agrees with a. All see the spine.
+      // b has the back's outline but the wrong way up, so c is asked, and agrees with a. All see the spine. And all
+      // call the back the front: its ISBN barcode says otherwise, and wins.
       const corners = seen(back, model === 'c' ? 1 : 0);
-      return { faces: [{ face: 'back', corners: model === 'b' ? [corners[2], corners[3], corners[0], corners[1]] : corners }, { face: 'spine', corners: seen(spine) }] };
+      return { faces: [{ face: 'front', corners: model === 'b' ? [corners[2], corners[3], corners[0], corners[1]] : corners }, { face: 'spine', corners: seen(spine) }] };
     },
   });
   t.after(() => fetch.mock.restore());
@@ -212,16 +216,18 @@ test('book: vision models find the faces in uncropped photos, which are cut out 
   assert.ok(sidecar.review.includes('IMG_3.png (no vision model answered, so it was used whole: run again, or crop it)'));
   const vision = sidecar.vision as { endpoint: string; photos: { faces: { face: string; by: string[]; agreed: boolean }[]; answers: { model: string }[] }[] };
   assert.equal(vision.endpoint, 'vision.test/api/chat/completions');
+  // The record keeps what the models said; the barcode decided where it went.
   assert.deepEqual(vision.photos.map(({ faces }) => faces.map(({ face, by, agreed }) => [face, by, agreed])),
-    [[['back', ['a', 'c'], true], ['spine', ['a', 'b'], true]], [['front', ['a', 'b'], true]], []]);
+    [[['front', ['a', 'c'], true], ['spine', ['a', 'b'], true]], [['front', ['a', 'b'], true]], []]);
   // The spine shares its photo with the back, so it's taken as seen at an angle: no thickness from it.
   assert.deepEqual([(sidecar.measuredBy as Record<string, string>).depth, sidecar.depthEstimates], ['default', { photos: undefined, pages: undefined }]);
   assert.deepEqual(vision.photos.map(({ answers }) => answers.map(({ model }) => model)), [['a', 'b', 'c'], ['a', 'b'], ['a', 'b', 'c']]);
   assert.ok(sidecar.review.every((item) => !item.includes('disagree')), 'the dispute was settled');
   assert.ok(authorizations.every((a) => a === 'Bearer secret-key-123') && !JSON.stringify(sidecar).includes('secret-key-123'), 'the key is sent, never recorded');
 
-  // Straightened, the covers carry none of the table.
+  // Straightened, the covers carry none of the table; photos are lit, to shade as they turn.
   const doc = await read(glb);
+  assert.ok(doc.getRoot().listMaterials().every((material) => !material.getExtension('KHR_materials_unlit')), 'photos are lit');
   assert.ok(near(await colorOf(doc, [0, 0, 1]), '#1d2b53'), 'the front is the navy cover alone');
   assert.ok(Math.min(...await colorOf(doc, [0, 0, -1])) > 180, 'the back is the cream cover alone');
   assert.ok(near(await colorOf(doc, [-1, 0, 0]), '#c62828'), 'the spine is the red strip alone');
@@ -260,7 +266,7 @@ test('vision: with nothing else to go on, the models say what it is and roughly 
     vision: async ({ model, prompt }) => {
       // Saying what it is: a and b disagree, so c is asked, and agrees with b, outvoting the primary.
       if (prompt.includes('Which of these is it?')) return model === 'a' ? { object: 'book', sizeMm: [140, 210, 20] } : { object: 'box', sizeMm: model === 'b' ? [70, 150, 8] : [72, 148, 9] };
-      return { faces: [{ face: 'front', corners: seen }] };
+      return { faces: [{ face: 'front', corners: seen }, { face: 'lid', corners: seen }] }; // a box has no lid
     },
   });
   t.after(() => fetch.mock.restore());
@@ -288,6 +294,7 @@ test('vision: with nothing else to go on, the models say what it is and roughly 
   // Faces: each answer as given, and the label snapped onto the phone's real edges, both in the image as sent.
   assert.equal(examples[1].profile, 'box');
   assert.deepEqual(examples[1].answers.map(({ model, faces }: { model: string; faces: { corners: number[][] }[] }) => [model, faces[0].corners]), [['a', seen], ['b', seen]]);
+  assert.deepEqual(examples[1].label.faces.map(({ face }: { face: string }) => face), ['front'], 'a face the profile lacks is dropped');
   const [label] = examples[1].label.faces;
   assert.deepEqual([label.face, label.agreed], ['front', true]);
   assert.ok(label.corners.every((p: number[], i: number) => Math.hypot(p[0] - seen[i][0], p[1] - seen[i][1]) <= 1.5), `label ${JSON.stringify(label.corners)}`);
@@ -307,8 +314,9 @@ test('book: with no barcode, the title and authors the models read find it, with
   const front = [[240, 280], [660, 280], [660, 920], [240, 920]].map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]);
   let title = 'THE WORLDS I SEE: CURIOSITY, EXPLORATION, AND DISCOVERY AT THE DAWN OF AI';
   const fetch = catalog({}, {
-    vision: async ({ prompt }) => (prompt.includes('Which of these is it?') ? { object: 'book', sizeMm: [140, 210, 25] }
-      : { faces: [{ face: 'front', corners: front }], title, authors: ['Dr. Fei-Fei Li'] }),
+    // b says what it is, but finds no faces: the front is a's word alone.
+    vision: async ({ model, prompt }) => (prompt.includes('Which of these is it?') ? { object: 'book', sizeMm: [140, 210, 25] }
+      : model === 'b' ? undefined : { faces: [{ face: 'front', corners: front }], title, authors: ['Dr. Fei-Fei Li'] }),
     // Open Library files it as "Worlds I See", with three editions; only one edition's record gives its pages.
     search: { docs: [{ key: '/works/OL1W', title: 'Worlds I See', subtitle: 'Curiosity, Exploration, and Discovery at the Dawn of AI', author_name: ['Fei-Fei Li'],
       isbn: ['9781250897947', '9781250897930', '9781250898104', '1250898102'] }] },
@@ -326,12 +334,29 @@ test('book: with no barcode, the title and authors the models read find it, with
     [undefined, { profile: 'vision', isbn: undefined }, 25.2, 'pages']);
   assert.equal((sidecar.catalog as { title: string }).title, 'Worlds I See');
   assert.ok(sidecar.review.every((item) => !item.startsWith('which book')), 'a sure match needs no checking');
+  assert.ok(sidecar.review.includes('front in IMG_1.png (only a answered, so no second model checked it: check it)'));
 
   // A title read slightly wrong is a match to check.
   title = 'Worlds I Saw';
   const second = await thicken([photo]);
   assert.equal((second.sidecar.match as { confidence: number }).confidence, 0.67);
   assert.ok(second.sidecar.review.includes('which book this is (found by its title, 67% sure: check it, or give --isbn)'));
+});
+
+test('a code outranks the models: the face it is printed on is the face it proves, and crossed corners are no face', async () => {
+  const [picture] = await load(fixture('book-back.jpg'));
+  const [isbn] = await codes(picture);
+  const { width: w, height: h } = picture;
+  const sight = (corners: number[][]) => ({ faces: [{ face: 'front', corners, asSeen: corners, by: ['a', 'b'], agreed: true }], answers: [], disputed: [] });
+  const proof = { picture: 0, face: 'back', at: isbn.at };
+  // The models call the barcode's face the front; the barcode says back.
+  assert.deepEqual(cut([picture], [sight([[0, 0], [w, 0], [w, h], [0, h]])], [proof]).placed, ['back']);
+  // A face clear of the barcode keeps the models' name.
+  assert.deepEqual(cut([picture], [sight([[0, 0], [w, 0], [w, 100], [0, 100]])], [proof]).placed, ['front']);
+  // Crossed corners (a bow tie) warp to nothing, so they're no face: the photo is used whole, placed by its code.
+  const crossed = cut([picture], [sight([[0, 0], [w, h], [w, 0], [0, h]])], [proof]);
+  assert.deepEqual(crossed.placed, ['back']);
+  assert.equal(crossed.parts[0], picture);
 });
 
 test('snap: a model\'s corners, a little off, move onto the cover\'s real edges, not onto print near them', async () => {
@@ -632,7 +657,7 @@ async function colorOf(doc: Document, normal: number[]): Promise<number[]> {
 /** Within JPEG's wobble of a #rrggbb color. */
 const near = (color: number[], hex: string) => color.every((c, i) => Math.abs(c - parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16)) < 12);
 
-const read = (glb: Uint8Array) => new NodeIO().readBinary(glb);
+const read = (glb: Uint8Array) => new NodeIO().registerExtensions(ALL_EXTENSIONS).readBinary(glb);
 const pick = (object: Record<string, unknown>, keys: string[]) => Object.fromEntries(keys.map((key) => [key, object[key]]));
 
 function assertExtents(doc: Document, meters: number[]) {
