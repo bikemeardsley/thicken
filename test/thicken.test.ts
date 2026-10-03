@@ -795,10 +795,6 @@ test('preview: both sides of a model, drawn beside it as <name>.preview.png', as
   } finally {
     await preview.close();
   }
-  if (process.env.GITHUB_ACTIONS) { // TEMPORARY: the picture, for the CI diagnosis
-    await mkdir('diag', { recursive: true });
-    await copyFile(path.join(folder, 'slab.preview.png'), path.join('diag', 'test-slab.preview.png'));
-  }
   const { data, info } = await sharp(path.join(folder, 'slab.preview.png')).raw().toBuffer({ resolveWithObject: true });
   assert.deepEqual([info.width, info.height], [800, 574]);
   // The front view's middle is the slab's green card, not the background.
