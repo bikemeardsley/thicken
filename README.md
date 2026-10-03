@@ -4,8 +4,10 @@ Flat images in, thickness out. Thicken turns photos, scans and flat artwork
 into 3D assets at real-world size that you can drop into a three.js page or
 Blender.
 
-**Status:** badge, book and slab work, and Thicken picks between them
-itself. The raw card, slab acrylic and photo straightening are still the plan.
+**Status:** badge, book, slab and a generic box work, and Thicken picks
+between them itself, from codes or by asking vision models. With a vision
+roster, uncropped photos are cut into straightened faces. The raw card and
+slab acrylic are still the plan.
 
 ```
 npm install
@@ -354,7 +356,7 @@ whose shape is off the holder's by more than 4% warns.
 | Profiles, box, classifier, CLI | Write | |
 | Finding faces in photos | Write | Vision models over any OpenAI-compatible endpoint, primary and peer (src/vision.ts): one POST each, no SDK. Kitbash, 2026-10-02. |
 | Straightening faces | Adapt, don't depend | [jlouthan/perspective-transform](https://github.com/jlouthan/perspective-transform) (MIT): the 4-point homography; the resampling over sharp's pixels is ours. sharp has no perspective warp, and OpenCV.js is megabytes for one. |
-| Snapping corners to edges (planned) | Adapt, don't depend | [puffinsoft/jscanify](https://github.com/puffinsoft/jscanify) (MIT): read the corner-ranking approach, for moving a model's corners (about 1% off) onto the real edges. Slabs give competing rectangles (acrylic edge, card border, label) and glare. |
+| Snapping corners to edges | Write | `snap` in src/image.ts moves a model's corners (about 1% off) onto the real edges. It samples brightness steps along each side, takes the line they support nearest the model's, and fits it by least squares, in about 70 ms a face. Kitbash pointed at [puffinsoft/jscanify](https://github.com/puffinsoft/jscanify)'s corner ranking; a line fit near the model's corners was enough. |
 
 For refractor and holo effects in a viewer, `simeydotme/pokemon-cards-css` is
 a reference only. It is GPL-3.0, so read it and don't copy it.
