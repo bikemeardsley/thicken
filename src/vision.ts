@@ -17,11 +17,12 @@ const TIMEOUT_MS = 180_000;
 const MAX_FACES = 12; // twice a box's six: more is noise, and settling compares every pair
 
 /** What the models are told about a kind of object: a profile (src/profiles). */
-export interface Kind { name: string; about?: string; faces: Record<string, string>; note?: string }
+/** A profile: its faces, a note on how it stands, and short questions to answer as well, each answer one word. */
+export interface Kind { name: string; about?: string; faces: Record<string, string>; note?: string; asks?: Record<string, string> }
 /** One model's answer, corners in the picture's own pixels. */
 export interface Answer {
   model: string; ms: number; status?: number; error?: string;
-  faces?: { face: string; corners: number[][] }[]; title?: string; authors?: string[]; // finding faces
+  faces?: { face: string; corners: number[][] }[]; title?: string; authors?: string[]; asked?: Record<string, string>; // finding faces
   object?: string; sizeMm?: number[]; // saying what it is
 }
 /**
@@ -29,23 +30,23 @@ export interface Answer {
  * real edges; the corners as the models gave them; and who agreed.
  */
 export interface Seen { face: string; corners: number[][]; asSeen: number[][]; by: string[]; agreed: boolean }
-export interface Sight { faces: Seen[]; title?: string; authors?: string[]; answers: Answer[]; disputed: string[] }
+export interface Sight { faces: Seen[]; title?: string; authors?: string[]; asked?: Record<string, string>; answers: Answer[]; disputed: string[] }
 /** What the models said the object is: a profile's name (none, if none fits), its estimated size, and whether they disagreed. */
 export interface Identity { profile?: string; sizeMm?: number[]; disputed: boolean; answers: Answer[] }
 
 export const visionOn = () => Boolean(process.env.THICKEN_VISION_URL && process.env.THICKEN_VISION_MODELS);
 const roster = () => process.env.THICKEN_VISION_MODELS!.split(',').map((m) => m.trim()).filter(Boolean);
 
-const facesPrompt = ({ name, about, faces, note }: Kind) => `This photo shows ${about ?? `a ${name}`}, on whatever it was set down on. For every face of it you can see, even partly, say which face it is and give the pixel coordinates of its four corners in this ${SIZE} x ${SIZE} image.
+const facesPrompt = ({ name, about, faces, note, asks = {} }: Kind) => `This photo shows ${about ?? `a ${name}`}, on whatever it was set down on. For every face of it you can see, even partly, say which face it is and give the pixel coordinates of its four corners in this ${SIZE} x ${SIZE} image.
 
 Faces: ${Object.entries(faces).map(([face, words]) => (words === face ? `"${face}"` : `"${face}" (${words})`)).join(', ')}.
 
 Give each face's corners in that face's own reading order: top-left, top-right, bottom-right, bottom-left, as the face would look held upright in front of you. For a side, upright is with the object standing as it normally does; for the top, looking down on it from the front (its back edge at the top); for the bottom, with the object tipped back onto its back (its front edge at the top).${note ? ` ${note}` : ''} A corner hidden from view goes where it would be.
 
-Also read its title, and authors if it has them.
+Also read its title, and authors if it has them.${Object.entries(asks).map(([key, question]) => `\n"${key}": ${question}`).join('')}
 
 Answer with JSON only, no prose:
-{"faces":[{"face":"front","corners":[[x,y],[x,y],[x,y],[x,y]]}],"title":"","authors":[]}`;
+{"faces":[{"face":"front","corners":[[x,y],[x,y],[x,y],[x,y]]}],"title":"","authors":[]${Object.keys(asks).map((key) => `,"${key}":""`).join('')}}`;
 
 const identifyPrompt = (kinds: Kind[]) => `This photo shows one object. Which of these is it? Pick the most specific that fits.
 ${kinds.map(({ name, about }) => `- "${name}": ${about}`).join('\n')}
@@ -67,17 +68,24 @@ export async function lookAll(pictures: Picture[], kind: Kind): Promise<Sight[]>
 export async function look(picture: Picture, kind: Kind): Promise<Sight> {
   const { jpeg, toPicture, toSent } = await letterbox(picture);
   const prompt = facesPrompt(kind);
-  const answers = await consult(jpeg, prompt, (json) => parseFaces(json, Object.keys(kind.faces)), (asked) => settle(asked).disputed.length > 0);
+  const keys = Object.keys(kind.asks ?? {});
+  const answers = await consult(jpeg, prompt, (json) => parseFaces(json, Object.keys(kind.faces), keys), (asked) => settle(asked).disputed.length > 0);
   const settled = settle(answers);
   const back = <T extends { corners: number[][] }>(faces: T[]) => faces.map((f) => ({ ...f, corners: f.corners.map(toPicture) }));
   const named = answers.find((a) => a.title);
+  // Each question's answer: the one most models gave, the higher seat's on a tie.
+  const asked = Object.fromEntries(keys.flatMap((key) => {
+    const said = answers.flatMap((a) => (a.asked?.[key] ? [a.asked[key]] : []));
+    const count = (value: string) => said.filter((s) => s === value).length;
+    return said.length ? [[key, said.reduce((best, value) => (count(value) > count(best) ? value : best))]] : [];
+  }));
   const faces = back(settled.faces).map((f) => ({ ...f, corners: snap(picture, f.corners), asSeen: f.corners }));
   if (trainingOn()) {
-    const label = { faces: faces.map(({ face, corners, agreed }) => ({ face, corners: corners.map((p) => toSent(p).map(Math.round)), agreed })), title: named?.title, authors: named?.authors };
+    const label = { faces: faces.map(({ face, corners, agreed }) => ({ face, corners: corners.map((p) => toSent(p).map(Math.round)), agreed })), title: named?.title, authors: named?.authors, ...(keys.length && { asked }) };
     await keep(jpeg, { task: 'faces', profile: kind.name, prompt, answers, label, disputed: settled.disputed });
   }
   return {
-    faces, title: named?.title, authors: named?.authors,
+    faces, title: named?.title, authors: named?.authors, ...(Object.keys(asked).length && { asked }),
     answers: answers.map((a) => ({ ...a, faces: a.faces && back(a.faces) })), disputed: settled.disputed,
   };
 }
@@ -166,14 +174,15 @@ async function consult(jpeg: Buffer, prompt: string, parse: (json: any) => Parti
  * A face list from an answer: the profile's own faces, a few at most, each four corners inside the image, give or
  * take a little. Corners that make no face (a bow tie) stay in, to lose to a peer's; cut() never warps them.
  */
-function parseFaces(json: any, names: string[]): Partial<Answer> | undefined {
+function parseFaces(json: any, names: string[], keys: string[] = []): Partial<Answer> | undefined {
   const faces = (Array.isArray(json?.faces) ? json.faces.slice(0, MAX_FACES) : [])
     .filter((f: any) => typeof f?.face === 'string' && names.includes(f.face.toLowerCase()) && Array.isArray(f.corners) && f.corners.length === 4
       && f.corners.every((p: unknown) => Array.isArray(p) && p.length === 2 && p.every((n) => Number.isFinite(n) && n > -SIZE / 10 && n < SIZE * 1.1)))
     .map((f: any) => ({ face: f.face.toLowerCase(), corners: f.corners.map((p: number[]) => p.map(Number)) }));
   if (!faces.length) return undefined;
   const authors = Array.isArray(json.authors) ? json.authors.filter((a: unknown) => typeof a === 'string' && a) : [];
-  return { faces, ...(typeof json.title === 'string' && json.title && { title: json.title }), ...(authors.length && { authors }) };
+  const asked = Object.fromEntries(keys.flatMap((key) => (typeof json[key] === 'string' && json[key].trim() ? [[key, json[key].trim().toLowerCase()]] : [])));
+  return { faces, ...(typeof json.title === 'string' && json.title && { title: json.title }), ...(authors.length && { authors }), ...(Object.keys(asked).length && { asked }) };
 }
 
 /**

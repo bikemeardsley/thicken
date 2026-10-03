@@ -1,10 +1,10 @@
 // The generic profile: anything box-shaped (a game case, a phone, packaging,
 // a deck of cards) at its real size: --size, else the vision models'
-// estimate, warned. Its faces come from the photos (src/faces.ts): with
-// vision, wherever the models found them; without, whole photos as the front
-// then the back. A side not photographed is a plain color from the front's
-// edge, fine as it is; a missing back is for review.
-import { assignFaces, cut, pictureRecord, shots } from '../faces.ts';
+// estimate, warned. Its faces come from the photos (src/faces.ts), wherever
+// the vision models found them; without vision, one whole photo is the front.
+// A side not photographed is a plain color from the front's edge, fine as it
+// is; a missing back is for review.
+import { assignFaces, cut, pictureRecord, shots, sidesUnknown } from '../faces.ts';
 import { box as cuboid, type Face, type Side } from '../glb.ts';
 import type { Faces, Profile } from '../thicken.ts';
 
@@ -28,8 +28,8 @@ export const box: Profile = {
 
     const { parts, placed } = cut(pictures, sights);
     const all = await shots(parts);
-    const { chosen, roles, guessedFrontBack } = assignFaces(all, FACES, { placed });
-    if (guessedFrontBack) review.push('front and back (told apart only by photo order: check they are the right way round)');
+    const { chosen, roles, undecided } = assignFaces(all, FACES, { placed });
+    if (undecided) throw sidesUnknown(Boolean(sights));
     const photo = (face: Face) => (chosen[face] === undefined ? undefined : all[chosen[face]].texture);
     const front = photo('front');
     if (!front) throw new Error('a box needs a photo of its front');

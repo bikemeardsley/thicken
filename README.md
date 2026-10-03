@@ -57,7 +57,7 @@ profiles, one file each in `src/profiles`. Two families:
 | Box | Front [back, sides], and its size (or a vision estimate) | Softly rounded box with the photos on its faces: anything box-shaped, from a game case to a phone |
 | Book | Front cover, back, spine (any order, any of them), or just an ISBN | Softly rounded box at the book's size: covers, spine, page edges |
 | Graded slab | Front [back] | A clear plastic holder at its real size, with the card and the grade label inside it, each cut from the photos |
-| Raw card | Front [back] | A thin plate with rounded corners, 63.5 × 88.9 mm unless `--size` says otherwise, 0.35 mm thick unless `--pt` gives a thick card's points |
+| Raw card | Front [back] | A thin plate, its corners rounded or square as the vision models say the card's are, 63.5 × 88.9 mm unless `--size` says otherwise, 0.35 mm thick unless `--pt` gives a thick card's points |
 
 Name the profile, or leave it out and Thicken picks one:
 
@@ -124,15 +124,17 @@ itself, and more photos make a better model. In order:
    which side a photo shows, because the side a grader prints its QR code on
    changes with label designs (PSA's and CGC's current labels put it on the
    back, and PSA prints its cert barcode on both sides). The vision models
-   tell the sides apart (the front shows the grade); without them, photo
-   order does.
+   tell the sides apart (the front shows the grade).
 2. **Narrow photos, for books,** shot standing or lying down: one with print
    on it is the spine; plain paper (calm, light and pale, or showing page
    lines) is a page side. A page side as thin as the spine runs down the
    book, so it's the page edge; one that looks thicker is the top, then the
    bottom (on a book wider than tall, it's taken for the page edge).
-3. **The rest:** front, then back. Told apart by order alone, they're marked
-   for review.
+3. **The rest:** the vision models say which is the front and which the
+   back. Photo order is no evidence: without vision, two photos that nothing
+   else tells apart stop the run, with a pointer to setting a roster up. A
+   lone photo is the front, and once one side is proven (a book's barcode),
+   the other follows.
 4. **Extra shots** join the face they match in shape and color, and each
    face keeps its sharpest shot. The others stay in the sidecar as
    alternates.
@@ -178,7 +180,8 @@ the same every time, not a texture from anywhere else.
 
 A slab's holder is clear plastic: glossy and alpha-blended, so whatever is
 behind it shows through, a web page included. Inside, halfway through its
-depth, sit the card (a 0.35 mm plate with 3.2 mm rounded corners) and the
+depth, sit the card (a 0.35 mm plate, its corners rounded to 3.2 mm or
+square, as the vision models say: many vintage cards were cut square) and the
 grade label, each with its own pictures front and back. The clear border in
 the photos, which shows whatever the slab lay on, isn't used. glTF's
 transmission extension was tried first: it refracts only what's in the 3D
@@ -259,12 +262,10 @@ THICKEN_DATASET=../thicken-dataset  # outside the repo: it holds your photos
 The review list is for what the model shows: if every face is your photo,
 the right way round, there's nothing to review. Each sidecar's `review`
 lists the rest, a batch ends with the list, and the preview caption shows
-it: a stand-in front, a plain spine or back, a front and back told apart
-only by photo order, a face the vision models disagreed on, and a photo no
-vision model answered for (used whole). Add the photos (in a subfolder named
-after the item), run again, and only that model is remade, with its review
-cleared. A front and back the wrong way round are swapped by giving them in
-the other order (in a batch subfolder, file names set the order).
+it: a stand-in front, a plain spine or back, a face the vision models
+disagreed on, a face only one model answered for, and a photo no vision model
+answered for (used whole). Add the photos (in a subfolder named after the
+item), run again, and only that model is remade, with its review cleared.
 
 Guessed sizes are warnings instead (in `warnings`, and printed): a standard
 trim size, a default or estimated thickness, estimates that disagree, an
