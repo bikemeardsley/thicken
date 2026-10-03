@@ -69,7 +69,9 @@ export async function look(picture: Picture, kind: Kind): Promise<Sight> {
   const { jpeg, toPicture, toSent } = await letterbox(picture);
   const prompt = facesPrompt(kind);
   const keys = Object.keys(kind.asks ?? {});
-  const answers = await consult(jpeg, prompt, (json) => parseFaces(json, Object.keys(kind.faces), keys), (asked) => settle(asked).disputed.length > 0);
+  // Disagreeing on a face, or on an answer, asks the next model.
+  const clash = (asked: Answer[]) => settle(asked).disputed.length > 0 || keys.some((key) => new Set(asked.flatMap((a) => a.asked?.[key] ?? [])).size > 1);
+  const answers = await consult(jpeg, prompt, (json) => parseFaces(json, Object.keys(kind.faces), keys), clash);
   const settled = settle(answers);
   const back = <T extends { corners: number[][] }>(faces: T[]) => faces.map((f) => ({ ...f, corners: f.corners.map(toPicture) }));
   const named = answers.find((a) => a.title);

@@ -10,13 +10,16 @@ import type { Faces, Profile } from '../thicken.ts';
 
 export const CARD_MM = [63.5, 88.9]; // a standard card, 2.5 × 3.5 in
 export const CARD_DEPTH_MM = 0.35; // a standard card's stock, about 14 pt (35 pt is the holder it fits, not its own thickness)
-export const CARD_CORNER_MM = 3.2; // a modern card's rounded corners, 1/8 in
-// Rounded or square depends on the card (many vintage cards were cut square), so the vision models are asked.
-export const CORNERS_ASK = 'are the card\'s corners "rounded" (as on most modern cards) or "square" (as on many vintage ones)?';
-/** A card's corner radius from what the models answered: square or rounded, rounded when no one said. */
+// How a card's corners are cut depends on the card, so the vision models are asked. Trading-card-game cards are
+// clearly rounded, 1/8 in (Pokémon's spec); sports cards less so; many vintage cards were cut square.
+// ponytail: "slight" is an estimate, 1/16 in, from no published spec; measure a few modern sports cards.
+const CORNER_MM: Record<string, number> = { square: 0, slight: 1.6, round: 3.2 };
+export const CORNERS_ASK = 'how are the card\'s corners cut: "square" (sharp, as on most vintage cards), "slight" (just rounded, as on most modern sports cards) or "round" (clearly rounded, as on Pokémon and other trading-card-game cards)?';
+/** A card's corners from what the models answered, with their radius: slight when no one said. */
 export const cornersOf = (sights?: { asked?: Record<string, string> }[]) => {
-  const said = sights?.map((sight) => sight.asked?.corners).find(Boolean);
-  return { radiusMm: said === 'square' ? 0 : CARD_CORNER_MM, corners: said === 'square' ? 'square' : 'rounded', cornersBy: said ? 'vision' : 'assumed' };
+  const said = sights?.map((sight) => sight.asked?.corners).find((answer) => answer && answer in CORNER_MM);
+  const corners = said ?? 'slight';
+  return { radiusMm: CORNER_MM[corners], corners, cornersBy: said ? 'vision' : 'assumed' };
 };
 export const CARDSTOCK = '#ece8df';
 export const PT_MM = 0.0254; // a point: a thousandth of an inch
