@@ -181,9 +181,9 @@ the same every time, not a texture from anywhere else.
 A slab's holder is clear plastic: glossy and alpha-blended, so whatever is
 behind it shows through, a web page included. Inside, halfway through its
 depth, sit the card (a 0.35 mm plate, its corners cut as the vision models
-say: square, as on most vintage cards; slight, about 1.6 mm, as on modern
-sports cards; or round, 3.2 mm, as on Pokémon and other trading-card-game
-cards; slight when no model said) and the
+see this card's own corners: square, slight, about 1.6 mm, or round, 3.2 mm;
+never assumed from the card's year or kind, and slight only when no model
+said) and the
 grade label, each with its own pictures front and back. The clear border in
 the photos, which shows whatever the slab lay on, isn't used. glTF's
 transmission extension was tried first: it refracts only what's in the 3D
