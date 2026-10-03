@@ -77,8 +77,8 @@ export interface Built { widthMm: number; heightMm: number; depthMm: number; war
  * generated pages ("pages") and a box's sides to a plain color ("plain"),
  * which are fine as they are: extras, never to review.
  */
-export type Faces = Record<string, 'photo' | 'openlibrary' | 'color' | 'plastic' | 'pages' | 'plain'>;
-const STAND_IN = { openlibrary: 'Open Library\'s cover, not your copy', color: 'plain color', plastic: 'plain plastic' };
+export type Faces = Record<string, 'photo' | 'openlibrary' | 'color' | 'pages' | 'plain'>;
+const STAND_IN = { openlibrary: 'Open Library\'s cover, not your copy', color: 'plain color' };
 
 /** The faces still to photograph, e.g. "spine (plain color)": for the review list and preview captions. */
 export const stillToShoot = (faces: Faces = {}) =>

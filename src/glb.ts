@@ -37,6 +37,14 @@ export function pictureMaterial(doc: Document, name: string, image: Uint8Array, 
 export const unlit = (doc: Document, material: Material): Material =>
   material.setExtension('KHR_materials_unlit', doc.createExtension(KHRMaterialsUnlit).createUnlit());
 
+/**
+ * Clear plastic: glossy and alpha-blended, so any viewer shows what's behind it, the page included. glTF's
+ * transmission would refract only what's in the scene: on a page, behind a see-through canvas, the clear parts
+ * came out white (model-viewer, 2026-10-03), and viewers without the extension draw it solid.
+ */
+export const clearMaterial = (doc: Document, name: string): Material =>
+  doc.createMaterial(name).setBaseColorFactor([1, 1, 1, 0.12]).setAlphaMode('BLEND').setMetallicFactor(0).setRoughnessFactor(0.05);
+
 /** A plain material in an sRGB color (#rrggbb); glTF wants it linear. */
 export function colorMaterial(doc: Document, name: string, color: string, roughness: number): Material {
   return doc.createMaterial(name)
@@ -70,7 +78,22 @@ export interface Side { picture?: Uint8Array; color?: string; roughness?: number
  * of each rounded edge and meets its neighbor's there, and the box still
  * measures W × H × D across its faces.
  */
-export async function box(name: string, [widthMm, heightMm, depthMm]: number[], sides: Record<Face, Side>, radiusMm = 0): Promise<Uint8Array> {
+export async function box(name: string, sizeMm: number[], sides: Record<Face, Side>, radiusMm = 0): Promise<Uint8Array> {
+  const doc = new Document();
+  const mesh = doc.createMesh(name);
+  let i = 0;
+  for (const [side, part] of roundedBox(sizeMm, sides, radiusMm)) {
+    const material = side.picture
+      ? pictureMaterial(doc, `${name}-${i++}`, side.picture, 'image/jpeg', side.roughness)
+      : colorMaterial(doc, `${name}-${i++}`, side.color ?? '#808080', side.roughness ?? 0.9);
+    if (!side.picture) part.uv.length = 0;
+    addPart(doc, mesh, part, material);
+  }
+  return toGlb(doc, mesh);
+}
+
+/** box()'s geometry alone: one part per distinct Side, for putting more than a box in one model. */
+export function roundedBox([widthMm, heightMm, depthMm]: number[], sides: Record<Face, Side>, radiusMm = 0): Map<Side, Part> {
   const [x, y, z] = [widthMm / 2000, heightMm / 2000, depthMm / 2000];
   const r = Math.min(radiusMm, 0.4 * Math.min(widthMm, heightMm, depthMm)) / 1000; // the rounded margins never meet
   const inner = [x - r, y - r, z - r];
@@ -122,15 +145,48 @@ export async function box(name: string, [widthMm, heightMm, depthMm]: number[], 
     }
   }
 
-  const doc = new Document();
-  const mesh = doc.createMesh(name);
-  let i = 0;
-  for (const [side, part] of parts) {
-    const material = side.picture
-      ? pictureMaterial(doc, `${name}-${i++}`, side.picture, 'image/jpeg', side.roughness)
-      : colorMaterial(doc, `${name}-${i++}`, side.color ?? '#808080', side.roughness ?? 0.9);
-    if (!side.picture) part.uv.length = 0;
-    addPart(doc, mesh, part, material);
+  return parts;
+}
+
+const CORNER_STEPS = 8; // segments in each rounded corner: smooth at a card's size
+
+/**
+ * A flat plate W × H × D mm, its corners rounded to `radiusMm` (0 for square), centered on `atMm` (x, y) and on
+ * the origin in depth: a front (+Z) and a back for pictures, the back's left edge at +X as on box(), and the edge
+ * all round. A rounded rectangle is convex, so each side is a fan from its middle.
+ */
+export function plate([widthMm, heightMm, depthMm]: number[], radiusMm = 0, atMm = [0, 0]): { front: Part; back: Part; edge: Part } {
+  const [w, h, z] = [widthMm / 2000, heightMm / 2000, depthMm / 2000];
+  const [cx, cy] = atMm.map((mm) => mm / 1000);
+  const r = Math.min(radiusMm / 1000, w, h);
+  // The outline, counter-clockwise from the right side's top end: each corner an arc, or a point when square.
+  const outline: number[][] = [];
+  for (const [k, [sx, sy]] of [[1, 1], [-1, 1], [-1, -1], [1, -1]].entries()) {
+    for (let s = 0; s <= (r ? CORNER_STEPS : 0); s++) {
+      const a = ((k + s / CORNER_STEPS) * Math.PI) / 2;
+      outline.push([sx * (w - r) + r * Math.cos(a), sy * (h - r) + r * Math.sin(a)]);
+    }
   }
-  return toGlb(doc, mesh);
+  const [front, back, edge] = [emptyPart(), emptyPart(), emptyPart()];
+  for (const [side, sz, mirror] of [[front, 1, 1], [back, -1, -1]] as const) {
+    for (const [x, y] of [[0, 0], ...outline]) {
+      side.position.push(cx + x, cy + y, sz * z);
+      side.normal.push(0, 0, sz);
+      side.uv.push((1 + (mirror * x) / w) / 2, (1 - y / h) / 2); // glTF's UV origin is the picture's top left
+    }
+    for (let i = 1; i <= outline.length; i++) {
+      const next = (i % outline.length) + 1;
+      side.index.push(...(sz > 0 ? [0, i, next] : [0, next, i]));
+    }
+  }
+  outline.forEach(([ax, ay], i) => {
+    const [bx, by] = outline[(i + 1) % outline.length];
+    const length = Math.hypot(bx - ax, by - ay);
+    if (!length) return;
+    const v = edge.position.length / 3;
+    edge.position.push(cx + ax, cy + ay, z, cx + bx, cy + by, z, cx + bx, cy + by, -z, cx + ax, cy + ay, -z);
+    for (let k = 0; k < 4; k++) edge.normal.push((by - ay) / length, -(bx - ax) / length, 0);
+    edge.index.push(v, v + 3, v + 2, v, v + 2, v + 1);
+  });
+  return { front, back, edge };
 }

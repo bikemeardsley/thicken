@@ -6,8 +6,8 @@ Blender.
 
 **Status:** badge, book, slab and a generic box work, and Thicken picks
 between them itself, from codes or by asking vision models. With a vision
-roster, uncropped photos are cut into straightened faces. The raw card and
-slab acrylic are still the plan.
+roster, uncropped photos are cut into straightened faces. The raw card is
+still the plan.
 
 ```
 npm install
@@ -35,7 +35,7 @@ profiles, one file each in `src/profiles`. Two families:
 | **A real object rebuilt at its real size** | | |
 | Box | Front [back, sides], and its size (or a vision estimate) | Softly rounded box with the photos on its faces: anything box-shaped, from a game case to a phone |
 | Book | Front cover, back, spine (any order, any of them), or just an ISBN | Softly rounded box at the book's size: covers, spine, page edges |
-| Graded slab | Front [back] | Softly rounded box at the holder's size, with the photos on its faces and clear-plastic edges |
+| Graded slab | Front [back] | A clear plastic holder at its real size, with the card and the grade label inside it, each cut from the photos |
 | Raw card (planned) | Front and back | Thin rounded card at 63.5 × 88.9 mm |
 
 Name the profile, or leave it out and Thicken picks one:
@@ -139,7 +139,6 @@ Each sidecar's `faces` says where every face came from:
 | `photo` | Your picture |
 | `openlibrary` | A stand-in front cover from Open Library, used only when you photographed the back but not the front |
 | `color` | A plain color from the cover's edge (a book's missing back or spine) |
-| `plastic` | Plain plastic (a slab with no back photo) |
 | `plain` | A plain color from the front's edge (a box's side not photographed: an extra, not reviewed) |
 | `pages` | A generated stack of cream pages (a book's top, bottom or page edge: an extra, not reviewed) |
 
@@ -152,6 +151,15 @@ and corners are rounded, 1 mm on a book and 1.5 mm on a slab, and each face's
 photo wraps halfway round its edges. The model still measures its full size
 across the faces. Page sides with no photo get stacked page lines, generated
 the same every time, not a texture from anywhere else.
+
+A slab's holder is clear plastic: glossy and alpha-blended, so whatever is
+behind it shows through, a web page included. Inside, halfway through its
+depth, sit the card (a 0.35 mm plate with 3.2 mm rounded corners) and the
+grade label, each with its own pictures front and back. The clear border in
+the photos, which shows whatever the slab lay on, isn't used. glTF's
+transmission extension was tried first: it refracts only what's in the 3D
+scene, so on a page its clear parts came out white, and viewers without the
+extension draw it solid.
 
 ## Vision (optional)
 
@@ -339,6 +347,17 @@ knows it, and the sidecar's `measuredBy` says which:
 The cover photo's shape is checked against the result. A mismatch over 5%
 warns: it means a bad crop or a different edition.
 
+**Inside a slab.** With vision, the models find the card and the label in
+each photo, along with the slab itself. Their corners, mapped through the
+slab's, give their sizes and places in the holder, averaged over the front
+and back. A card measured within 5% of standard (63.5 × 88.9 mm, either way
+up) is taken as standard: the rest is measurement noise. The label stays
+above the card, and everything stays 1 mm inside the holder. Without vision,
+or when the models miss one, they go where a holder usually has them: one
+layout for every holder, PSA's proportions by eye. That's a warning without
+vision and a review item with it. The sidecar's `inside` records each
+part's size, middle and what placed it.
+
 **Slab.** Graders don't publish exterior holder sizes, and figures online
 disagree by 1–5 mm, so the table in `src/profiles/slab.ts` holds the best found, each
 with its source. Correct it against real holders. It covers PSA (standard,
@@ -361,6 +380,7 @@ whose shape is off the holder's by more than 4% warns.
 | Running the preview browser | Dependency | [microsoft/playwright](https://github.com/microsoft/playwright) (`playwright-core`, Apache-2.0): drives an installed Chrome or Edge, no browser download |
 | Book dimension sources | Write | Read [palmerabollo/node-isbn](https://github.com/palmerabollo/node-isbn)'s provider fallback. Ours is per dimension, not first-provider-wins. |
 | Profiles, box, classifier, CLI | Write | |
+| Slab holder, card and label | Write | Kitbash, 2026-10-03: glTF-Transform's materials (already a dependency) for the clear holder; the card and label plates, where they sit, and putting them together are ours. Khronos's [glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) were the reference for clear materials. |
 | Finding faces in photos | Write | Vision models over any OpenAI-compatible endpoint, primary and peer (src/vision.ts): one POST each, no SDK. Kitbash, 2026-10-02. |
 | Straightening faces | Adapt, don't depend | [jlouthan/perspective-transform](https://github.com/jlouthan/perspective-transform) (MIT): the 4-point homography; the resampling over sharp's pixels is ours. sharp has no perspective warp, and OpenCV.js is megabytes for one. |
 | Snapping corners to edges | Write | `snap` in src/image.ts moves a model's corners (about 1% off) onto the real edges. It samples brightness steps along each side, takes the line they support nearest the model's, and fits it by least squares, in about 70 ms a face. Kitbash pointed at [puffinsoft/jscanify](https://github.com/puffinsoft/jscanify)'s corner ranking; a line fit near the model's corners was enough. |
