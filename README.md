@@ -37,7 +37,8 @@ profile's own terms:
   the match is when it was found by title.
 - **A graded slab:** its grader, cert number and verification link, its
   holder, and the card and label inside it, each sized and placed.
-- **A raw card:** its size, and its thickness in points for a thick card.
+- **A raw card:** its size, its thickness in points for a thick card, its
+  corners and its foil.
 - **Every object:** which faces are your photos and which are stand-ins,
   how each fact was found, what is still worth photographing, and what each
   vision model answered.
@@ -59,7 +60,7 @@ profiles, one file each in `src/profiles`. Two families:
 | Box | Front [back, sides], and its size (or a vision estimate) | Softly rounded box with the photos on its faces: anything box-shaped, from a game case to a phone |
 | Book | Front cover, back, spine (any order, any of them), or just an ISBN | Softly rounded box at the book's size: covers, spine, page edges |
 | Graded slab | Front [back] | A clear plastic holder at its real size, with the card and the grade label inside it, each cut from the photos |
-| Raw card | Front [back] | A thin plate, its corners cut as the vision models say the card's are (square, slight or round), 63.5 × 88.9 mm unless `--size` says otherwise, 0.35 mm thick unless `--pt` gives a thick card's points |
+| Raw card | Front [back] | A thin plate, its corners cut as the vision models say the card's are (square, slight or round), its foil shimmering where they say it is, 63.5 × 88.9 mm unless `--size` says otherwise, 0.35 mm thick unless `--pt` gives a thick card's points |
 
 Name the profile, or leave it out and Thicken picks one:
 
@@ -195,6 +196,24 @@ on, isn't used. glTF's
 transmission extension was tried first: it refracts only what's in the 3D
 scene, so on a page its clear parts came out white, and viewers without the
 extension draw it solid.
+
+**Holofoil.** A raw card's foil is drawn so it flashes as the card turns:
+foil areas are partly metal under a thin film whose colors shift with the
+angle (glTF's `KHR_materials_iridescence`, which three.js and model-viewer
+render). The vision models say which kind of foil the card has, from every
+photo and frame that shows its front: `none`; `holo`, only the picture box
+shining; `reverse`, everything but the picture box; or `full`, the whole
+front (full art, textured and refractor cards). Foil flashes only at some
+angles, so frames that miss it say none: two answers naming a kind are
+enough, and one alone isn't, so a single model's slip leaves a plain card
+plain. They also find the picture box. Where they don't, it goes where a standard Pokémon card has it, 8% in
+from each side and 10–47% down. The sidecar records `foil`, `foilBy`,
+`pictureBox` and `pictureBoxBy`. Measuring foil directly, from how a video's
+frames change from angle to angle, was tried on a reverse-holo Psyduck:
+handheld frames differed more by glare and slight misalignment than by foil,
+so the kind is asked instead. The metal and roughness were tuned on the same
+card: all metal buried the print in a dark mirror, and at 60% the text stays
+clear.
 
 ## Vision (optional)
 
@@ -481,6 +500,7 @@ holder it fits, not its own thickness.
 | Running the preview browser | Dependency | [microsoft/playwright](https://github.com/microsoft/playwright) (`playwright-core`, Apache-2.0): drives an installed Chrome or Edge, no browser download |
 | Book dimension sources | Write | Read [palmerabollo/node-isbn](https://github.com/palmerabollo/node-isbn)'s provider fallback. Ours is per dimension, not first-provider-wins. Kitbash, 2026-10-03: the Library of Congress's one field (MARC 300) is read with a regular expression, not a MARC library. |
 | Hardcovers | Write | Kitbash, 2026-10-03: four rounded boxes from `src/glb.ts`, and the binding asked of the vision models like a card's corners. |
+| Holofoil | Kitbash | Kitbash, 2026-10-03: which areas shine for each kind of foil read from [simeydotme/pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) (GPL-3.0: facts read, nothing copied); the film values are `KHR_materials_iridescence`'s defaults, as [KhronosGroup/glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) uses them; glTF-Transform, already a dependency, writes the extension. |
 | Profiles, box, classifier, CLI | Write | |
 | Slab holder, card and label | Write | Kitbash, 2026-10-03: glTF-Transform's materials (already a dependency) for the clear holder; the card and label plates, where they sit, and putting them together are ours. Khronos's [glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) were the reference for clear materials. |
 | Finding faces in photos | Write | Vision models over any OpenAI-compatible endpoint, primary and peer (src/vision.ts): one POST each, no SDK. Kitbash, 2026-10-02. |
