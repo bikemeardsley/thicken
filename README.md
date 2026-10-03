@@ -221,7 +221,11 @@ THICKEN_VISION_MODELS=gemini-3.8-flash-high,gpt-6-luna,gpt-5.6-terra,gemini-3.1-
   while another answered without it, is left out. When only one model
   answers for a photo at all, its faces are used, and go on the review list.
 - Only the profile's own faces count; an answer's corners that cross or
-  fold make no face, and aren't cut out.
+  fold make no face, and aren't cut out. Corners wound the wrong way round
+  are the face's mirror image, which no photo shows: on real books about
+  one answer in six was one, and two models agreeing on a mirror put a
+  spine's lettering backward. Such an answer counts as saying the face is
+  there, but places nothing.
 - When nothing else says what the object is, the first photo also goes to
   the roster with the list of profiles: which is it, and roughly how big?
   Two agreeing settle it, the same way; the size estimate stands in only
@@ -395,7 +399,18 @@ knows it, and the sidecar's `measuredBy` says which:
 2. Open Library: `physical_dimensions`, page count (`number_of_pages`, or
    the catalog's `pagination`, "xii, 336 p.") and format. In a sample of ten
    ISBNs (2026-10-01), 2 had dimensions and 8 a page count.
-3. Google Books `dimensions` and page count, the backup to Open Library.
+3. The Library of Congress catalog (free, no key): the height and page
+   count from the record's physical description, "177 p. ; 20 cm."
+   Catalogers round the height up to the next centimeter, so 20 cm is taken
+   as 19.5. Its ISBN note ("hardback", "pbk.") gives the binding. On 15
+   ISBNs (2026-10-03) it had a height for 10, where Open Library had 4,
+   though Open Library's, when there, are exact. A record is used only if
+   it lists the ISBN as its own, not merely cites it, and, when the title is
+   known (from Open Library or read off the cover), shares it: one of the
+   15 was another book that carried the ISBN by mistake, and is refused with
+   a warning. Another gave a hardcover's height for its paperback, which no
+   check catches; `measuredBy` says `loc`, so it can be traced.
+4. Google Books `dimensions` and page count, for what's still missing.
    **Optional: bring your own key.** Without one, Thicken asks on the quota
    every keyless caller shares, which is usually spent (it answers 429, a
    warning says so, and the chain moves on). With one it's your own 1,000
@@ -403,10 +418,22 @@ knows it, and the sidecar's `measuredBy` says which:
    create an API key under Credentials (restrict it to the Books API), and
    set `GOOGLE_BOOKS_API_KEY` in your environment or a `.env` file where you
    run Thicken. The key is never recorded: lookups keep only host and path.
-4. Page count × 0.075 mm (trade paper runs 300–400 pages to the inch), plus
+5. Page count × 0.075 mm (trade paper runs 300–400 pages to the inch), plus
    4 mm of boards for a hardcover.
-5. The cover's shape, giving one side from the other.
-6. The nearest standard trim size to the cover's shape, flagged as a guess.
+6. The cover's shape, giving one side from the other.
+7. The nearest standard trim size to the cover's shape, flagged as a guess.
+
+**Hardcover or paperback.** The vision models are asked, for every photo
+and video frame, and every answer counts, the most given winning: the copy
+in the photos decides. Without an answer, the catalog's format (Open
+Library's, else the Library of Congress's ISBN note); else a paperback. The
+sidecar's `binding` and `bindingBy` say which and how. A paperback is a box
+with softly rounded edges. A hardcover is built as one is: the spine and two
+boards (2 mm each), the photos on their outsides, round a page block set
+back 3 mm at the top, bottom and page edge, so the boards stand past the
+pages as a real hardcover's do. A dust jacket wraps the boards, so it
+changes nothing. The board and square sizes are a bookbinder's rule of
+thumb, to check against real books.
 
 The cover photo's shape is checked against the result. A mismatch over 5%
 warns: it means a bad crop or a different edition.
@@ -452,7 +479,8 @@ holder it fits, not its own thickness.
 | Reading camera details (EXIF) | Dependency | [devongovett/exif-reader](https://github.com/devongovett/exif-reader) (MIT): parses the EXIF block sharp returns |
 | Drawing previews | Dependency | [google/model-viewer](https://github.com/google/model-viewer) (Apache-2.0): frames and lights a GLB; three.js inside |
 | Running the preview browser | Dependency | [microsoft/playwright](https://github.com/microsoft/playwright) (`playwright-core`, Apache-2.0): drives an installed Chrome or Edge, no browser download |
-| Book dimension sources | Write | Read [palmerabollo/node-isbn](https://github.com/palmerabollo/node-isbn)'s provider fallback. Ours is per dimension, not first-provider-wins. |
+| Book dimension sources | Write | Read [palmerabollo/node-isbn](https://github.com/palmerabollo/node-isbn)'s provider fallback. Ours is per dimension, not first-provider-wins. Kitbash, 2026-10-03: the Library of Congress's one field (MARC 300) is read with a regular expression, not a MARC library. |
+| Hardcovers | Write | Kitbash, 2026-10-03: four rounded boxes from `src/glb.ts`, and the binding asked of the vision models like a card's corners. |
 | Profiles, box, classifier, CLI | Write | |
 | Slab holder, card and label | Write | Kitbash, 2026-10-03: glTF-Transform's materials (already a dependency) for the clear holder; the card and label plates, where they sit, and putting them together are ours. Khronos's [glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) were the reference for clear materials. |
 | Finding faces in photos | Write | Vision models over any OpenAI-compatible endpoint, primary and peer (src/vision.ts): one POST each, no SDK. Kitbash, 2026-10-02. |

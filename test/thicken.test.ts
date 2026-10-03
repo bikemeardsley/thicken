@@ -14,6 +14,7 @@ import { cut } from '../src/faces.ts';
 import { codes, load, snap } from '../src/image.ts';
 import { startPreview } from '../src/preview.ts';
 import { batchItems, thicken } from '../src/thicken.ts';
+import { settle } from '../src/vision.ts';
 
 const fixture = (name: string) => fileURLToPath(new URL(`fixtures/${name}`, import.meta.url));
 delete process.env.THICKEN_DATASET; // test photos never go into a real training set
@@ -104,6 +105,48 @@ test('book: dimensions the catalog lacks fall through to the backup sources', as
   ); // width from the cover's 5:8 shape; depth 300 pages × 0.075 mm + 4 mm of boards
 });
 
+test('book: a size no catalog has comes from the Library of Congress: its height, page count and binding', async (t) => {
+  // The catalog's MARC record: the ISBN as its own, with the binding noted beside it as older records do; the title;
+  // and the physical description, the height rounded up to the next centimeter.
+  const loc = (title: string) => '<record><datafield tag="020" ind1=" " ind2=" "><subfield code="a">0140328726 (hardcover)</subfield></datafield>'
+    + `<datafield tag="245" ind1="1" ind2="0"><subfield code="a">${title} /</subfield></datafield>`
+    + '<datafield tag="300" ind1=" " ind2=" "><subfield code="a">xii, 177 p. ;</subfield><subfield code="c">20 cm.</subfield></datafield></record>';
+  const fetch = catalog({}, { loc: loc('Fantastic Mr. Fox') });
+  t.after(() => fetch.mock.restore());
+  const { sidecar } = await thicken([fixture('book-scan.pdf')]);
+  assert.deepEqual(
+    [sidecar.heightMm, sidecar.depthMm, sidecar.pages, sidecar.measuredBy, sidecar.binding, sidecar.bindingBy],
+    [195, 17.3, 177, { height: 'loc', width: 'cover', depth: 'pages' }, 'hardcover', 'catalog'],
+  ); // 20 cm is anything over 19 cm: the middle, 19.5; depth 177 pages × 0.075 mm plus 4 mm of boards
+
+  // A record carrying the ISBN by mistake, for another book (one in fifteen tried did): its title gives it away.
+  fetch.mock.restore();
+  const wrong = catalog({}, { data: { title: 'Fantastic Mr. Fox' }, loc: loc('Dhiki ya Mtule') });
+  t.after(() => wrong.mock.restore());
+  const other = await thicken([fixture('book-scan.pdf')]);
+  assert.notEqual((other.sidecar.measuredBy as Record<string, string>).height, 'loc');
+  assert.ok(other.sidecar.warnings.includes('the Library of Congress\'s record for ISBN 9780140328721 is another book ("Dhiki ya Mtule"): not used'));
+});
+
+test('book: a hardcover is built as one, its boards standing past the pages at the top, bottom and page edge', async (t) => {
+  const fetch = catalog({ physical_dimensions: '8 x 5 x 1 inches', physical_format: 'Hardcover' });
+  t.after(() => fetch.mock.restore());
+  const { glb, sidecar } = await thicken([fixture('book-scan.pdf')]);
+  assert.deepEqual([sidecar.binding, sidecar.bindingBy], ['hardcover', 'catalog']);
+  const doc = await read(glb);
+  assertExtents(doc, [0.127, 0.2032, 0.0254]); // the boards measure the book's full size
+  // Four closed pieces: the spine and two boards, 2 mm thick, edges rounded 0.8 mm, and the pages, set back 3 mm.
+  const [w, h, d] = [127, 203.2, 25.4];
+  assertClosed(doc, roundedVolume([2, h, d], 0.8) + 2 * roundedVolume([w - 2, h, 2], 0.8) + roundedVolume([w - 2 - 3, h - 6, d - 4], 1), 5e-4);
+  // The page edge, cream pages, 3 mm in from the boards' edge; the covers on the boards' outsides.
+  const pages = faceOf(doc, [1, 0, 0])!.getAttribute('POSITION')!;
+  const xs = [...Array(pages.getCount()).keys()].map((i) => pages.getElement(i, [0, 0, 0])[0]);
+  assert.ok(Math.abs(Math.max(...xs) - (w / 2 - 3) / 1000) < 1e-6, `the page edge is at ${Math.max(...xs)} m`);
+  assert.ok(near(await colorOf(doc, [1, 0, 0]), '#efe6d2'), 'cream pages');
+  assert.deepEqual(cornerAt(doc, [0, 0, 1]), [-1, 1, 1]);
+  assert.deepEqual(cornerAt(doc, [0, 0, -1]), [1, 1, -1]);
+});
+
 // book-back.jpg: the back cover alone, barcode and all, as a phone shoots it.
 test('book: a photo of the back alone is enough, the front cover coming from Open Library', async (t) => {
   const cover = await sharp({ create: { width: 500, height: 800, channels: 3, background: '#1d2b53' } }).jpeg().toBuffer();
@@ -187,7 +230,7 @@ test('book: vision models find the faces in uncropped photos, which are cut out 
   // The models see the photo letterboxed into 1000 x 1000: scaled by 5/6 and centered, 125 px in from the left.
   const seen = (corners: number[][], shift = 0) => corners.map(([x, y]) => [125 + (x * 5) / 6 + shift, (y * 5) / 6 + shift]);
   const authorizations: string[] = [];
-  const fetch = catalog({ physical_dimensions: '8 x 5 inches' }, {
+  const fetch = catalog({ physical_dimensions: '8 x 5 inches', physical_format: 'Hardcover' }, {
     vision: async ({ model, photo, authorization }) => {
       authorizations.push(String(authorization));
       const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
@@ -199,17 +242,19 @@ test('book: vision models find the faces in uncropped photos, which are cut out 
       const isFront = red / 10_000 < 100; // the middle is navy, not cream
       if (isFront) {
         // a also names a sliver of spine that b, answering, doesn't: left out.
-        return model === 'a' ? { faces: [{ face: 'front', corners: seen(front) }, { face: 'spine', corners: seen([[130, 150], [180, 150], [160, 980], [110, 980]]) }] }
-          : { faces: [{ face: 'front', corners: seen(front, 1) }] };
+        return model === 'a' ? { faces: [{ face: 'front', corners: seen(front) }, { face: 'spine', corners: seen([[130, 150], [180, 150], [160, 980], [110, 980]]) }], binding: 'paperback' }
+          : { faces: [{ face: 'front', corners: seen(front, 1) }], binding: 'paperback' };
       }
       // b has the back's outline but the wrong way up, so c is asked, and agrees with a. All see the spine. And all
       // call the back the front: its ISBN barcode says otherwise, and wins.
       const corners = seen(back, model === 'c' ? 1 : 0);
-      return { faces: [{ face: 'front', corners: model === 'b' ? [corners[2], corners[3], corners[0], corners[1]] : corners }, { face: 'spine', corners: seen(spine) }] };
+      return { faces: [{ face: 'front', corners: model === 'b' ? [corners[2], corners[3], corners[0], corners[1]] : corners }, { face: 'spine', corners: seen(spine) }], binding: 'paperback' };
     },
   });
   t.after(() => fetch.mock.restore());
   const { glb, sidecar } = await thicken(files);
+  // The catalog lists a hardcover; the models see a paperback: the copy in the photos wins.
+  assert.deepEqual([sidecar.binding, sidecar.bindingBy], ['paperback', 'vision']);
 
   assert.deepEqual((sidecar.pictures as { file: string; face: string; role: string }[]).map(({ file, face, role }) => [file, face, role]),
     [['IMG_1.png', 'back', 'back'], ['IMG_1.png', 'spine', 'spine'], ['IMG_2.png', 'front', 'front'], ['IMG_3.png', undefined, 'unused']]);
@@ -467,6 +512,20 @@ test('a code outranks the models: the face it is printed on is the face it prove
   const crossed = cut([picture], [sight([[0, 0], [w, h], [w, 0], [0, h]])], [proof]);
   assert.deepEqual(crossed.placed, ['back']);
   assert.equal(crossed.parts[0], picture);
+});
+
+test('vision: a face given as its mirror image says it is there, but only a face as the camera saw it is placed', () => {
+  const seen = [[100, 100], [300, 100], [300, 500], [100, 500]]; // reading order, clockwise on screen: as photographed
+  const mirror = [seen[1], seen[0], seen[3], seen[2]];
+  const answer = (model: string, corners: number[][]) => ({ model, ms: 1, faces: [{ face: 'spine', corners }] });
+  // Two seats agreeing on the mirror image (Mike's Skipping Christmas spine, 2026-10-03) don't outvote the one right.
+  assert.deepEqual(settle([answer('a', seen), answer('b', mirror), answer('c', mirror)]), {
+    faces: [{ face: 'spine', corners: seen, asSeen: seen, by: ['a'], agreed: false }], disputed: ['spine'],
+  });
+  // Only mirror images: nothing placed, and disputed, so the next model is asked.
+  assert.deepEqual(settle([answer('a', mirror), answer('b', mirror)]), { faces: [], disputed: ['spine'] });
+  // A mirror image beside a right answer still counts as naming the face: it isn't dropped as one model's alone.
+  assert.deepEqual(settle([answer('a', mirror), answer('b', seen)]).faces.map(({ face, by }) => [face, by]), [['spine', ['b']]]);
 });
 
 test('snap: a model\'s corners, a little off, move onto the cover\'s real edges, not onto print near them', async () => {
@@ -806,8 +865,8 @@ test('preview: both sides of a model, drawn beside it as <name>.preview.png', as
  * Stand-in catalogs: Open Library knows one edition (and maybe its cover and catalog record), Google Books is out of
  * quota. With `vision`, also a stand-in vision endpoint at http://vision.test/api, answering for each model and photo.
  */
-function catalog(edition: object, { cover, data, search, records, vision }: {
-  cover?: Uint8Array; data?: object; search?: object; records?: object;
+function catalog(edition: object, { cover, data, search, records, loc, vision }: {
+  cover?: Uint8Array; data?: object; search?: object; records?: object; loc?: string;
   vision?: (request: { model: string; prompt: string; photo: Buffer; authorization: string | null }) => Promise<object | undefined>;
 } = {}) {
   return mock.method(globalThis, 'fetch', async (url: string | URL, init?: RequestInit) => {
@@ -824,13 +883,18 @@ function catalog(edition: object, { cover, data, search, records, vision }: {
     if (records && href.startsWith('https://openlibrary.org/api/books?bibkeys=')) return Response.json(records);
     if (cover && href.startsWith('https://covers.openlibrary.org/b/isbn/9780140328721-L.jpg')) return new Response(new Uint8Array(cover));
     if (href.startsWith('https://www.googleapis.com/')) return new Response('{}', { status: 429 });
+    if (loc && href.startsWith('https://lx2.loc.gov/sru/lcdb?') && href.includes('bath.isbn=9780140328721')) return new Response(loc);
     return new Response('', { status: 404 });
   });
 }
 
-/** The primitive of the face with this outward normal: its normals, averaged (a rounded face's lean off it at the edges). */
+/**
+ * The pictured primitive of the face with this outward normal: its normals, averaged (a rounded face's lean off it
+ * at the edges). Plain-colored parts are passed over: a hardcover board's edges, together, can average to a cover's.
+ */
 function faceOf(doc: Document, normal: number[]): Primitive | undefined {
   return doc.getRoot().listMeshes()[0].listPrimitives().find((primitive) => {
+    if (!primitive.getMaterial()?.getBaseColorTexture()) return false;
     const normals = primitive.getAttribute('NORMAL')!;
     const sum = [0, 0, 0];
     for (let i = 0; i < normals.getCount(); i++) normals.getElement(i, [0, 0, 0]).forEach((c, k) => { sum[k] += c; });

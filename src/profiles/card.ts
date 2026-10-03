@@ -7,6 +7,7 @@ import { Document } from '@gltf-transform/core';
 import { assignFaces, cut, pictureRecord, shots, sidesUnknown } from '../faces.ts';
 import { addPart, colorMaterial, pictureMaterial, plate, toGlb } from '../glb.ts';
 import type { Faces, Profile } from '../thicken.ts';
+import { pooled, type Sight } from '../vision.ts';
 
 export const CARD_MM = [63.5, 88.9]; // a standard card, 2.5 × 3.5 in
 export const CARD_DEPTH_MM = 0.35; // a standard card's stock, about 14 pt (35 pt is the holder it fits, not its own thickness)
@@ -14,14 +15,9 @@ export const CARD_DEPTH_MM = 0.35; // a standard card's stock, about 14 pt (35 p
 // 2026-10-03). Round is 1/8 in (Pokémon's spec); ponytail: slight is an estimate, 1/16 in; measure a few cards.
 const CORNER_MM: Record<string, number> = { square: 0, slight: 1.6, round: 3.2 };
 export const CORNERS_ASK = 'look at this card\'s own corners in the photo: are they "square" (each corner a sharp point), "slight" (a small curve, about 2 mm across) or "round" (a clear curve, about 3 mm or more)? Judge the corners you see, not what cards of its kind usually have.';
-/**
- * A card's corners, with their radius: one fact, so every model's answer on every photo of it counts, the most
- * given winning (on a tie, the first given: the primary's on the first photo). Slight when no one said.
- */
-export const cornersOf = (sights?: { answers: { asked?: Record<string, string> }[] }[]) => {
-  const said = (sights ?? []).flatMap(({ answers }) => answers.flatMap(({ asked }) => (asked?.corners && asked.corners in CORNER_MM ? [asked.corners] : [])));
-  const count = (value: string) => said.filter((answer) => answer === value).length;
-  const most = said.reduce<string | undefined>((best, value) => (best === undefined || count(value) > count(best) ? value : best), undefined);
+/** A card's corners, with their radius, as every model said of every photo (src/vision.ts pooled); slight when no one said. */
+export const cornersOf = (sights?: Sight[]) => {
+  const most = pooled(sights, 'corners', Object.keys(CORNER_MM));
   return { radiusMm: CORNER_MM[most ?? 'slight'], corners: most ?? 'slight', cornersBy: most ? 'vision' : 'assumed' };
 };
 export const CARDSTOCK = '#ece8df';

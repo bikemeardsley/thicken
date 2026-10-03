@@ -1,23 +1,27 @@
-// The book profile: a box at the book's real size, its six faces from any
-// number of photos (src/faces.ts): front, back, spine, top, bottom and the
-// page edge, with plain colors for faces not photographed. Each dimension
-// comes from the first source that knows it, and the sidecar says which:
-// measured (--size), Open Library, Google Books (keyless quota is shared and
-// often spent; set GOOGLE_BOOKS_API_KEY), the cover's shape, a standard trim
-// size, then for thickness the spine and page-edge photos and the page count.
-// With an ISBN the sidecar also gets Open Library's catalog record.
+// The book profile: the book at its real size, its six faces from any number
+// of photos (src/faces.ts): front, back, spine, top, bottom and the page edge,
+// with plain colors for faces not photographed. A paperback is a box; a
+// hardcover is built as one is, boards standing past a page block set back
+// inside them. Each dimension comes from the first source that knows it, and
+// the sidecar says which: measured (--size), Open Library, Google Books
+// (keyless quota is shared and often spent; set GOOGLE_BOOKS_API_KEY), the
+// Library of Congress (height and page count), the cover's shape, a standard
+// trim size, then for thickness the spine and page-edge photos and the page
+// count. With an ISBN the sidecar also gets Open Library's catalog record.
+import { Document, type Material } from '@gltf-transform/core';
 import sharp from 'sharp';
 import { assignFaces, cut, pictureRecord, shots, sidesUnknown } from '../faces.ts';
-import { box, type Side } from '../glb.ts';
+import { addPart, box, colorMaterial, pictureMaterial, roundedBox, toGlb, type Face, type Side } from '../glb.ts';
 import { load, texture, turned, type Picture } from '../image.ts';
 import type { Code, Faces, Profile } from '../thicken.ts';
-import type { Sight } from '../vision.ts';
+import { pooled, type Sight } from '../vision.ts';
 
 export const book: Profile = {
   name: 'book',
   about: 'a book, hardcover or paperback',
   faces: { front: 'front cover', back: 'back cover', spine: 'spine', edge: 'the page edge opposite the spine', top: 'top', bottom: 'bottom' },
   note: 'The book stands on its bottom edge, front cover toward you, its spine and page edge each seen from its own side with the top of the book up.',
+  asks: { binding: 'is it a "hardcover" (stiff boards that stand a little past the pages at the top, bottom and page edge, with a dust jacket or without) or a "paperback" (a soft cover flush with its pages)?' },
   // An ISBN barcode (EAN-13 starting 978 or 979) says it's a book, which, and which photos show its back.
   read: (scanned) => {
     const use = scanned.map(({ format, text }) => (format === 'EAN13' && /^97[89]/.test(text) ? 'isbn' : undefined));
@@ -40,6 +44,9 @@ function checkIsbn(text: string): string {
 
 const PAGE_MM = 0.075; // per page: trade paper runs 300–400 pages to the inch
 const BOARDS_MM = 4; // a hardcover's two boards
+// ponytail: a hardcover's build, by the bookbinding rule of thumb; measure a few real books and correct it.
+const BOARD_MM = BOARDS_MM / 2; // each board, with its cloth and any jacket; the spine the same
+const SQUARE_MM = 3; // how far the boards stand past the pages at the top, bottom and page edge: about 1/8 in
 const DEFAULT_DEPTH_MM = 20;
 const TRIMS_IN = [[4.25, 6.87], [5, 8], [5.5, 8.5], [6, 9], [7, 10], [8.5, 11], [8.5, 8.5]]; // width × height
 const CREAM = [0xef, 0xe6, 0xd2]; // page color
@@ -112,7 +119,7 @@ async function make(
 
   take('measured', { width: sizeMm[0], height: sizeMm[1], depth: sizeMm[2] });
   let pages: number | undefined;
-  let hardcover = false;
+  let format: string | undefined; // as the catalog lists the edition: "Hardcover", "Paperback"…
   let catalog: Record<string, unknown> | undefined;
   if (isbn) {
     // The catalog record, whatever the size sources: title, authors and the rest, for the sidecar.
@@ -126,8 +133,34 @@ async function make(
     const edition = await fetchJson(`https://openlibrary.org/isbn/${isbn}.json`, log);
     take('openlibrary', orient(parseDims(edition?.physical_dimensions), aspect));
     pages ??= positive(edition?.number_of_pages) ?? paginated(edition?.pagination);
-    hardcover = /hard/i.test(edition?.physical_format ?? '');
-    if (catalog && edition?.physical_format) catalog.format = edition.physical_format;
+    format = edition?.physical_format;
+    if (catalog && format) catalog.format = format;
+  }
+  if (isbn && missing()) {
+    // The Library of Congress catalog: free, no key, and on 15 books tried (2026-10-03) the height for 10 where Open
+    // Library had 4, so asked second. It describes a book as "177 p. ; 20 cm." (MARC field 300): the page count and
+    // height, which catalogers round up to the next centimeter, so taken as the middle of that one. Its ISBN field's
+    // note ("hardback", "pbk.") says the binding, and was right in all 8 that had one. A record is used only if it
+    // lists the ISBN as its own (not just cites it) and, when the title is known, has it too: of the 15, one was
+    // another book that carried the ISBN by mistake. ponytail: one other gave the hardcover's height for a paperback.
+    const marc = (await fetchBytes(`https://lx2.loc.gov/sru/lcdb?version=1.1&operation=searchRetrieve&query=bath.isbn=${isbn}&maximumRecords=1&recordSchema=marcxml`, log))?.toString('utf8') ?? '';
+    const field = (tag: string) => [...marc.matchAll(new RegExp(`<datafield tag="${tag}"[\\s\\S]*?</datafield>`, 'g'))].map(([text]) => text);
+    const subfield = (text: string | undefined, code: string) => text?.match(new RegExp(`<subfield code="${code}">([^<]*)<`))?.[1];
+    // The ISBN in either form: a 978 ISBN's middle nine digits are its ISBN-10's first nine.
+    const core = isbn.length === 10 ? isbn.slice(0, 9) : isbn.startsWith('978') ? isbn.slice(3, 12) : isbn;
+    const own = field('020').find((text) => subfield(text, 'a')?.replace(/[\s-]/g, '').includes(core));
+    const title = subfield(field('245')[0], 'a')?.replace(/[\s/:;,.]+$/, '');
+    const known = (catalog?.title as string | undefined) ?? read?.title;
+    if (own && title && known && dice(words(title), words(known)) < LIKELY) {
+      log.warnings.push(`the Library of Congress's record for ISBN ${isbn} is another book ("${title}"): not used`);
+    } else if (own) {
+      const extent = field('300')[0];
+      // The height in centimeters ("24 x 30 cm" is height by width, for a book wider than tall); old records can give inches.
+      const cm = Number(subfield(extent, 'c')?.match(/(\d+)(?:\s*x\s*\d+)?\s*cm/)?.[1]);
+      take('loc', { height: cm > 1 ? (cm - 0.5) * 10 : undefined });
+      pages ??= paginated(subfield(extent, 'a'));
+      format ??= own.replace(/<[^>]+>/g, ' '); // the whole field: older records note the binding beside the ISBN, "(hardcover)"
+    }
   }
   if (isbn && missing()) {
     const key = process.env.GOOGLE_BOOKS_API_KEY;
@@ -146,6 +179,14 @@ async function make(
     take('trim', { width: width * 25.4, height: height * 25.4 });
     log.warnings.push('the size is a standard trim size guessed from the cover\'s shape: --size for the real one');
   }
+
+  // Hardcover or paperback: as the models see this copy, else as the catalog lists the edition, else a paperback.
+  const seen = pooled(sights, 'binding', ['hardcover', 'paperback']);
+  // "paper" alone is no binding: catalogers note acid-free paper as "(alk. paper)", hardcovers included.
+  const listed = /hard|hbk|cloth|library|leather|case ?(bound|wrap)/i.test(format ?? '') ? 'hardcover'
+    : /paperback|pbk|soft|perfect/i.test(format ?? '') ? 'paperback' : undefined;
+  const binding = seen ?? listed ?? 'paperback';
+  const hardcover = binding === 'hardcover';
 
   // Thickness from spine and page-edge photos shot square on (thickness per unit height, times the height),
   // else the page count, else a default. A face cut from a photo that shows another is seen at an angle, so
@@ -176,21 +217,24 @@ async function make(
   const plain: Side = { color: front.edge, roughness: 0.6 }; // a wraparound cover carries on round the spine
   const paper = await pageTextures();
   const pagesAcross: Side = { picture: paper.across, roughness: 0.9 }; // one Side for top and bottom: one draw call
-  const glb = await box('book', [width, height, depth], {
+  const sides: Record<Face, Side> = {
     front: { picture: front.jpeg },
     back: back ? { picture: back.jpeg } : plain,
     left: spine ? { picture: spine.jpeg } : plain,
     right: edge ? { picture: edge.jpeg } : { picture: paper.down, roughness: 0.9 },
     top: top ? { picture: top.jpeg } : pagesAcross,
     bottom: bottom ? { picture: bottom.jpeg } : pagesAcross,
-  }, ROUNDED_MM);
+  };
+  // A hardcover too small to hold its own boards and squares (a size typed in wrong) is drawn as a box.
+  const roomy = depth > 3 * BOARD_MM && width > 4 * SQUARE_MM && height > 4 * SQUARE_MM;
+  const glb = hardcover && roomy ? await hardcoverBook([width, height, depth], sides, plain) : await box('book', [width, height, depth], sides, ROUNDED_MM);
   return {
     glb,
     sidecar: {
       profile: 'book', isbn, ...(coverUrl && { coverUrl }),
       widthMm: round(width), heightMm: round(height), depthMm: round(depth), measuredBy,
       depthEstimates: { photos: fromPhotos && round(fromPhotos), pages: fromPages && round(fromPages) },
-      pages, faces, review, warnings: log.warnings, catalog,
+      pages, binding, bindingBy: seen ? 'vision' : listed ? 'catalog' : 'assumed', faces, review, warnings: log.warnings, catalog,
       ...(match && { match: { by: 'title', read: { title: read!.title, authors: read!.authors }, ...match } }),
       pictures: pictureRecord(all, roles), lookups: log.lookups,
     },
@@ -205,9 +249,7 @@ async function make(
  * from its editions. Nothing under LIKELY is a match.
  */
 async function byTitle(title: string, authors: string[], log: Log) {
-  const words = (text: string) => new Set(text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter((w) => w && !ARTICLES.has(w)));
   const surname = (name: string) => [...words(name)].at(-1);
-  const dice = (a: Set<string>, b: Set<string>) => (a.size + b.size ? (2 * [...a].filter((w) => b.has(w)).length) / (a.size + b.size) : 0);
   const main = title.split(':')[0]; // the models often read the subtitle in too
   const query = new URLSearchParams({ title: [...words(main)].join(' '), fields: 'key,title,subtitle,author_name,isbn,number_of_pages_median', limit: '5' });
   if (authors[0]) query.set('author', surname(authors[0]) ?? '');
@@ -229,6 +271,35 @@ async function byTitle(title: string, authors: string[], log: Log) {
     openLibrary: best.doc.key ? `https://openlibrary.org${best.doc.key}` : undefined, editions,
     isbn: editions.length === 1 ? editions[0] : undefined, pages,
   };
+}
+
+/**
+ * A hardcover as one is built: the case (the spine and the front and back boards, the photos on their outsides)
+ * round a page block set back by the squares at the top, bottom and page edge, so the boards stand past the pages
+ * there. The case's insides and edges are the cover's color, as its cloth or jacket is; a dust jacket wraps the
+ * boards, so it changes nothing.
+ */
+async function hardcoverBook([width, height, depth]: number[], sides: Record<Face, Side>, plain: Side): Promise<Uint8Array> {
+  const doc = new Document();
+  const mesh = doc.createMesh('book');
+  const materials = new Map<Side, Material>();
+  const piece = (size: number[], at: number[], faces: Partial<Record<Face, Side>>) => {
+    const all = { front: plain, back: plain, left: plain, right: plain, top: plain, bottom: plain, ...faces };
+    for (const [side, part] of roundedBox(size, all, ROUNDED_MM, at)) {
+      if (!materials.has(side)) {
+        const name = `book-${materials.size}`;
+        materials.set(side, side.picture ? pictureMaterial(doc, name, side.picture, 'image/jpeg', side.roughness) : colorMaterial(doc, name, side.color ?? '#808080', side.roughness ?? 0.9));
+      }
+      if (!side.picture) part.uv.length = 0;
+      addPart(doc, mesh, part, materials.get(side)!);
+    }
+  };
+  const inside = width - BOARD_MM; // the boards and the pages, beside the spine
+  piece([BOARD_MM, height, depth], [-inside / 2, 0, 0], { left: sides.left });
+  piece([inside, height, BOARD_MM], [BOARD_MM / 2, 0, (depth - BOARD_MM) / 2], { front: sides.front });
+  piece([inside, height, BOARD_MM], [BOARD_MM / 2, 0, -(depth - BOARD_MM) / 2], { back: sides.back });
+  piece([inside - SQUARE_MM, height - 2 * SQUARE_MM, depth - 2 * BOARD_MM], [(BOARD_MM - SQUARE_MM) / 2, 0, 0], { right: sides.right, top: sides.top, bottom: sides.bottom });
+  return toGlb(doc, mesh);
 }
 
 let made: Promise<{ down: Uint8Array; across: Uint8Array }> | undefined;
@@ -302,6 +373,10 @@ function nearestTrim(aspect: number): number[] {
   return aspect <= 1 ? [w, h] : [h, w];
 }
 
+/** A title's words, for comparing two: lowercase, accents and punctuation gone, articles left out. */
+const words = (text: string) => new Set(text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter((w) => w && !ARTICLES.has(w)));
+/** Words in common, 0–1. */
+const dice = (a: Set<string>, b: Set<string>) => (a.size + b.size ? (2 * [...a].filter((w) => b.has(w)).length) / (a.size + b.size) : 0);
 const positive = (n: unknown) => (typeof n === 'number' && n > 0 ? n : undefined);
 /** A catalog's pagination ("336", "xii, 336 p."): its largest number, if a book could have that many pages ("1 v." can't). */
 const paginated = (text: unknown) => {
