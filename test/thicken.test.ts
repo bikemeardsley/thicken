@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { copyFile, mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -14,6 +14,7 @@ import { startPreview } from '../src/preview.ts';
 import { batchItems, thicken } from '../src/thicken.ts';
 
 const fixture = (name: string) => fileURLToPath(new URL(`fixtures/${name}`, import.meta.url));
+delete process.env.THICKEN_DATASET; // test photos never go into a real training set
 
 // badge.png: 40 × 30, transparent, with two #3366cc regions: an L (x 2–19,
 // y 2–25 plus x 20–29, y 18–25) and a square (x 32–37, y 2–7). Through
@@ -242,11 +243,12 @@ test('box: anything box-shaped, at the size given, its sides plain until photogr
   assertExtents(await read(glb), [0.07, 0.15, 0.008]);
 });
 
-test('vision: with nothing else to go on, the models say what it is and roughly how big', async (t) => {
+test('vision: with nothing else to go on, the models say what it is and roughly how big; training mode keeps each question', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
-  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b,c' });
-  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  const dataset = path.join(folder, 'dataset');
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b,c', THICKEN_VISION_KEY: 'secret-key-456', THICKEN_DATASET: dataset });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS', 'THICKEN_VISION_KEY', 'THICKEN_DATASET']) delete process.env[key]; });
   // A phone face down on a brown table, no codes on it: one photo, 900 x 1200, its front a dark rectangle.
   const photo = path.join(folder, 'IMG_1.png');
   const front = [[300, 200], [600, 200], [600, 800], [300, 800]];
@@ -256,8 +258,8 @@ test('vision: with nothing else to go on, the models say what it is and roughly 
   const seen = front.map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]); // letterboxed into 1000 x 1000
   const fetch = catalog({}, {
     vision: async ({ model, prompt }) => {
-      // Saying what it is: a and b disagree, so c is asked, and agrees with a.
-      if (prompt.includes('Which of these is it?')) return model === 'b' ? { object: 'book', sizeMm: [140, 210, 20] } : { object: 'box', sizeMm: model === 'a' ? [70, 150, 8] : [72, 148, 9] };
+      // Saying what it is: a and b disagree, so c is asked, and agrees with b, outvoting the primary.
+      if (prompt.includes('Which of these is it?')) return model === 'a' ? { object: 'book', sizeMm: [140, 210, 20] } : { object: 'box', sizeMm: model === 'b' ? [70, 150, 8] : [72, 148, 9] };
       return { faces: [{ face: 'front', corners: seen }] };
     },
   });
@@ -272,6 +274,24 @@ test('vision: with nothing else to go on, the models say what it is and roughly 
   assert.deepEqual(sidecar.warnings, ['the size is partly the vision models\' estimate (71 × 149 × 8.5 mm): --size for the real one']);
   assert.deepEqual(sidecar.review, ['back (plain color)']);
   assert.ok(near(await colorOf(await read(glb), [0, 0, 1]), '#26323a'), 'the front is the phone, cut from the table');
+
+  // Training mode: both questions kept, in order, about one image kept once, exactly as sent.
+  const examples = (await readFile(path.join(dataset, 'metadata.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+  assert.deepEqual(examples.map(({ task }) => task), ['identify', 'faces']);
+  assert.equal(examples[1].file_name, examples[0].file_name);
+  assert.deepEqual((await readdir(dataset)).sort(), [examples[0].file_name, 'metadata.jsonl']);
+  const { width, height, format } = await sharp(path.join(dataset, examples[0].file_name)).metadata();
+  assert.deepEqual([width, height, format], [1000, 1000, 'jpeg']);
+  assert.match(examples[0].prompt, /Which of these is it\?/);
+  assert.deepEqual(examples[0].answers.map(({ model, object }: { model: string; object: string }) => [model, object]), [['a', 'book'], ['b', 'box'], ['c', 'box']]);
+  assert.deepEqual([examples[0].label, examples[0].disputed], [{ object: 'box', sizeMm: [71, 149, 8.5] }, false]);
+  // Faces: each answer as given, and the label snapped onto the phone's real edges, both in the image as sent.
+  assert.equal(examples[1].profile, 'box');
+  assert.deepEqual(examples[1].answers.map(({ model, faces }: { model: string; faces: { corners: number[][] }[] }) => [model, faces[0].corners]), [['a', seen], ['b', seen]]);
+  const [label] = examples[1].label.faces;
+  assert.deepEqual([label.face, label.agreed], ['front', true]);
+  assert.ok(label.corners.every((p: number[], i: number) => Math.hypot(p[0] - seen[i][0], p[1] - seen[i][1]) <= 1.5), `label ${JSON.stringify(label.corners)}`);
+  assert.ok(!JSON.stringify(examples).includes('secret-key'), 'the key is never kept');
 });
 
 test('book: with no barcode, the title and authors the models read find it, with how sure the match is', async (t) => {

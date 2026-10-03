@@ -175,8 +175,8 @@ THICKEN_VISION_MODELS=gemini-3.8-flash-high,gpt-6-luna,gpt-5.6-terra,gemini-3.1-
   Two agreeing settle it, the same way; the size estimate stands in only
   where `--size` doesn't say, with a warning.
 - The rest of the roster stands in for a seat that fails or takes over 3
-  minutes. A fine-tuned model goes in by putting it first. Each sidecar
-  records every answer, per profile, which is the material for tuning one.
+  minutes. A fine-tuned model goes in by putting it first; training mode
+  (below) collects the examples to tune one on.
 - With no vision settings, nothing is asked and photos are used whole.
 
 **What leaves the machine:** with `THICKEN_VISION_URL` set, the photos
@@ -190,6 +190,28 @@ correctly. gpt-6-luna and gpt-5.6-terra were as close on position but turned
 some angled faces, which is what the peer check catches. Gemini models answer
 on a 0–1000 scale whatever they're asked, the reason for the square
 letterbox.
+
+## Training mode (off by default)
+
+Thicken can keep what it asks the vision models as training examples, for
+fine-tuning a model of your own to take the roster's first seat. It is off
+unless you name a folder for them:
+
+```
+THICKEN_DATASET=../thicken-dataset  # outside the repo: it holds your photos
+```
+
+- Every question put to the roster (which object it is, where each face is)
+  becomes one example. The image is saved exactly as sent (1000 × 1000 JPEG,
+  no EXIF). `metadata.jsonl` gets a line with the prompt, every model's
+  answer, and the label: the settled answer, with its corners snapped onto
+  the real edges, in the image's own pixels. Disputed faces and objects are
+  marked, so they can be checked by hand before training on them.
+- It is the layout Hugging Face's `imagefolder` loader reads:
+  `load_dataset("imagefolder", data_dir="../thicken-dataset")`.
+- Thicken only collects. Training a model on the examples, and serving it
+  where the roster can reach it, happen elsewhere.
+- With no vision roster nothing is asked, so nothing is collected.
 
 ## Review
 

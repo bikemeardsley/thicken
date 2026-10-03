@@ -9,6 +9,7 @@
 // and photos are used whole as before.
 import sharp from 'sharp';
 import { snap, type Picture } from './image.ts';
+import { keep, trainingOn } from './training.ts';
 
 const SIZE = 1000; // photos go out letterboxed to 1000 x 1000, so pixels and a 0-1000 scale are the same numbers
 const AGREE = 0.03; // corners within 3% of the diagonal, on average, are the same face in the same place and turn
@@ -63,14 +64,19 @@ export async function lookAll(pictures: Picture[], kind: Kind): Promise<Sight[]>
 
 /** Where a kind of object's faces are in a picture, from the roster's answers. */
 export async function look(picture: Picture, kind: Kind): Promise<Sight> {
-  const { jpeg, toPicture } = await letterbox(picture);
-  const answers = await consult(jpeg, facesPrompt(kind), parseFaces, (asked) => settle(asked).disputed.length > 0);
+  const { jpeg, toPicture, toSent } = await letterbox(picture);
+  const prompt = facesPrompt(kind);
+  const answers = await consult(jpeg, prompt, parseFaces, (asked) => settle(asked).disputed.length > 0);
   const settled = settle(answers);
   const back = <T extends { corners: number[][] }>(faces: T[]) => faces.map((f) => ({ ...f, corners: f.corners.map(toPicture) }));
   const named = answers.find((a) => a.title);
+  const faces = back(settled.faces).map((f) => ({ ...f, corners: snap(picture, f.corners), asSeen: f.corners }));
+  if (trainingOn()) {
+    const label = { faces: faces.map(({ face, corners, agreed }) => ({ face, corners: corners.map((p) => toSent(p).map(Math.round)), agreed })), title: named?.title, authors: named?.authors };
+    await keep(jpeg, { task: 'faces', profile: kind.name, prompt, answers, label, disputed: settled.disputed });
+  }
   return {
-    faces: back(settled.faces).map((f) => ({ ...f, corners: snap(picture, f.corners), asSeen: f.corners })),
-    title: named?.title, authors: named?.authors,
+    faces, title: named?.title, authors: named?.authors,
     answers: answers.map((a) => ({ ...a, faces: a.faces && back(a.faces) })), disputed: settled.disputed,
   };
 }
@@ -87,18 +93,17 @@ export async function identify(picture: Picture, kinds: Kind[]): Promise<Identit
     return { object, ...(sizeMm && { sizeMm }) };
   };
   const clash = (asked: Answer[]) => new Set(asked.filter((a) => a.object).map((a) => a.object)).size > 1;
-  const answers = await consult(jpeg, identifyPrompt(kinds), parse, clash);
+  const prompt = identifyPrompt(kinds);
+  const answers = await consult(jpeg, prompt, parse, clash);
   const usable = answers.filter((a) => a.object);
   // Settled where two answers name the same object (the higher seats first); else the first answer's, disputed.
   const agreed = usable.find((a, i) => usable.slice(i + 1).some((b) => b.object === a.object));
   const pick = agreed ?? usable[0];
   const sizes = usable.filter((a) => a.object === pick?.object && a.sizeMm).map((a) => a.sizeMm!);
-  return {
-    profile: pick?.object === 'none' ? undefined : pick?.object,
-    sizeMm: sizes.length ? [0, 1, 2].map((k) => sizes.reduce((sum, s) => sum + s[k], 0) / sizes.length) : undefined,
-    disputed: !agreed && usable.length > 1,
-    answers,
-  };
+  const sizeMm = sizes.length ? [0, 1, 2].map((k) => sizes.reduce((sum, s) => sum + s[k], 0) / sizes.length) : undefined;
+  const disputed = !agreed && usable.length > 1;
+  if (trainingOn()) await keep(jpeg, { task: 'identify', prompt, answers, label: { object: pick?.object, sizeMm }, disputed });
+  return { profile: pick?.object === 'none' ? undefined : pick?.object, sizeMm, disputed, answers };
 }
 
 /**
@@ -119,14 +124,18 @@ export const visionRecord = (sights?: Sight[], identity?: Identity) => {
   };
 };
 
-/** A picture letterboxed into SIZE x SIZE, as JPEG, and the way back from its pixels to the picture's. */
+/** A picture letterboxed into SIZE x SIZE, as JPEG, and the ways between its pixels and the picture's. */
 async function letterbox(picture: Picture) {
   const { width, height } = picture;
   const scale = SIZE / Math.max(width, height);
   const [left, top] = [(SIZE - Math.round(width * scale)) / 2, (SIZE - Math.round(height * scale)) / 2];
   const jpeg = await sharp(picture.data, { raw: { width, height, channels: 4 } })
     .resize(SIZE, SIZE, { fit: 'contain', background: '#808080' }).flatten({ background: '#808080' }).jpeg({ quality: 85 }).toBuffer();
-  return { jpeg, toPicture: ([x, y]: number[]) => [(x - left) / scale, (y - top) / scale] };
+  return {
+    jpeg,
+    toPicture: ([x, y]: number[]) => [(x - left) / scale, (y - top) / scale],
+    toSent: ([x, y]: number[]) => [x * scale + left, y * scale + top],
+  };
 }
 
 /**

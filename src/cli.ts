@@ -29,7 +29,9 @@ it lists the faces still to photograph.
 --preview, or the preview command, writes <name>.preview.png beside each model (needs Chrome or Edge).
 Vision: with THICKEN_VISION_URL (an OpenAI-compatible endpoint), THICKEN_VISION_KEY and
 THICKEN_VISION_MODELS (primary,peer,backups...) set, or in a .env file here, photos needn't be
-cropped: the models find each face, and it is cut out and straightened.`;
+cropped: the models find each face, and it is cut out and straightened.
+Training mode (off by default): with THICKEN_DATASET=<folder> also set, every question put to
+the vision models is kept there as a training example.`;
 
 // Settings such as the vision roster can live in a .env file where Thicken is run.
 if (existsSync('.env')) process.loadEnvFile();
