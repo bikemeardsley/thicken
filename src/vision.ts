@@ -57,6 +57,17 @@ Also estimate its real size in millimeters: the width and height of its front, a
 Answer with JSON only, no prose:
 {"object":"${kinds[0]?.name}","sizeMm":[width,height,depth]}`;
 
+/**
+ * A short question's answer about the object itself (a card's corners, a book's binding): one fact, so every
+ * model's answer on every picture counts, the one given most winning (on a tie, the first given: the primary's on
+ * the first picture). Undefined when no one gave one of `values`.
+ */
+export function pooled(sights: Sight[] | undefined, key: string, values: string[]): string | undefined {
+  const said = (sights ?? []).flatMap(({ answers }) => answers.flatMap(({ asked }) => (asked?.[key] && values.includes(asked[key]) ? [asked[key]] : [])));
+  const count = (value: string) => said.filter((answer) => answer === value).length;
+  return said.reduce<string | undefined>((best, value) => (best === undefined || count(value) > count(best) ? value : best), undefined);
+}
+
 /** Every picture looked at for a kind of object's faces, four at a time. */
 export async function lookAll(pictures: Picture[], kind: Kind): Promise<Sight[]> {
   const sights: Sight[] = [];
@@ -193,14 +204,22 @@ function parseFaces(json: any, names: string[], keys: string[] = []): Partial<An
  * Each face once: where two answers agree (the closest pair, averaged); else, disputed, where the first
  * answer to name it put it.
  */
-function settle(answers: Answer[]): { faces: Seen[]; disputed: string[] } {
+/** Whether four corners run clockwise on screen (y down): twice their signed area, by the shoelace formula, is positive. */
+const clockwise = (corners: number[][]) => corners.reduce((sum, p, k) => sum + p[0] * corners[(k + 1) % 4][1] - corners[(k + 1) % 4][0] * p[1], 0) > 0;
+
+export function settle(answers: Answer[]): { faces: Seen[]; disputed: string[] } {
   const usable = answers.filter((a) => a.faces);
   const names = [...new Set(usable.flatMap((a) => a.faces!.map((f) => f.face)))];
   const faces: Seen[] = [];
   const disputed: string[] = [];
   const singles: { face: string; model: string; corners: number[][] }[] = [];
   for (const name of names) {
-    const each = usable.flatMap((a) => a.faces!.filter((f) => f.face === name).slice(0, 1).map((f) => ({ model: a.model, corners: f.corners })));
+    const all = usable.flatMap((a) => a.faces!.filter((f) => f.face === name).slice(0, 1).map((f) => ({ model: a.model, corners: f.corners })));
+    // A face as the camera saw it winds clockwise in its own reading order (y down). One wound the other way is its
+    // mirror image, which no photo shows (two models agreeing on one put a spine's lettering backward): it says the
+    // face is there, but its corners place nothing.
+    const each = all.filter(({ corners }) => clockwise(corners));
+    const named = all.length > 1 || usable.length === 1; // by more than one model, or by the only one that answered
     let best: { by: string[]; corners: number[][]; apart: number } | undefined;
     for (let i = 0; i < each.length; i++) {
       for (let j = i + 1; j < each.length; j++) {
@@ -211,11 +230,13 @@ function settle(answers: Answer[]): { faces: Seen[]; disputed: string[] } {
       }
     }
     if (best) faces.push({ face: name, corners: best.corners, asSeen: best.corners, by: best.by, agreed: true });
-    else if (each.length > 1 || usable.length === 1) {
+    else if (named && each.length) {
       // Named twice in different places or turns (disputed), or by the only model that answered.
       faces.push({ face: name, corners: each[0].corners, asSeen: each[0].corners, by: [each[0].model], agreed: false });
-      if (each.length > 1) disputed.push(name);
-    } else {
+      if (all.length > 1) disputed.push(name);
+    } else if (named) {
+      disputed.push(name); // only mirror images: the next model is asked, and failing that it's for review
+    } else if (each.length) {
       singles.push({ face: name, ...each[0] });
     }
   }

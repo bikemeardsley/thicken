@@ -92,8 +92,8 @@ export async function box(name: string, sizeMm: number[], sides: Record<Face, Si
   return toGlb(doc, mesh);
 }
 
-/** box()'s geometry alone: one part per distinct Side, for putting more than a box in one model. */
-export function roundedBox([widthMm, heightMm, depthMm]: number[], sides: Record<Face, Side>, radiusMm = 0): Map<Side, Part> {
+/** box()'s geometry alone, its middle at `atMm`: one part per distinct Side, for putting more than a box in one model. */
+export function roundedBox([widthMm, heightMm, depthMm]: number[], sides: Record<Face, Side>, radiusMm = 0, atMm = [0, 0, 0]): Map<Side, Part> {
   const [x, y, z] = [widthMm / 2000, heightMm / 2000, depthMm / 2000];
   const r = Math.min(radiusMm, 0.4 * Math.min(widthMm, heightMm, depthMm)) / 1000; // the rounded margins never meet
   const inner = [x - r, y - r, z - r];
@@ -131,7 +131,7 @@ export function roundedBox([widthMm, heightMm, depthMm]: number[], sides: Record
         const core = p.map((c, i) => Math.max(-inner[i], Math.min(inner[i], c)));
         const out = p.map((c, i) => c - core[i]);
         const length = Math.hypot(...out);
-        part.position.push(...(length ? core.map((c, i) => c + (out[i] * r) / length) : p));
+        part.position.push(...(length ? core.map((c, i) => c + (out[i] * r) / length) : p).map((c, i) => c + atMm[i] / 1000));
         part.normal.push(...(length ? out.map((c) => c / length) : flat));
         part.uv.push(u, w);
       }
