@@ -254,7 +254,7 @@ test('box: anything box-shaped, at the size given, its sides plain until photogr
 test('card: a raw trading card in uncropped photos, a thin plate with rounded corners; a thick one by its points', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
-  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b,c' });
   t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
   // The card's front (green) and back (blue), each lying on a brown table, 900 × 1200 px at 6 px a mm.
   const quad = [[300, 330], [681, 330], [681, 863.4], [300, 863.4]];
@@ -264,29 +264,31 @@ test('card: a raw trading card in uncropped photos, a thin plate with rounded co
     await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } }).composite([{ input: Buffer.from(svg) }]).png().toFile(file);
   }
   const seen = quad.map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]); // letterboxed into 1000 × 1000
-  let corners = 'rounded'; // what the models say of the card's corners
+  let corners = (model: string) => 'round'; // what each model says of the card's corners
   const fetch = catalog({}, {
-    vision: async ({ prompt, photo }) => {
+    vision: async ({ model, prompt, photo }) => {
       if (prompt.includes('Which of these is it?')) return { object: 'card', sizeMm: [63, 88, 0.3] };
       const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
       const middle = (500 * info.width + 500) * info.channels; // green in the middle: the front
-      return { faces: [{ face: data[middle + 1] > data[middle + 2] ? 'front' : 'back', corners: seen }], corners };
+      return { faces: [{ face: data[middle + 1] > data[middle + 2] ? 'front' : 'back', corners: seen }], corners: corners(model) };
     },
   });
   t.after(() => fetch.mock.restore());
 
+  // A trading-card-game card: clearly rounded corners, 3.2 mm.
   const { glb, sidecar } = await thicken(files);
   assert.deepEqual(pick(sidecar, ['profile', 'widthMm', 'heightMm', 'depthMm', 'corners', 'cornersBy', 'faces', 'review', 'identifiedBy']), {
-    profile: 'card', widthMm: 63.5, heightMm: 88.9, depthMm: 0.35, corners: 'rounded', cornersBy: 'vision',
+    profile: 'card', widthMm: 63.5, heightMm: 88.9, depthMm: 0.35, corners: 'round', cornersBy: 'vision',
     faces: { front: 'photo', back: 'photo' }, review: [], identifiedBy: { profile: 'vision' },
   });
   const doc = await read(glb);
   assertExtents(doc, [0.0635, 0.0889, 0.00035]);
-  assertClosed(doc, (63.5 * 88.9 - (4 - Math.PI) * 3.2 ** 2) * 0.35, 5e-4); // rounded corners, 3.2 mm
-  // A vintage card, cut square: the models say so, and its corners stay square.
-  corners = 'square';
+  assertClosed(doc, (63.5 * 88.9 - (4 - Math.PI) * 3.2 ** 2) * 0.35, 5e-4);
+  // A vintage card, cut square, though b says round: c is asked, the majority says square, and they stay square.
+  corners = (model) => (model === 'b' ? 'round' : 'square');
   const vintage = await thicken(files, { profile: 'card' });
   assert.deepEqual([vintage.sidecar.corners, vintage.sidecar.cornersBy], ['square', 'vision']);
+  assert.deepEqual((vintage.sidecar.vision as { photos: { answers: { model: string }[] }[] }).photos[0].answers.map(({ model }) => model), ['a', 'b', 'c']);
   assertClosed(await read(vintage.glb), 63.5 * 88.9 * 0.35, 1e-4);
   // A thick patch card, sold as 130 pt: 3.3 mm.
   const thick = await thicken(files, { profile: 'card', pt: 130 });
@@ -529,7 +531,7 @@ test('slab: a grader\'s QR code picks the holder, and the holder its size', asyn
   // Three closed solids: the holder (its molded edges rounded), and the card and label inside it.
   const { card, label } = sidecar.inside as Record<string, { widthMm: number; heightMm: number; placedBy: string }>;
   assert.deepEqual([card.widthMm, card.heightMm, card.placedBy, label.placedBy], [63.5, 88.9, 'layout', 'layout']);
-  const plates = (63.5 * 88.9 - (4 - Math.PI) * 3.2 ** 2) * 0.35 + label.widthMm * label.heightMm * 0.3;
+  const plates = (63.5 * 88.9 - (4 - Math.PI) * 1.6 ** 2) * 0.35 + label.widthMm * label.heightMm * 0.3; // corners taken as slight
   assertClosed(doc, roundedVolume([80.5, 136, 6.5], 1.5) + plates, 5e-4);
   // The holder is clear: blended, so a page shows through it.
   const materials = Object.fromEntries(doc.getRoot().listMaterials().map((material) => [material.getName(), material]));
@@ -597,7 +599,7 @@ test('slab: with vision, the card and label are found in uncropped photos and se
   assert.ok(await share('card-front', (r, g, b) => g > 100 && r < 80 && b < 80) > 0.95, 'the card alone');
   assert.ok(await share('card-back', (r, g, b) => b > 120 && r < 80 && g < 110) > 0.95, 'the card\'s back alone');
   assert.ok(await share('label-front', (r, g, b) => Math.min(r, g, b) > 230) > 0.95, 'the label alone');
-  assertClosed(doc, roundedVolume([80.5, 136, 6.5], 1.5) + (63.5 * 88.9 - (4 - Math.PI) * 3.2 ** 2) * 0.35 + inside.label.widthMm * inside.label.heightMm * 0.3, 5e-4);
+  assertClosed(doc, roundedVolume([80.5, 136, 6.5], 1.5) + (63.5 * 88.9 - (4 - Math.PI) * 1.6 ** 2) * 0.35 + inside.label.widthMm * inside.label.heightMm * 0.3, 5e-4); // corners taken as slight
 });
 
 test('slab: a tall holder is told by its label, the same size on every holder but spanning much less of a tall one', async (t) => {

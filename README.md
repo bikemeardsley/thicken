@@ -57,7 +57,7 @@ profiles, one file each in `src/profiles`. Two families:
 | Box | Front [back, sides], and its size (or a vision estimate) | Softly rounded box with the photos on its faces: anything box-shaped, from a game case to a phone |
 | Book | Front cover, back, spine (any order, any of them), or just an ISBN | Softly rounded box at the book's size: covers, spine, page edges |
 | Graded slab | Front [back] | A clear plastic holder at its real size, with the card and the grade label inside it, each cut from the photos |
-| Raw card | Front [back] | A thin plate, its corners rounded or square as the vision models say the card's are, 63.5 × 88.9 mm unless `--size` says otherwise, 0.35 mm thick unless `--pt` gives a thick card's points |
+| Raw card | Front [back] | A thin plate, its corners cut as the vision models say the card's are (square, slight or round), 63.5 × 88.9 mm unless `--size` says otherwise, 0.35 mm thick unless `--pt` gives a thick card's points |
 
 Name the profile, or leave it out and Thicken picks one:
 
@@ -180,8 +180,10 @@ the same every time, not a texture from anywhere else.
 
 A slab's holder is clear plastic: glossy and alpha-blended, so whatever is
 behind it shows through, a web page included. Inside, halfway through its
-depth, sit the card (a 0.35 mm plate, its corners rounded to 3.2 mm or
-square, as the vision models say: many vintage cards were cut square) and the
+depth, sit the card (a 0.35 mm plate, its corners cut as the vision models
+say: square, as on most vintage cards; slight, about 1.6 mm, as on modern
+sports cards; or round, 3.2 mm, as on Pokémon and other trading-card-game
+cards; slight when no model said) and the
 grade label, each with its own pictures front and back. The clear border in
 the photos, which shows whatever the slab lay on, isn't used. glTF's
 transmission extension was tried first: it refracts only what's in the 3D
