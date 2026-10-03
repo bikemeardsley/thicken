@@ -1,0 +1,548 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Thicken: pictures in, real-size 3D models out",
+    "output": ".archify/architecture-thicken-20261001-222957/thicken.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/bikemeardsley/thicken.git",
+      "revision": "f9a6e05d96bef0230b0b45d9255ff8b6e773a7c7"
+    }
+  },
+  "components": [
+    {
+      "id": "photos",
+      "type": "external",
+      "label": "Photos & scans",
+      "sublabel": "HEIC · JPEG · PNG · PDF",
+      "pos": [
+        40,
+        370
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "README.md",
+          "line": 79,
+          "end_line": 96,
+          "label": "phone inputs"
+        },
+        {
+          "path": "src/image.ts",
+          "line": 23,
+          "end_line": 31,
+          "label": "load(): every format"
+        }
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "thicken CLI",
+      "sublabel": "one model, or a batch",
+      "pos": [
+        300,
+        370
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/cli.ts",
+          "line": 23,
+          "end_line": 35,
+          "label": "flags"
+        },
+        {
+          "path": "src/cli.ts",
+          "line": 74,
+          "end_line": 102,
+          "label": "single run or batch loop"
+        }
+      ]
+    },
+    {
+      "id": "batch",
+      "type": "backend",
+      "label": "Batch walker",
+      "sublabel": "folder → one item each",
+      "pos": [
+        300,
+        200
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/thicken.ts",
+          "line": 69,
+          "end_line": 95,
+          "label": "batchItems()"
+        },
+        {
+          "path": "src/cli.ts",
+          "line": 67,
+          "end_line": 72,
+          "label": "skips up-to-date models"
+        }
+      ]
+    },
+    {
+      "id": "classifier",
+      "type": "backend",
+      "label": "Classifier",
+      "sublabel": "thicken() picks a profile",
+      "pos": [
+        660,
+        366
+      ],
+      "size": [
+        170,
+        72
+      ],
+      "sources": [
+        {
+          "path": "src/thicken.ts",
+          "line": 39,
+          "end_line": 56,
+          "label": "thicken()"
+        },
+        {
+          "path": "src/thicken.ts",
+          "line": 98,
+          "end_line": 109,
+          "label": "ISBN or grader from codes"
+        },
+        {
+          "path": "src/thicken.ts",
+          "line": 112,
+          "end_line": 120,
+          "label": "cut-out artwork test"
+        }
+      ]
+    },
+    {
+      "id": "import",
+      "type": "backend",
+      "label": "Import",
+      "sublabel": "sharp · libheif · unpdf · zxing",
+      "pos": [
+        490,
+        540
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/image.ts",
+          "line": 23,
+          "end_line": 31,
+          "label": "load()"
+        },
+        {
+          "path": "src/image.ts",
+          "line": 42,
+          "end_line": 70,
+          "label": "HEIC and scanner PDFs"
+        },
+        {
+          "path": "src/image.ts",
+          "line": 73,
+          "end_line": 76,
+          "label": "barcodes and QR codes"
+        }
+      ]
+    },
+    {
+      "id": "book",
+      "type": "backend",
+      "label": "Book",
+      "sublabel": "box, size from sources",
+      "pos": [
+        960,
+        200
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/book.ts",
+          "line": 26,
+          "end_line": 40,
+          "label": "pictures placed by content"
+        },
+        {
+          "path": "src/book.ts",
+          "line": 53,
+          "end_line": 80,
+          "label": "size: first source wins"
+        }
+      ]
+    },
+    {
+      "id": "badge",
+      "type": "backend",
+      "label": "Badge",
+      "sublabel": "outline traced, extruded",
+      "pos": [
+        960,
+        370
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/badge.ts",
+          "line": 13,
+          "end_line": 85,
+          "label": "badge()"
+        },
+        {
+          "path": "src/outline.ts",
+          "line": 16,
+          "end_line": 32,
+          "label": "trace from transparency"
+        }
+      ]
+    },
+    {
+      "id": "slab",
+      "type": "backend",
+      "label": "Graded slab",
+      "sublabel": "box at holder size",
+      "pos": [
+        960,
+        540
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/slab.ts",
+          "line": 9,
+          "end_line": 15,
+          "label": "holder table"
+        },
+        {
+          "path": "src/slab.ts",
+          "line": 20,
+          "end_line": 41,
+          "label": "slab()"
+        }
+      ]
+    },
+    {
+      "id": "glb",
+      "type": "backend",
+      "label": "GLB writer",
+      "sublabel": "glTF-Transform, metres",
+      "pos": [
+        1240,
+        370
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/glb.ts",
+          "line": 54,
+          "end_line": 95,
+          "label": "box()"
+        },
+        {
+          "path": "src/glb.ts",
+          "line": 38,
+          "end_line": 42,
+          "label": "toGlb()"
+        },
+        {
+          "path": "src/glb.ts",
+          "line": 24,
+          "end_line": 28,
+          "label": "pictures unlit"
+        }
+      ]
+    },
+    {
+      "id": "openlibrary",
+      "type": "cloud",
+      "label": "Open Library",
+      "sublabel": "edition · cover",
+      "pos": [
+        960,
+        40
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/book.ts",
+          "line": 56,
+          "end_line": 61,
+          "label": "edition lookup"
+        },
+        {
+          "path": "src/book.ts",
+          "line": 35,
+          "end_line": 40,
+          "label": "cover when no front"
+        }
+      ]
+    },
+    {
+      "id": "googlebooks",
+      "type": "cloud",
+      "label": "Google Books",
+      "sublabel": "backup sizes",
+      "pos": [
+        1240,
+        40
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/book.ts",
+          "line": 62,
+          "end_line": 70,
+          "label": "only for sizes still missing"
+        }
+      ]
+    },
+    {
+      "id": "files",
+      "type": "database",
+      "label": "GLB + JSON sidecar",
+      "sublabel": "one pair per model",
+      "pos": [
+        300,
+        540
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/cli.ts",
+          "line": 56,
+          "end_line": 64,
+          "label": "written by build()"
+        }
+      ]
+    },
+    {
+      "id": "consumers",
+      "type": "external",
+      "label": "three.js · Blender",
+      "sublabel": "sites and library",
+      "pos": [
+        40,
+        540
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "README.md",
+          "line": 144,
+          "end_line": 148,
+          "label": "used by"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Thicken (Node 22, local)",
+      "wraps": [
+        "cli",
+        "batch",
+        "classifier",
+        "import",
+        "book",
+        "badge",
+        "slab",
+        "glb"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "photos-in",
+      "from": "photos",
+      "to": "cli",
+      "label": "photos · PDFs",
+      "variant": "emphasis"
+    },
+    {
+      "id": "batch-walk",
+      "from": "cli",
+      "to": "batch",
+      "label": "batch <folder>",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "build-call",
+      "from": "cli",
+      "to": "classifier",
+      "label": "thicken() → GLB + sidecar",
+      "variant": "emphasis"
+    },
+    {
+      "id": "load",
+      "from": "classifier",
+      "to": "import",
+      "label": "load · read codes",
+      "fromSide": "bottom",
+      "toSide": "right"
+    },
+    {
+      "id": "to-book",
+      "from": "classifier",
+      "to": "book",
+      "label": "ISBN barcode",
+      "fromSide": "top",
+      "toSide": "left"
+    },
+    {
+      "id": "to-badge",
+      "from": "classifier",
+      "to": "badge",
+      "label": "cut-out artwork",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "to-slab",
+      "from": "classifier",
+      "to": "slab",
+      "label": "grader QR code",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "labelSegment": 1
+    },
+    {
+      "id": "edition",
+      "from": "book",
+      "to": "openlibrary",
+      "label": "edition · cover",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "backup",
+      "from": "book",
+      "to": "googlebooks",
+      "label": "backup sizes",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "book-box",
+      "from": "book",
+      "to": "glb",
+      "label": "box()",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "badge-mesh",
+      "from": "badge",
+      "to": "glb",
+      "label": "outline mesh",
+      "variant": "emphasis"
+    },
+    {
+      "id": "slab-box",
+      "from": "slab",
+      "to": "glb",
+      "label": "box()",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "id": "write",
+      "from": "cli",
+      "to": "files",
+      "label": "writes",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "load-model",
+      "from": "files",
+      "to": "consumers",
+      "label": "loads",
+      "fromSide": "left",
+      "toSide": "right"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Two families",
+      "items": [
+        "Digital artwork made into an object: badge",
+        "A real object rebuilt at its real size: book, slab",
+        "No barcode, no grader QR, no cut-out: it asks"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Book size, first source wins",
+      "items": [
+        "Measured (--size), Open Library, Google Books",
+        "Then page count × 0.075 mm, cover shape, trim size",
+        "The sidecar's measuredBy names each source"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Batch",
+      "items": [
+        "One model per picture, PDF or subfolder",
+        "A failure is reported; the rest carry on",
+        "Models newer than their photos are left alone"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Book pictures, any order",
+      "items": [
+        "Barcode picture is the back cover",
+        "A tall, narrow picture is the spine",
+        "No front: the cover comes from Open Library"
+      ]
+    }
+  ]
+}

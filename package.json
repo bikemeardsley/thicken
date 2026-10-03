@@ -1,0 +1,34 @@
+{
+  "name": "thicken",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Flat images in, 3D assets (GLB) out.",
+  "type": "module",
+  "bin": {
+    "thicken": "src/cli.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "check": "tsc"
+  },
+  "dependencies": {
+    "@gltf-transform/core": "4.5.1",
+    "@gltf-transform/extensions": "4.5.1",
+    "@google/model-viewer": "4.3.1",
+    "earcut": "3.2.4",
+    "exif-reader": "2.0.3",
+    "libheif-js": "1.23.2",
+    "playwright-core": "1.63.0",
+    "sharp": "0.35.5",
+    "three": "0.183.2",
+    "unpdf": "1.8.1",
+    "zxing-wasm": "3.1.4"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "7.0.2"
+  }
+}
