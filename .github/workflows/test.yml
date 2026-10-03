@@ -1,0 +1,22 @@
+# Type-check and test every push to main and every pull request, on a fresh Linux machine: it catches what only
+# works on one PC (an uncommitted file, a Windows-only path) and, once the repo is public, tests outside PRs.
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    # ubuntu-latest has Chrome installed, so the preview test runs instead of skipping.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
