@@ -15,6 +15,7 @@ import { codes, load, type Picture } from './image.ts';
 import { badge } from './profiles/badge.ts';
 import { book } from './profiles/book.ts';
 import { box } from './profiles/box.ts';
+import { card } from './profiles/card.ts';
 import { slab } from './profiles/slab.ts';
 import { identify, lookAll, visionOn, visionRecord, type Sight } from './vision.ts';
 
@@ -33,13 +34,14 @@ export interface Profile {
 }
 
 /** The kinds of object Thicken knows, in the order they're tried unaided. */
-export const PROFILES: Profile[] = [book, slab, badge, box];
+export const PROFILES: Profile[] = [book, slab, badge, card, box];
 
 export interface Options {
   profile?: string;
   isbn?: string;
   sizeMm?: number[]; // width, height, depth; any may be missing
   holder?: string; // slab holder, e.g. psa, psa-thick, bgs
+  pt?: number; // a card's thickness in points (thousandths of an inch), raw or slabbed: thick cards are sold by it
   widthMm?: number; // badge
   depthMm?: number; // badge
 }

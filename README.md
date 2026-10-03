@@ -4,10 +4,9 @@ Flat images in, thickness out. Thicken turns photos, scans and flat artwork
 into 3D assets at real-world size that you can drop into a three.js page or
 Blender.
 
-**Status:** badge, book, slab and a generic box work, and Thicken picks
-between them itself, from codes or by asking vision models. With a vision
-roster, uncropped photos are cut into straightened faces. The raw card is
-still the plan.
+**Status:** badge, book, graded slab, raw card and a generic box work, and
+Thicken picks between them itself, from codes or by asking vision models.
+With a vision roster, uncropped photos are cut into straightened faces.
 
 ```
 npm install
@@ -15,6 +14,7 @@ node src/cli.ts book-scan.pdf                     # ISBN read off the back cover
 node src/cli.ts book cover.heic --isbn 9780061120084
 node src/cli.ts --isbn 9780061120084              # no photo: cover and size from Open Library
 node src/cli.ts slab front.jpg back.jpg --holder bgs
+node src/cli.ts card front.jpg back.jpg --pt 130    # a thick patch card
 node src/cli.ts badge badge.png --width 50 --depth 3.5
 node src/cli.ts batch ~/Pictures/books --preview  # one model per photo, PDF or subfolder, each with a preview
 node src/cli.ts preview ~/Pictures/books/thicken  # previews for models already made
@@ -22,6 +22,27 @@ npm test
 ```
 
 The same as a function: `thicken(files, options)` in `src/thicken.ts`.
+
+## The Thicken object
+
+What Thicken makes is more than a 3D shape. Each run writes a **Thicken
+object**: the model (a GLB at the object's real size, in millimeters) and,
+beside it, its sidecar (JSON), which knows what the object is, in its
+profile's own terms:
+
+- **A book:** its ISBN, its catalog record (title, authors, publishers,
+  dates, subjects, Dewey and Library of Congress classes, pages), and how sure
+  the match is when it was found by title.
+- **A graded slab:** its grader, cert number and verification link, its
+  holder, and the card and label inside it, each sized and placed.
+- **A raw card:** its size, and its thickness in points for a thick card.
+- **Every object:** which faces are your photos and which are stand-ins,
+  how each fact was found, what is still worth photographing, and what each
+  vision model answered.
+
+An app shows the model and reads the sidecar: a library shelf of your books,
+a vault of your slabs. The fields are under
+[What the sidecar records](#what-the-sidecar-records).
 
 ## What it makes
 
@@ -36,7 +57,7 @@ profiles, one file each in `src/profiles`. Two families:
 | Box | Front [back, sides], and its size (or a vision estimate) | Softly rounded box with the photos on its faces: anything box-shaped, from a game case to a phone |
 | Book | Front cover, back, spine (any order, any of them), or just an ISBN | Softly rounded box at the book's size: covers, spine, page edges |
 | Graded slab | Front [back] | A clear plastic holder at its real size, with the card and the grade label inside it, each cut from the photos |
-| Raw card (planned) | Front and back | Thin rounded card at 63.5 × 88.9 mm |
+| Raw card | Front [back] | A thin plate with rounded corners, 63.5 × 88.9 mm unless `--size` says otherwise, 0.35 mm thick unless `--pt` gives a thick card's points |
 
 Name the profile, or leave it out and Thicken picks one:
 
@@ -97,11 +118,14 @@ Give as many photos of an object as you like, in any order and named
 anything. Thicken works out which face each photo shows from the photo
 itself, and more photos make a better model. In order:
 
-1. **Codes:** every photo showing a book's ISBN barcode is its back; every
-   photo showing a slab label's grader QR code or cert barcode is its front
-   (its back, for CGC, which prints the QR code there). With vision, it's the
-   face the code is printed on, whatever the models called it: a code
-   outranks them.
+1. **Codes:** every photo showing a book's ISBN barcode is its back. With
+   vision, it's the face the barcode is printed on, whatever the models
+   called it: the barcode outranks them. A slab's codes say what it is, not
+   which side a photo shows, because the side a grader prints its QR code on
+   changes with label designs (PSA's and CGC's current labels put it on the
+   back, and PSA prints its cert barcode on both sides). The vision models
+   tell the sides apart (the front shows the grade); without them, photo
+   order does.
 2. **Narrow photos, for books,** shot standing or lying down: one with print
    on it is the spine; plain paper (calm, light and pale, or showing page
    lines) is a page side. A page side as thin as the spine runs down the
@@ -361,10 +385,19 @@ part's size, middle and what placed it.
 **Slab.** Graders don't publish exterior holder sizes, and figures online
 disagree by 1–5 mm, so the table in `src/profiles/slab.ts` holds the best found, each
 with its source. Correct it against real holders. It covers PSA (standard,
-`psa-thick`, and `psa-tall` for tall boys such as 1969–70 Topps basketball),
-BGS, CGC, SGC and TAG. `--size` overrides it per model. A QR code tells the
-grader but not the holder, so a tall boy needs `--holder psa-tall`. A photo
+`psa-thick`, and `psa-tall` for oversized and tall cards such as 1976–77
+Topps basketball), BGS, CGC (and `cgc-tall`, estimated from one photo), SGC
+and TAG. `--size` overrides it per model. A QR code tells the grader but not
+the holder; with vision, a tall holder is told by its label, which is the same
+size on every holder: it spans about 87% of a standard one's width and about
+60% of a tall one's (measured on real PSA and CGC slabs). Under 75%, the
+grader's tall holder is taken, with a warning; `--holder` overrides. A photo
 whose shape is off the holder's by more than 4% warns.
+
+`--pt` gives a thick card's thickness in points (thousandths of an inch, the
+number thick cards are sold by: 55, 75, 100, 130, 180), for a raw card or the
+card inside a slab. A standard card is 0.35 mm; 35 pt is the size of the
+holder it fits, not its own thickness.
 
 ## Build plan (kitbash, verified 2026-10-01)
 

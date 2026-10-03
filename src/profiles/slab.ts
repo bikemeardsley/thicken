@@ -8,8 +8,9 @@ import { Document } from '@gltf-transform/core';
 import { assignFaces, cut, pictureRecord, shots } from '../faces.ts';
 import { addPart, clearMaterial, colorMaterial, pictureMaterial, plate, roundedBox, toGlb, type Side } from '../glb.ts';
 import { mapping, straighten, subjectBox, texture, type Picture } from '../image.ts';
-import type { Code, Faces, Profile, Scanned } from '../thicken.ts';
+import type { Faces, Profile, Scanned } from '../thicken.ts';
 import type { Sight } from '../vision.ts';
+import { CARD_CORNER_MM, CARD_DEPTH_MM, CARD_MM, CARDSTOCK, PT_MM } from './card.ts';
 
 // A grader's QR code points at its own verification page, which says whose holder this is.
 const GRADER_SITES: Record<string, string> = { 'psacard.com': 'psa', 'beckett.com': 'bgs', 'cgccards.com': 'cgc', 'gosgc.com': 'sgc', 'taggrading.com': 'tag' };
@@ -20,16 +21,21 @@ const SLAB_SHAPE_TOLERANCE = 0.06; // a photo this close to a holder's shape, gi
 export const slab: Profile = {
   name: 'slab',
   about: 'a graded trading card sealed in a clear plastic holder with a label',
-  faces: { front: 'the side with the grade label', back: 'back', card: 'the card inside the holder', label: 'the grade label inside the holder' },
+  faces: {
+    front: 'the side showing the grade: the label that names the card and gives its grade, and the card\'s face',
+    back: 'the reverse: the back of the label (a logo, hologram or QR code, no grade) and the back of the card',
+    card: 'the card inside the holder',
+    label: 'the label inside the holder, front or back',
+  },
   note: 'The card and the label are inside the holder, on whichever side is shown: give their corners in the holder\'s own order (top-left as it stands with its label at the top), even when the card is printed sideways.',
   read: (scanned, [picture]) => {
     const { use, grader, cert, certFrom, verifyUrl } = readLabel(scanned);
     // A grader's QR code says it's a slab; a cert barcode alone only on a photo shaped like a holder.
     return { recognized: Boolean(grader || (cert && isSlabShaped(picture))), use, grader, cert, certFrom, verifyUrl };
   },
-  build: async (pictures, { options, facts, codes, sights }) => {
+  build: async (pictures, { options, facts, sights }) => {
     const label = { grader: facts.grader as string | undefined, cert: facts.cert as string | undefined, verifyUrl: facts.verifyUrl as string | undefined };
-    const { glb, sidecar } = await make(pictures, { holder: options.holder ?? label.grader, sizeMm: options.sizeMm, label, codes, sights });
+    const { glb, sidecar } = await make(pictures, { holder: options.holder ?? label.grader, holderGiven: Boolean(options.holder), sizeMm: options.sizeMm, pt: options.pt, label, sights });
     return { glb, sidecar: { ...sidecar, identifiedBy: { grader: options.holder ? 'given' : label.grader ? 'qr' : 'assumed', cert: facts.certFrom } } };
   },
 };
@@ -79,19 +85,22 @@ const HOLDERS: Record<string, number[]> = { // width, height, depth in mm
   'psa-tall': [108, 184, 6.5], // tall boys (1969–70 Topps basketball…): 4¼ × 7¼ in per Collectors Universe; depth assumed
   bgs: [83, 131, 8.5],
   cgc: [80.5, 135, 7.5],
+  // ponytail: from one photo (Mike's 1969–70 Topps, 2026-10-03), its tall-boy card (63.5 mm wide) as the ruler; measure one
+  'cgc-tall': [113, 195, 7.5],
   sgc: [86.5, 138.5, 8.5],
   tag: [79.5, 133.5, 7.5], // TAG's help center: 3.125 × 5.25 in, 7.5 mm at the raised lip
 };
+// A grader's label is the same size on every holder: it spans about 87% of a standard holder's width and about 60%
+// of a tall one's (Mike's PSA and CGC slabs, 2026-10-03). Under this, the holder is the grader's tall one.
+const TALL_LABEL = 0.75;
 const SHAPE_TOLERANCE = 0.04;
 const ROUNDED_MM = 1.5; // a holder's molded edges
-const CARD_MM = [63.5, 88.9]; // a standard card, 2.5 × 3.5 in
-const STANDARD_TOLERANCE = 0.05; // a card measured this close to standard is standard: the rest is measurement noise
-const CARD_DEPTH_MM = 0.35; // ponytail: a standard card's stock; thick patch cards are thicker
-const CARD_CORNER_MM = 3.2; // a modern card's rounded corners, 1/8 in
+// A card shaped like a standard one (cards are cut more exactly than holders are measured) and near its size is one.
+const STANDARD_SHAPE = 0.02;
+const STANDARD_SIZE = 0.1;
 const LABEL_DEPTH_MM = 0.3;
 const GAP_MM = 0.5; // the least space kept between the label and the card
 const WALL_MM = 1; // the least plastic kept around anything inside
-const CARDSTOCK = '#ece8df';
 const LABEL_EDGE = '#f4f4f2';
 
 type Inside = 'card' | 'label';
@@ -114,11 +123,11 @@ function rectOf(points: number[][]): Rect {
   return { x0: (xs[0] + xs[1]) / 2, x1: (xs[2] + xs[3]) / 2, y0: (ys[0] + ys[1]) / 2, y1: (ys[2] + ys[3]) / 2 };
 }
 
-/** A card measured within a few percent of standard, either way up, at exactly the standard size, where it was. */
+/** A card measured with a standard card's shape and near its size, either way up, at exactly the standard size, where it was. */
 function standardCard(r: Rect): Rect {
   const [w, h] = [r.x1 - r.x0, r.y1 - r.y0];
   const [sw, sh] = w > h ? [CARD_MM[1], CARD_MM[0]] : CARD_MM;
-  if (Math.abs(w / sw - 1) > STANDARD_TOLERANCE || Math.abs(h / sh - 1) > STANDARD_TOLERANCE) return r;
+  if (Math.abs(w / h / (sw / sh) - 1) > STANDARD_SHAPE || Math.abs(w / sw - 1) > STANDARD_SIZE || Math.abs(h / sh - 1) > STANDARD_SIZE) return r;
   const [cx, cy] = [(r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2];
   return { x0: cx - sw / 2, x1: cx + sw / 2, y0: cy - sh / 2, y1: cy + sh / 2 };
 }
@@ -128,34 +137,43 @@ export interface Label { grader?: string; cert?: string; verifyUrl?: string }
 
 /**
  * Pictures in any number and order (src/faces.ts), with what the vision models
- * saw in each (`sights`), if asked. A whole photo showing the grader's QR code
- * is the front, or for CGC, which prints its QR code on the back of the label,
- * the back; one showing the cert barcode is the front. With no holder named or
- * read off a QR code, a PSA-size holder is assumed and the model marked for
- * review.
+ * saw in each (`sights`), if asked. The models say which side each photo shows
+ * (the front shows the grade); without them, photo order does, marked for
+ * review. A label's codes say what the slab is, not which side they're on: that
+ * changes with label designs over the years (Mike's PSA and CGC slabs put the QR
+ * code on the back, and PSA its cert barcode on both sides). With no holder named
+ * or read off a QR code, a PSA-size holder is assumed, warned; a tall one is told
+ * by its label (TALL_LABEL).
  */
 async function make(
   pictures: Picture[],
-  { holder, sizeMm = [], label = {}, codes = [], sights }: { holder?: string; sizeMm?: number[]; label?: Label; codes?: Code[]; sights?: Sight[] } = {},
+  { holder, holderGiven = false, sizeMm = [], pt, label = {}, sights }:
+    { holder?: string; holderGiven?: boolean; sizeMm?: number[]; pt?: number; label?: Label; sights?: Sight[] } = {},
 ) {
   const warnings: string[] = [];
   const review: string[] = [];
   if (!holder && sizeMm.length < 3) warnings.push('a PSA-size holder is assumed (no QR code named the grader): --holder for another');
   holder ??= 'psa';
+  // The models' card and label in each photo, kept apart from the slab's own faces, which are what's cut out.
+  const inner = (sights ?? []).map((sight) => new Map(sight.faces.filter(({ face }) => face === 'card' || face === 'label').map(({ face, corners }) => [face, corners])));
+  const outer = sights?.map((sight) => ({ ...sight, faces: sight.faces.filter(({ face }) => face === 'front' || face === 'back') }));
+  const { parts, placed, from } = cut(pictures, outer);
+  const all = await shots(parts);
+  const { chosen, roles, guessedFrontBack } = assignFaces(all, ['front', 'back'], { placed });
+  if (guessedFrontBack) review.push('front and back (told apart only by photo order: check they are the right way round)');
+  if (chosen.front === undefined) throw new Error('a slab needs a photo of its front');
+  // A tall holder, told by its label: the same size on every holder, it spans much less of a tall one.
+  const front = from[chosen.front];
+  const labelQuad = front.corners && inner[front.picture]?.get('label');
+  const spans = labelQuad ? widthOf(labelQuad) / widthOf(front.corners!) : 1;
+  if (!holderGiven && spans < TALL_LABEL && HOLDERS[`${holder}-tall`]) {
+    holder = `${holder}-tall`;
+    warnings.push(`taken for a tall holder (${holder}): its label spans ${Math.round(spans * 100)}% of its width, where a standard one's spans about 87%: --holder to say otherwise`);
+  }
   const size = [0, 1, 2].map((i) => sizeMm[i] ?? HOLDERS[holder]?.[i]);
   if (size.some((mm) => mm === undefined)) {
     throw new Error(`no size on file for a "${holder}" holder (known: ${Object.keys(HOLDERS).join(', ')}): measure one and pass --size WxHxD in mm`);
   }
-  // The models' card and label in each photo, kept apart from the slab's own faces, which are what's cut out.
-  const inner = (sights ?? []).map((sight) => new Map(sight.faces.filter(({ face }) => face === 'card' || face === 'label').map(({ face, corners }) => [face, corners])));
-  const outer = sights?.map((sight) => ({ ...sight, faces: sight.faces.filter(({ face }) => face === 'front' || face === 'back') }));
-  const proofs = codes.filter(({ use }) => use === 'grader' || use === 'cert')
-    .map(({ picture, use, at = [] }) => ({ picture, face: use === 'grader' && label.grader === 'cgc' ? 'back' : 'front', at }));
-  const { parts, placed, from } = cut(pictures, outer, proofs);
-  const all = await shots(parts);
-  const { chosen, roles, guessedFrontBack } = assignFaces(all, ['front', 'back'], { placed });
-  if (guessedFrontBack) review.push('front and back (no QR code or cert barcode: told apart only by photo order, so check they are the right way round)');
-  if (chosen.front === undefined) throw new Error('a slab needs a photo of its front');
   const [w, h] = size;
   // Each side's photo, and the ways between the holder and its pixels: through the slab's corners where the models
   // found them, else across the whole photo, cropped to the slab. Seen from behind, the holder's left is on the right.
@@ -217,7 +235,8 @@ async function make(
   const [shell] = roundedBox(size, { front: clear, back: clear, left: clear, right: clear, top: clear, bottom: clear }, ROUNDED_MM).values();
   shell.uv.length = 0;
   addPart(doc, mesh, shell, clearMaterial(doc, 'acrylic'));
-  const plates = { card: { depth: CARD_DEPTH_MM, corner: CARD_CORNER_MM, edge: CARDSTOCK }, label: { depth: LABEL_DEPTH_MM, corner: 0, edge: LABEL_EDGE } };
+  const cardDepth = Math.min(pt ? pt * PT_MM : CARD_DEPTH_MM, size[2] - 2 * WALL_MM); // a thick card, by its points, as fits
+  const plates = { card: { depth: cardDepth, corner: CARD_CORNER_MM, edge: CARDSTOCK }, label: { depth: LABEL_DEPTH_MM, corner: 0, edge: LABEL_EDGE } };
   for (const part of ['card', 'label'] as const) {
     const r = rects[part];
     const { depth, corner, edge: color } = plates[part];
@@ -247,3 +266,5 @@ async function make(
 }
 
 const mean = (values: number[]) => values.reduce((sum, v) => sum + v, 0) / values.length;
+/** A quad's width: the mean of its top and bottom sides. */
+const widthOf = ([tl, tr, br, bl]: number[][]) => (Math.hypot(tr[0] - tl[0], tr[1] - tl[1]) + Math.hypot(br[0] - bl[0], br[1] - bl[1])) / 2;
