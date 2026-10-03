@@ -5,7 +5,7 @@
 import { Document } from '@gltf-transform/core';
 import earcut from 'earcut';
 import sharp from 'sharp';
-import { addPart, colorMaterial, emptyPart, pictureMaterial, toGlb } from '../glb.ts';
+import { addPart, colorMaterial, emptyPart, pictureMaterial, toGlb, unlit } from '../glb.ts';
 import type { Picture } from '../image.ts';
 import { trace, type Point } from '../outline.ts';
 import type { Profile } from '../thicken.ts';
@@ -84,7 +84,7 @@ async function make({ data, width, height, transparent }: Picture, { widthMm = 5
 
   const doc = new Document();
   const mesh = doc.createMesh('badge');
-  addPart(doc, mesh, face, pictureMaterial(doc, 'face', png, 'image/png').setAlphaMode('MASK').setAlphaCutoff(0.5));
+  addPart(doc, mesh, face, unlit(doc, pictureMaterial(doc, 'face', png, 'image/png').setAlphaMode('MASK').setAlphaCutoff(0.5)));
   addPart(doc, mesh, rim, colorMaterial(doc, 'rim', edge, 0.6));
 
   const round = (mm: number) => Math.round(mm * 100) / 100;

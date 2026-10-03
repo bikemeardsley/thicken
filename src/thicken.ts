@@ -45,9 +45,12 @@ export interface Options {
 }
 
 /** A barcode or QR code as read off a picture. */
-export interface Scanned { picture: number; format: string; text: string }
-/** A code seen on a picture, for the record. Its text is kept only when Thicken used it: a stray QR code can hold a Wi-Fi password. */
-export interface Code { picture: number; format: string; use?: string; text?: string }
+export interface Scanned { picture: number; format: string; text: string; at: number[] }
+/**
+ * A code seen on a picture, for the record. Its text is kept only when Thicken used it: a stray QR code can hold a
+ * Wi-Fi password. Profiles also get where it is (`at`), to tell which face it's printed on; the sidecar doesn't.
+ */
+export interface Code { picture: number; format: string; use?: string; text?: string; at?: number[] }
 /** What a profile read unaided: whether this is its kind of object, each code's use (by its place among those scanned), and the facts. */
 export interface Facts { recognized: boolean; use: (string | undefined)[]; [fact: string]: unknown }
 /** What a profile builds from: the options, what it read, the codes as recorded, and what the vision models saw and estimated. */
@@ -106,13 +109,15 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
   const recorded: Code[] = scanned.map(({ picture, format, text }, i) => ({ picture, format, ...(facts.use[i] && { use: facts.use[i], text }) }));
   // With a vision roster, the models find each photo's faces, which are cut out and straightened (src/vision.ts).
   const sights = visionOn() && Object.keys(profile.faces).length ? await lookAll(pictures, profile) : undefined;
-  const built = await profile.build(pictures, { options, facts, codes: recorded, sights, estimateMm: identity?.sizeMm });
+  const built = await profile.build(pictures, { options, facts, codes: recorded.map((code, i) => ({ ...code, at: scanned[i].at })), sights, estimateMm: identity?.sizeMm });
 
   const named_ = (i: number) => `${pictures[i].source.file}${pictures[i].source.page ? ` page ${pictures[i].source.page}` : ''}`;
   const unsure = [
     ...(identity?.disputed ? [`what this is (the vision models disagree; made as a ${profile.name}: name the profile if that's wrong)`] : []),
     ...(sights ?? []).flatMap((sight, i) => [
       ...sight.disputed.map((face) => `${face} in ${named_(i)} (the vision models disagree where it is or which way up: check it)`),
+      ...sight.faces.filter(({ face, agreed }) => !agreed && !sight.disputed.includes(face))
+        .map(({ face, by }) => `${face} in ${named_(i)} (only ${by[0]} answered, so no second model checked it: check it)`),
       ...(sight.answers.some((a) => a.faces) ? [] : [`${named_(i)} (no vision model answered, so it was used whole: run again, or crop it)`]),
     ]),
   ];
@@ -136,7 +141,7 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
 /** Every barcode and QR code on every picture that passes its own checksum. */
 async function scan(pictures: Picture[]): Promise<Scanned[]> {
   const scanned: Scanned[] = [];
-  for (const [picture, image] of pictures.entries()) for (const { format, text } of await codes(image)) scanned.push({ picture, format, text });
+  for (const [picture, image] of pictures.entries()) for (const { format, text, at } of await codes(image)) scanned.push({ picture, format, text, at });
   return scanned;
 }
 

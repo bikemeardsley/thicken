@@ -1,0 +1,10 @@
+# Everything text is LF in the repo and in the working tree, on every OS.
+* text=auto eol=lf
+
+# Pictures and models are binary.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.heic binary
+*.pdf binary
+*.glb binary

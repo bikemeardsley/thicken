@@ -148,10 +148,31 @@ async function pdfPages(bytes: Buffer): Promise<{ image: Sharp; width: number; h
   return pages;
 }
 
-/** The barcodes and QR codes in a picture that pass their own checksums. */
-export async function codes({ data, width, height }: Picture): Promise<{ format: string; text: string }[]> {
+/** The barcodes and QR codes in a picture that pass their own checksums, each with where its middle is. */
+export async function codes({ data, width, height }: Picture): Promise<{ format: string; text: string; at: number[] }[]> {
   const found = await readBarcodes({ data: new Uint8ClampedArray(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength), width, height, colorSpace: 'srgb' });
-  return found.filter((code) => code.isValid).map(({ format, text }) => ({ format, text }));
+  return found.filter((code) => code.isValid).map(({ format, text, position: { topLeft, topRight, bottomRight, bottomLeft } }) => {
+    const corners = [topLeft, topRight, bottomRight, bottomLeft];
+    return { format, text, at: [corners.reduce((sum, p) => sum + p.x, 0) / 4, corners.reduce((sum, p) => sum + p.y, 0) / 4] };
+  });
+}
+
+/** Four corners that make a face: convex and wound one way, not a line, a bow tie or a dent (any of which warps to nothing). */
+export function isQuad(corners: number[][]): boolean {
+  const turns = corners.map((p, k) => {
+    const [q, r] = [corners[(k + 1) % 4], corners[(k + 2) % 4]];
+    return (q[0] - p[0]) * (r[1] - q[1]) - (q[1] - p[1]) * (r[0] - q[0]);
+  });
+  return turns.every((t) => t > 0) || turns.every((t) => t < 0);
+}
+
+/** Whether a point lies within a face's four corners. */
+export function inside([x, y]: number[], corners: number[][]): boolean {
+  const sides = corners.map((p, k) => {
+    const q = corners[(k + 1) % 4];
+    return (q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0]);
+  });
+  return sides.every((s) => s >= 0) || sides.every((s) => s <= 0);
 }
 
 /** Average color of the opaque pixels in columns [x0, x1), as #rrggbb. */

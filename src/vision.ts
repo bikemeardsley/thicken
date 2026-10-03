@@ -14,6 +14,7 @@ import { keep, trainingOn } from './training.ts';
 const SIZE = 1000; // photos go out letterboxed to 1000 x 1000, so pixels and a 0-1000 scale are the same numbers
 const AGREE = 0.03; // corners within 3% of the diagonal, on average, are the same face in the same place and turn
 const TIMEOUT_MS = 180_000;
+const MAX_FACES = 12; // twice a box's six: more is noise, and settling compares every pair
 
 /** What the models are told about a kind of object: a profile (src/profiles). */
 export interface Kind { name: string; about?: string; faces: Record<string, string>; note?: string }
@@ -66,7 +67,7 @@ export async function lookAll(pictures: Picture[], kind: Kind): Promise<Sight[]>
 export async function look(picture: Picture, kind: Kind): Promise<Sight> {
   const { jpeg, toPicture, toSent } = await letterbox(picture);
   const prompt = facesPrompt(kind);
-  const answers = await consult(jpeg, prompt, parseFaces, (asked) => settle(asked).disputed.length > 0);
+  const answers = await consult(jpeg, prompt, (json) => parseFaces(json, Object.keys(kind.faces)), (asked) => settle(asked).disputed.length > 0);
   const settled = settle(answers);
   const back = <T extends { corners: number[][] }>(faces: T[]) => faces.map((f) => ({ ...f, corners: f.corners.map(toPicture) }));
   const named = answers.find((a) => a.title);
@@ -161,10 +162,13 @@ async function consult(jpeg: Buffer, prompt: string, parse: (json: any) => Parti
   return ranked();
 }
 
-/** A face list from an answer: four corners each, inside the image give or take a little. */
-function parseFaces(json: any): Partial<Answer> | undefined {
-  const faces = (Array.isArray(json?.faces) ? json.faces : [])
-    .filter((f: any) => typeof f?.face === 'string' && Array.isArray(f.corners) && f.corners.length === 4
+/**
+ * A face list from an answer: the profile's own faces, a few at most, each four corners inside the image, give or
+ * take a little. Corners that make no face (a bow tie) stay in, to lose to a peer's; cut() never warps them.
+ */
+function parseFaces(json: any, names: string[]): Partial<Answer> | undefined {
+  const faces = (Array.isArray(json?.faces) ? json.faces.slice(0, MAX_FACES) : [])
+    .filter((f: any) => typeof f?.face === 'string' && names.includes(f.face.toLowerCase()) && Array.isArray(f.corners) && f.corners.length === 4
       && f.corners.every((p: unknown) => Array.isArray(p) && p.length === 2 && p.every((n) => Number.isFinite(n) && n > -SIZE / 10 && n < SIZE * 1.1)))
     .map((f: any) => ({ face: f.face.toLowerCase(), corners: f.corners.map((p: number[]) => p.map(Number)) }));
   if (!faces.length) return undefined;
