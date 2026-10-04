@@ -124,17 +124,22 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
     const { file, page, time } = pictures[i].source;
     return `${file}${page ? ` page ${page}` : ''}${time === undefined ? '' : ` at ${time} s`}`;
   };
+  const own = built.sidecar;
+  // A video's frames are a handful of extra views: what the models doubted in one is worth a look only if it was
+  // used for a face (no photo showed it), not when it's an alternate or unused.
+  const usedFrames = new Set(((own.pictures ?? []) as { file: string; time?: number; role: string }[])
+    .filter(({ time, role }) => time !== undefined && !role.startsWith('alternate') && role !== 'unused').map(({ file, time }) => `${file} ${time}`));
+  const worth = (i: number) => pictures[i].source.time === undefined || usedFrames.has(`${pictures[i].source.file} ${pictures[i].source.time}`);
   const unsure = [
     ...(identity?.disputed ? [`what this is (the vision models disagree; made as a ${profile.name}: name the profile if that's wrong)`] : []),
-    ...(sights ?? []).flatMap((sight, i) => [
+    ...(sights ?? []).flatMap((sight, i) => (!worth(i) ? [] : [
       ...sight.disputed.map((face) => `${face} in ${named_(i)} (the vision models disagree where it is or which way up: check it)`),
       ...sight.faces.filter(({ face, agreed }) => !agreed && !sight.disputed.includes(face))
         .map(({ face, by }) => `${face} in ${named_(i)} (only ${by[0]} answered, so no second model checked it: check it)`),
       // A frame no model answered for is just left out (src/faces.ts): one of a handful, nothing to review.
       ...(sight.answers.some((a) => a.faces) || pictures[i].source.time !== undefined ? [] : [`${named_(i)} (no vision model answered, so it was used whole: run again, or crop it)`]),
-    ]),
+    ])),
   ];
-  const own = built.sidecar;
   return {
     glb: built.glb,
     sidecar: {

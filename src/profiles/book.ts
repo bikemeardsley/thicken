@@ -11,7 +11,8 @@
 import { Document, type Material } from '@gltf-transform/core';
 import sharp from 'sharp';
 import { assignFaces, cut, pictureRecord, shots, sidesUnknown } from '../faces.ts';
-import { addPart, box, colorMaterial, pictureMaterial, roundedBox, toGlb, type Face, type Side } from '../glb.ts';
+import { foilMap, regionIn, rounded } from '../foil.ts';
+import { addPart, box, roundedBox, sideMaterial, toGlb, type Face, type Side } from '../glb.ts';
 import { load, texture, turned, type Picture } from '../image.ts';
 import type { Code, Faces, Profile } from '../thicken.ts';
 import { pooled, type Sight } from '../vision.ts';
@@ -19,8 +20,12 @@ import { pooled, type Sight } from '../vision.ts';
 export const book: Profile = {
   name: 'book',
   about: 'a book, hardcover or paperback',
-  faces: { front: 'front cover', back: 'back cover', spine: 'spine', edge: 'the page edge opposite the spine', top: 'top', bottom: 'bottom' },
-  note: 'The book stands on its bottom edge, front cover toward you, its spine and page edge each seen from its own side with the top of the book up.',
+  faces: {
+    front: 'front cover', back: 'back cover', spine: 'spine', edge: 'the page edge opposite the spine', top: 'top', bottom: 'bottom',
+    sticker: 'a shiny foil sticker or seal on the front cover (gold, silver or holographic: an award seal, a signed-copy sticker), if there is one',
+  },
+  note: 'The book stands on its bottom edge, front cover toward you, its spine and page edge each seen from its own side with the top of the book up. A sticker is part of the front cover: give its corners in the cover\'s own order.',
+  unsnapped: ['sticker'],
   asks: { binding: 'is it a "hardcover" (stiff boards that stand a little past the pages at the top, bottom and page edge, with a dust jacket or without) or a "paperback" (a soft cover flush with its pages)?' },
   // An ISBN barcode (EAN-13 starting 978 or 979) says it's a book, which, and which photos show its back.
   read: (scanned) => {
@@ -82,7 +87,8 @@ async function make(
   if (read?.title && !known && !match) log.warnings.push(`no book in Open Library close to the title read, "${read.title}"`);
   const isbn = known ?? match?.isbn;
   const proofs = codes.filter(({ use }) => use === 'isbn').map(({ picture, at = [] }) => ({ picture, face: 'back', at }));
-  const { parts, placed } = cut(pictures, sights, proofs);
+  // A foil sticker is kept apart from the book's sides, which are what's cut out.
+  const { parts, placed } = cut(pictures, sights?.map((sight) => ({ ...sight, faces: sight.faces.filter(({ face }) => face !== 'sticker') })), proofs);
   const all = await shots(parts);
   const { chosen, roles, undecided } = assignFaces(all, ['front', 'back', 'spine', 'top', 'bottom', 'edge'], { placed, byShape: true });
   if (undecided) throw sidesUnknown(Boolean(sights));
@@ -217,8 +223,12 @@ async function make(
   const plain: Side = { color: front.edge, roughness: 0.6 }; // a wraparound cover carries on round the spine
   const paper = await pageTextures();
   const pagesAcross: Side = { picture: paper.across, roughness: 0.9 }; // one Side for top and bottom: one draw call
+  // A foil sticker on the front cover, where the models found one on a photo of it: round when its box is about
+  // square on the book (a seal), else as boxed. Not on a stand-in cover: it's someone else's copy.
+  const found = faces.front === 'photo' ? regionIn(sights, 'sticker', 'front') : undefined;
+  const sticker = found && { ...found, round: Math.abs(((found.x1 - found.x0) * width) / ((found.y1 - found.y0) * height) - 1) < 0.2 };
   const sides: Record<Face, Side> = {
-    front: { picture: front.jpeg },
+    front: { picture: front.jpeg, ...(sticker && { foil: await foilMap([sticker], front.height / front.width) }) },
     back: back ? { picture: back.jpeg } : plain,
     left: spine ? { picture: spine.jpeg } : plain,
     right: edge ? { picture: edge.jpeg } : { picture: paper.down, roughness: 0.9 },
@@ -234,7 +244,8 @@ async function make(
       profile: 'book', isbn, ...(coverUrl && { coverUrl }),
       widthMm: round(width), heightMm: round(height), depthMm: round(depth), measuredBy,
       depthEstimates: { photos: fromPhotos && round(fromPhotos), pages: fromPages && round(fromPages) },
-      pages, binding, bindingBy: seen ? 'vision' : listed ? 'catalog' : 'assumed', faces, review, warnings: log.warnings, catalog,
+      pages, binding, bindingBy: seen ? 'vision' : listed ? 'catalog' : 'assumed', ...(sticker && { sticker: rounded(sticker) }),
+      faces, review, warnings: log.warnings, catalog,
       ...(match && { match: { by: 'title', read: { title: read!.title, authors: read!.authors }, ...match } }),
       pictures: pictureRecord(all, roles), lookups: log.lookups,
     },
@@ -286,10 +297,7 @@ async function hardcoverBook([width, height, depth]: number[], sides: Record<Fac
   const piece = (size: number[], at: number[], faces: Partial<Record<Face, Side>>) => {
     const all = { front: plain, back: plain, left: plain, right: plain, top: plain, bottom: plain, ...faces };
     for (const [side, part] of roundedBox(size, all, ROUNDED_MM, at)) {
-      if (!materials.has(side)) {
-        const name = `book-${materials.size}`;
-        materials.set(side, side.picture ? pictureMaterial(doc, name, side.picture, 'image/jpeg', side.roughness) : colorMaterial(doc, name, side.color ?? '#808080', side.roughness ?? 0.9));
-      }
+      if (!materials.has(side)) materials.set(side, sideMaterial(doc, `book-${materials.size}`, side));
       if (!side.picture) part.uv.length = 0;
       addPart(doc, mesh, part, materials.get(side)!);
     }

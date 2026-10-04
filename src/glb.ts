@@ -75,8 +75,16 @@ export async function toGlb(doc: Document, mesh: Mesh): Promise<Uint8Array> {
 }
 
 export type Face = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom';
-/** A face shows a JPEG picture or a plain color. Faces given the same Side object share a draw call. */
-export interface Side { picture?: Uint8Array; color?: string; roughness?: number }
+/** A face shows a JPEG picture or a plain color, foil where its map says (foiled). Faces given the same Side object share a draw call. */
+export interface Side { picture?: Uint8Array; color?: string; roughness?: number; foil?: Uint8Array }
+
+/** A Side's material. */
+export function sideMaterial(doc: Document, name: string, side: Side): Material {
+  const material = side.picture
+    ? pictureMaterial(doc, name, side.picture, 'image/jpeg', side.roughness)
+    : colorMaterial(doc, name, side.color ?? '#808080', side.roughness ?? 0.9);
+  return side.foil ? foiled(doc, material, side.foil) : material;
+}
 
 /**
  * A box W × H × D mm, centered on the origin, its edges and corners rounded to
@@ -97,11 +105,8 @@ export async function box(name: string, sizeMm: number[], sides: Record<Face, Si
   const mesh = doc.createMesh(name);
   let i = 0;
   for (const [side, part] of roundedBox(sizeMm, sides, radiusMm)) {
-    const material = side.picture
-      ? pictureMaterial(doc, `${name}-${i++}`, side.picture, 'image/jpeg', side.roughness)
-      : colorMaterial(doc, `${name}-${i++}`, side.color ?? '#808080', side.roughness ?? 0.9);
     if (!side.picture) part.uv.length = 0;
-    addPart(doc, mesh, part, material);
+    addPart(doc, mesh, part, sideMaterial(doc, `${name}-${i++}`, side));
   }
   return toGlb(doc, mesh);
 }
