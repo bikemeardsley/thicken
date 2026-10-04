@@ -11,7 +11,7 @@ import { getBounds, NodeIO, type Document, type Primitive, type vec2, type vec3 
 import { ALL_EXTENSIONS, type Iridescence } from '@gltf-transform/extensions';
 import sharp, { type Sharp } from 'sharp';
 import { cut } from '../src/faces.ts';
-import { codes, load, snap } from '../src/image.ts';
+import { codes, load, mapping, snap } from '../src/image.ts';
 import { startPreview } from '../src/preview.ts';
 import { batchItems, thicken } from '../src/thicken.ts';
 import { settle } from '../src/vision.ts';
@@ -241,9 +241,11 @@ test('book: vision models find the faces in uncropped photos, which are cut out 
       if (green - red > 50 * 10_000) return undefined; // the green photo: every model fails
       const isFront = red / 10_000 < 100; // the middle is navy, not cream
       if (isFront) {
-        // a also names a sliver of spine that b, answering, doesn't: left out.
-        return model === 'a' ? { faces: [{ face: 'front', corners: seen(front) }, { face: 'spine', corners: seen([[130, 150], [180, 150], [160, 980], [110, 980]]) }], binding: 'paperback' }
-          : { faces: [{ face: 'front', corners: seen(front, 1) }], binding: 'paperback' };
+        // a also names a sliver of spine that b, answering, doesn't: left out. Both find a round foil seal on the cover,
+        // 10–35% across and 30–45% down it, which on a 5 x 8 in cover is about as tall as it is wide.
+        const seal = { face: 'sticker', corners: seen([[0.1, 0.3], [0.35, 0.3], [0.35, 0.45], [0.1, 0.45]].map(mapping([[0, 0], [1, 0], [1, 1], [0, 1]], front))) };
+        return model === 'a' ? { faces: [{ face: 'front', corners: seen(front) }, { face: 'spine', corners: seen([[130, 150], [180, 150], [160, 980], [110, 980]]) }, seal], binding: 'paperback' }
+          : { faces: [{ face: 'front', corners: seen(front, 1) }, seal], binding: 'paperback' };
       }
       // b has the back's outline but the wrong way up, so c is asked, and agrees with a. All see the spine. And all
       // call the back the front: its ISBN barcode says otherwise, and wins.
@@ -263,7 +265,7 @@ test('book: vision models find the faces in uncropped photos, which are cut out 
   assert.equal(vision.endpoint, 'vision.test/api/chat/completions');
   // The record keeps what the models said; the barcode decided where it went.
   assert.deepEqual(vision.photos.map(({ faces }) => faces.map(({ face, by, agreed }) => [face, by, agreed])),
-    [[['front', ['a', 'c'], true], ['spine', ['a', 'b'], true]], [['front', ['a', 'b'], true]], []]);
+    [[['front', ['a', 'c'], true], ['spine', ['a', 'b'], true]], [['front', ['a', 'b'], true], ['sticker', ['a', 'b'], true]], []]);
   // The spine shares its photo with the back, so it's taken as seen at an angle: no thickness from it.
   assert.deepEqual([(sidecar.measuredBy as Record<string, string>).depth, sidecar.depthEstimates], ['default', { photos: undefined, pages: undefined }]);
   assert.deepEqual(vision.photos.map(({ answers }) => answers.map(({ model }) => model)), [['a', 'b', 'c'], ['a', 'b'], ['a', 'b', 'c']]);
@@ -276,6 +278,14 @@ test('book: vision models find the faces in uncropped photos, which are cut out 
   assert.ok(near(await colorOf(doc, [0, 0, 1]), '#1d2b53'), 'the front is the navy cover alone');
   assert.ok(Math.min(...await colorOf(doc, [0, 0, -1])) > 180, 'the back is the cream cover alone');
   assert.ok(near(await colorOf(doc, [-1, 0, 0]), '#c62828'), 'the spine is the red strip alone');
+  // The seal, placed within the cover however it was shot, and drawn round: foil at its middle, print at its box's corner.
+  const seal = sidecar.sticker as Record<string, number | boolean>;
+  assert.equal(seal.round, true);
+  for (const [key, want] of Object.entries({ x0: 0.1, x1: 0.35, y0: 0.3, y1: 0.45 })) assert.ok(Math.abs((seal[key] as number) - want) < 0.01, `seal ${key} ${seal[key]}`);
+  const film = faceOf(doc, [0, 0, 1])!.getMaterial()!.getExtension<Iridescence>('KHR_materials_iridescence');
+  const { data, info } = await sharp(film!.getIridescenceTexture()!.getImage()!).raw().toBuffer({ resolveWithObject: true });
+  const pixel = (u: number, v: number) => [...data.subarray((Math.round(v * info.height) * info.width + Math.round(u * info.width)) * info.channels).subarray(0, 3)];
+  assert.deepEqual([pixel(0.225, 0.375), pixel(0.11, 0.31), pixel(0.6, 0.7)], [[255, 77, 153], [0, 102, 0], [0, 102, 0]]);
 });
 
 test('box: anything box-shaped, at the size given, its sides plain until photographed', async (t) => {
@@ -382,10 +392,13 @@ test('video: its sharpest frames, upright, join the photos for the vision models
 
   const seen = quad.map(([x, y]) => [125 + (x * 5) / 3, (y * 5) / 3]); // letterboxed into 1000 × 1000
   const fetch = catalog({}, {
-    vision: async ({ photo: sent }) => {
+    vision: async ({ model, photo: sent }) => {
       const { data, info } = await sharp(sent).raw().toBuffer({ resolveWithObject: true });
       const middle = (500 * info.width + 500) * info.channels; // green in the middle: the front
-      return { faces: [{ face: data[middle + 1] > data[middle + 2] ? 'front' : 'back', corners: seen }], corners: 'square' };
+      // b puts every frame's card somewhere else: the frames are told from the photo by their table, toned lighter.
+      const frame = data[(42 * info.width + 833) * info.channels] > 165;
+      const corners = model === 'b' && frame ? seen.map(([x, y]) => [x + 80, y]) : seen; // 6% of the diagonal off: past agreeing
+      return { faces: [{ face: data[middle + 1] > data[middle + 2] ? 'front' : 'back', corners }], corners: 'square' };
     },
   });
   t.after(() => fetch.mock.restore());
@@ -398,6 +411,10 @@ test('video: its sharpest frames, upright, join the photos for the vision models
   ]);
   assert.ok(Math.max(...fronts.slice(1).map(({ sharpness }) => sharpness)) > fronts[0].sharpness, 'the photo wins though a frame scores sharper');
   assert.ok([2.3, 3, 3.7].includes(pictures.find(({ role }) => role === 'back')?.time ?? 0), 'the back, which no photo shows, is a frame');
+  // The models disagree on every frame, but only the one used, for the back, is worth a look.
+  const doubts = sidecar.review.filter((item) => item.includes('disagree'));
+  assert.equal(doubts.length, 1, doubts.join('; '));
+  assert.match(doubts[0], /^back in IMG_2\.MOV at (2\.3|3|3\.7) s /);
 
   // Without vision, a video is no use: said, not ignored.
   delete process.env.THICKEN_VISION_URL;
@@ -742,16 +759,21 @@ test('slab: with vision, the card and label are found in uncropped photos and se
   // (its top 33 mm down, where the layout says 32.3), measuring a little big, 64.3 × 89.6 mm: near enough standard to be
   // taken for it. Its back the same, the card's back blue.
   const [slab, label, card] = [[0, 0, 80.5, 136], [4, 4.5, 76.5, 26.3], [8.1, 33, 72.4, 122.6]];
+  const hologram = [6, 8, 26, 22]; // on the back of the label, at its left as the back is seen
   const [front, back] = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
   await slabPhoto(front, [[slab, '#c8ccd0'], [label, '#f8f8f8'], [card, '#2e7d32']]);
-  await slabPhoto(back, [[slab, '#c8ccd0'], [label, '#f8f8f8'], [card, '#1d4f9e']]);
+  await slabPhoto(back, [[slab, '#c8ccd0'], [label, '#f8f8f8'], [hologram, '#d0d0d8'], [card, '#1d4f9e']]);
   const fetch = catalog({}, {
     vision: async ({ model, photo }) => {
       const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
       const middle = (500 * info.width + 500) * info.channels; // the card's middle: green on the front
       // As with Mike's real slabs, b calls the back the front: same place, another name, so c is asked, and agrees with a.
-      const side = data[middle + 1] > data[middle + 2] || model === 'b' ? 'front' : 'back';
-      return { faces: [{ face: side, corners: letterboxed(slab) }, { face: 'card', corners: letterboxed(card) }, { face: 'label', corners: letterboxed(label) }] };
+      const green = data[middle + 1] > data[middle + 2];
+      const side = green || model === 'b' ? 'front' : 'back';
+      // The card shines all over (a refractor); the label's back has a hologram. b, calling the back the front, says
+      // the card shines there too: that photo isn't of the front, as settled, so it isn't counted.
+      const faces = [{ face: side, corners: letterboxed(slab) }, { face: 'card', corners: letterboxed(card) }, { face: 'label', corners: letterboxed(label) }];
+      return { faces: green ? faces : [...faces, { face: 'hologram', corners: letterboxed(hologram) }], foil: side === 'front' ? 'full' : 'none' };
     },
   });
   t.after(() => fetch.mock.restore());
@@ -779,6 +801,15 @@ test('slab: with vision, the card and label are found in uncropped photos and se
   assert.ok(await share('card-front', (r, g, b) => g > 100 && r < 80 && b < 80) > 0.95, 'the card alone');
   assert.ok(await share('card-back', (r, g, b) => b > 120 && r < 80 && g < 110) > 0.95, 'the card\'s back alone');
   assert.ok(await share('label-front', (r, g, b) => Math.min(r, g, b) > 230) > 0.95, 'the label alone');
+  // The card's foil on its front only; the hologram on the label's back, where it was found within it.
+  assert.deepEqual([(inside.card as unknown as { foil: string }).foil, (inside.card as unknown as { foilBy: string }).foilBy], ['full', 'vision']);
+  const film = (name: string) => materials[name].getExtension<Iridescence>('KHR_materials_iridescence');
+  assert.deepEqual(['card-front', 'card-back', 'label-front', 'label-back'].map((name) => Boolean(film(name))), [true, false, false, true]);
+  const held = (inside.label as unknown as { hologram: Record<string, Record<string, number>> }).hologram.back;
+  for (const [key, want] of Object.entries({ x0: 2 / 72.5, x1: 22 / 72.5, y0: 3.5 / 21.8, y1: 17.5 / 21.8 })) assert.ok(Math.abs(held[key] - want) < 0.03, `hologram ${key} ${held[key]}`);
+  const { data, info } = await sharp(film('label-back')!.getIridescenceTexture()!.getImage()!).raw().toBuffer({ resolveWithObject: true });
+  const pixel = (u: number, v: number) => [...data.subarray((Math.round(v * info.height) * info.width + Math.round(u * info.width)) * info.channels).subarray(0, 3)];
+  assert.deepEqual([pixel(0.15, 0.5), pixel(0.7, 0.5)], [[255, 77, 153], [0, 102, 0]], 'foil on the hologram, print beside it');
   assertWatertight(doc);
 });
 

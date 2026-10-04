@@ -197,18 +197,26 @@ transmission extension was tried first: it refracts only what's in the 3D
 scene, so on a page its clear parts came out white, and viewers without the
 extension draw it solid.
 
-**Holofoil.** A raw card's foil is drawn so it flashes as the card turns:
-foil areas are partly metal under a thin film whose colors shift with the
-angle (glTF's `KHR_materials_iridescence`, which three.js and model-viewer
-render). The vision models say which kind of foil the card has, from every
+**Holofoil.** Foil is drawn so it flashes as the object turns: foil areas
+are partly metal under a thin film whose colors shift with the angle (glTF's
+`KHR_materials_iridescence`, which three.js and model-viewer render). Three
+kinds are found by the vision models: a trading card's holofoil, raw or
+inside a slab (below); a slab label's hologram, a patch on whichever side
+the models find it (`inside.label.hologram`, per side); and a foil seal or
+sticker on a book's front cover (`sticker`), drawn round when its box is
+about square on the book. A stand-in cover from Open Library gets no seal:
+it shows someone else's copy. For a card, the vision models say which kind
+of foil it has, from every
 photo and frame that shows its front: `none`; `holo`, only the picture box
 shining; `reverse`, everything but the picture box; or `full`, the whole
 front (full art, textured and refractor cards). Foil flashes only at some
 angles, so frames that miss it say none: two answers naming a kind are
 enough, and one alone isn't, so a single model's slip leaves a plain card
-plain. They also find the picture box. Where they don't, it goes where a standard Pokémon card has it, 8% in
-from each side and 10–47% down. The sidecar records `foil`, `foilBy`,
-`pictureBox` and `pictureBoxBy`. Measuring foil directly, from how a video's
+plain. They also find the picture box (inside a slab, within the card).
+Where they don't, it goes where a standard Pokémon card has it, 8% in from
+each side and 10–47% down, unless the card is landscape. The sidecar records
+`foil`, `foilBy`, `pictureBox` and `pictureBoxBy`: a raw card's at its top
+level, a slab's under `inside.card`. Measuring foil directly, from how a video's
 frames change from angle to angle, was tried on a reverse-holo Psyduck:
 handheld frames differed more by glare and slight misalignment than by foil,
 so the kind is asked instead. The metal and roughness were tuned on the same
@@ -282,7 +290,8 @@ more pictures, so a video needs a [vision roster](#vision-optional).
 - A photo always beats a frame for a face, however sharp the frame: frames
   are smaller, compressed and toned down. So a frame shows a face only where
   no photo does: a book's spine or page edge, a box's sides, a slab's back.
-  A frame the models found nothing in is left out.
+  A frame the models found nothing in is left out, and what they doubted in
+  a frame goes on the review list only if that frame was used for a face.
 - The sidecar records each frame as its video and the seconds into it
   (`"time": 2.3`).
 
