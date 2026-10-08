@@ -1,8 +1,8 @@
 # Thicken
 
 Flat images in, 3D assets (GLB) out: slabs, raw cards, books, badges.
-**Start with [README.md](README.md)**: the profiles, inputs, outputs and the
-kitbash-verified build plan.
+**Start with [README.md](README.md)**: the profiles, inputs, outputs and what
+each part is built on.
 
 ## Conventions
 
@@ -30,11 +30,3 @@ kitbash-verified build plan.
   CLAUDE.md).
 - **Subagents**, only for a single self-contained job that is better
   delegated, like a function call.
-
-## Reference code elsewhere
-
-- `P:\windsurf\michaelbeardsley-now\src\lib\badge-shape.ts`: traces a badge
-  PNG's outline from its transparency. The badge profile starts from this.
-- `P:\windsurf\michaelbeardsley-now\src\scripts\badges-3d.ts`: the
-  three.js viewer with sway and spin. It's a consumer of Thicken's output,
-  not part of Thicken.

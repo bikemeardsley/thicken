@@ -12,7 +12,7 @@ import { pooled, type Sight } from '../vision.ts';
 
 export const CARD_MM = [63.5, 88.9]; // a standard card, 2.5 × 3.5 in
 export const CARD_DEPTH_MM = 0.35; // a standard card's stock, about 14 pt (35 pt is the holder it fits, not its own thickness)
-// How a card's corners are cut is read off the card in the photo, never assumed from its year or kind (Mike,
+// How a card's corners are cut is read off the card in the photo, never assumed from its year or kind (decided
 // 2026-10-03). Round is 1/8 in (Pokémon's spec); ponytail: slight is an estimate, 1/16 in; measure a few cards.
 const CORNER_MM: Record<string, number> = { square: 0, slight: 1.6, round: 3.2 };
 export const CORNERS_ASK = 'look at this card\'s own corners in the photo: are they "square" (each corner a sharp point), "slight" (a small curve, about 2 mm across) or "round" (a clear curve, about 3 mm or more)? Judge the corners you see, not what cards of its kind usually have.';

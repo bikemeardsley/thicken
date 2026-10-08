@@ -90,16 +90,16 @@ const HOLDERS: Record<string, number[]> = { // width, height, depth in mm
   'psa-tall': [108, 184, 6.5], // tall boys (1969–70 Topps basketball…): 4¼ × 7¼ in per Collectors Universe; depth assumed
   bgs: [83, 131, 8.5],
   cgc: [80.5, 135, 7.5],
-  // ponytail: from one photo (Mike's 1969–70 Topps, 2026-10-03), its tall-boy card (63.5 mm wide) as the ruler; measure one
+  // ponytail: from one photo (a 1969–70 Topps, 2026-10-03), its tall-boy card (63.5 mm wide) as the ruler; measure one
   'cgc-tall': [113, 195, 7.5],
   sgc: [86.5, 138.5, 8.5],
   tag: [79.5, 133.5, 7.5], // TAG's help center: 3.125 × 5.25 in, 7.5 mm at the raised lip
 };
 // A grader's label is the same size on every holder: it spans about 87% of a standard holder's width and about 60%
-// of a tall one's (Mike's PSA and CGC slabs, 2026-10-03). Under this, the holder is the grader's tall one.
+// of a tall one's (real PSA and CGC slabs, 2026-10-03). Under this, the holder is the grader's tall one.
 const TALL_LABEL = 0.75;
 const SHAPE_TOLERANCE = 0.04;
-// A holder's build, from Mike's PSA and CGC slabs straightened at 10 px a mm (2026-10-03). ponytail: one build
+// A holder's build, from real PSA and CGC slabs straightened at 10 px a mm (2026-10-03). ponytail: one build
 // for every holder but its corners; measure others' as their slabs turn up.
 const RIM_MM = 2.5; // the rim all round
 const RIM_PROUD_MM = 0.5; // how far the rim stands above the window, each face
@@ -153,7 +153,7 @@ export interface Label { grader?: string; cert?: string; verifyUrl?: string }
  * saw in each (`sights`), if asked. The models say which side each photo shows
  * (the front shows the grade); without them, a lone photo is the front, and
  * two stop the run. A label's codes say what the slab is, not which side they're on: that
- * changes with label designs over the years (Mike's PSA and CGC slabs put the QR
+ * changes with label designs over the years (current PSA and CGC labels put the QR
  * code on the back, and PSA its cert barcode on both sides). With no holder named
  * or read off a QR code, a PSA-size holder is assumed, warned; a tall one is told
  * by its label (TALL_LABEL).

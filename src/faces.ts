@@ -127,7 +127,7 @@ export function assignFaces(all: Shot[], faces: string[], { placed = [], byShape
 }
 
 /**
- * Photo order is no evidence of which side is which (Mike, 2026-10-03): when nothing else tells them apart, the
+ * Photo order is no evidence of which side is which (decided 2026-10-03): when nothing else tells them apart, the
  * vision models must, so a run without them stops. A lone photo is the front; one side proven, the other follows.
  */
 export const sidesUnknown = (vision: boolean) => new Error(vision

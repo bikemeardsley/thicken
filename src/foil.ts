@@ -4,7 +4,7 @@
 // of foil a card has and find the picture box, seals and holograms as they find any face; this turns what they
 // found into a foil map over the face it's on.
 //
-// Measuring foil from how a video's frames change was tried on Mike's reverse-holo Psyduck (2026-10-03): handheld
+// Measuring foil from how a video's frames change was tried on a reverse-holo Psyduck (2026-10-03): handheld
 // frames differed more by glare and slight misalignment than by foil, so the kind is asked instead. ponytail: a
 // video could refine the mask once its frames are aligned to the pixel.
 import sharp from 'sharp';
@@ -20,7 +20,7 @@ export const foilAsk = (front: string) => `which foil is on ${front}: "none", "h
 // A standard Pokémon card's picture box, in fractions of its front (simeydotme/pokemon-cards-css places it so):
 // where it goes when the models don't find it.
 export const PICTURE_BOX: Region = { x0: 0.08, x1: 0.92, y0: 0.1, y1: 0.47 };
-// Foil: film, roughness 0.3, 60% metal; print: no film, roughness 0.4, no metal. Tuned on Mike's Psyduck (2026-10-03):
+// Foil: film, roughness 0.3, 60% metal; print: no film, roughness 0.4, no metal. Tuned on the same Psyduck (2026-10-03):
 // all metal buried the print in a dark mirror, as the ink over real foil doesn't; at 60% the text stays clear.
 const [FOIL, PRINT] = ['rgb(255,77,153)', 'rgb(0,102,0)'];
 

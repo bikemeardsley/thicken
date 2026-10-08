@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Flat images in, 3D assets (GLB) out.",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "thicken": "src/cli.ts"
