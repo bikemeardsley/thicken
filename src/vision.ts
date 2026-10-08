@@ -1,8 +1,8 @@
 // What a photo shows, asked of vision models: what kind of object it is, when
 // nothing else says (one of the profiles, and roughly how big), and which of
 // its faces each photo shows, with their corners, plus any title and authors.
-// Any OpenAI-compatible chat endpoint serves: Mike's LAN bench today, a
-// fine-tuned model later. THICKEN_VISION_MODELS lists the roster in order: the
+// Any OpenAI-compatible chat endpoint serves: a LAN server, a hosted API, or
+// a fine-tuned model of your own. THICKEN_VISION_MODELS lists the roster in order: the
 // first two (primary and peer) are asked together, the rest stand in for a
 // seat that fails, and one more is asked when the two disagree. Two answers
 // agreeing is the confidence. Without THICKEN_VISION_URL nothing is asked,

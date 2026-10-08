@@ -588,7 +588,7 @@ test('vision: a face given as its mirror image says it is there, but only a face
   const seen = [[100, 100], [300, 100], [300, 500], [100, 500]]; // reading order, clockwise on screen: as photographed
   const mirror = [seen[1], seen[0], seen[3], seen[2]];
   const answer = (model: string, corners: number[][]) => ({ model, ms: 1, faces: [{ face: 'spine', corners }] });
-  // Two seats agreeing on the mirror image (Mike's Skipping Christmas spine, 2026-10-03) don't outvote the one right.
+  // Two seats agreeing on the mirror image (a real Skipping Christmas spine, 2026-10-03) don't outvote the one right.
   assert.deepEqual(settle([answer('a', seen), answer('b', mirror), answer('c', mirror)]), {
     faces: [{ face: 'spine', corners: seen, asSeen: seen, by: ['a'], agreed: false }], disputed: ['spine'],
   });
@@ -767,7 +767,7 @@ test('slab: with vision, the card and label are found in uncropped photos and se
     vision: async ({ model, photo }) => {
       const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
       const middle = (500 * info.width + 500) * info.channels; // the card's middle: green on the front
-      // As with Mike's real slabs, b calls the back the front: same place, another name, so c is asked, and agrees with a.
+      // As with real slabs, b calls the back the front: same place, another name, so c is asked, and agrees with a.
       const green = data[middle + 1] > data[middle + 2];
       const side = green || model === 'b' ? 'front' : 'back';
       // The card shines all over (a refractor); the label's back has a hologram. b, calling the back the front, says
@@ -846,7 +846,7 @@ test('slab: the cert is the first whole cert number in the QR link, not a tracki
 });
 
 test('slab: a label\'s codes say what it is, not which side a photo shows: without vision, two photos stop the run', async (t) => {
-  // Which side a grader prints its QR code on changes with label designs (Mike's PSA and CGC slabs: the back), and
+  // Which side a grader prints its QR code on changes with label designs (current PSA and CGC labels: the back), and
   // photo order is no evidence either: the vision models tell the sides apart.
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));

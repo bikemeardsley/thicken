@@ -55,7 +55,7 @@ profiles, one file each in `src/profiles`. Two families:
 | Profile | Input | Output |
 | --- | --- | --- |
 | **Digital artwork made into an object** | | |
-| Badge | Artwork with transparency | The artwork's own outline, extruded (the approach in michaelbeardsley-now's `badge-shape.ts`) |
+| Badge | Artwork with transparency | The artwork's own outline, extruded |
 | **A real object rebuilt at its real size** | | |
 | Box | Front [back, sides], and its size (or a vision estimate) | Softly rounded box with the photos on its faces: anything box-shaped, from a game case to a phone |
 | Book | Front cover, back, spine (any order, any of them), or just an ISBN | Softly rounded box at the book's size: covers, spine, page edges |
@@ -232,7 +232,7 @@ file where you run Thicken:
 ```
 THICKEN_VISION_URL=http://your-open-webui:8080/api  # any OpenAI-compatible endpoint
 THICKEN_VISION_KEY=...
-THICKEN_VISION_MODELS=gemini-3.8-flash-high,gpt-6-luna,gpt-5.6-terra,gemini-3.1-pro-low
+THICKEN_VISION_MODELS=gemini-3.8-flash-high,gpt-6-luna,gpt-5.6-terra,gemini-3.1-pro-low  # your endpoint's model names, primary first
 ```
 
 - Each photo goes to the first two models (primary and peer) at once,
@@ -265,7 +265,9 @@ THICKEN_VISION_MODELS=gemini-3.8-flash-high,gpt-6-luna,gpt-5.6-terra,gemini-3.1-
 **What leaves the machine:** with `THICKEN_VISION_URL` set, the photos
 themselves (re-encoded, so without their EXIF) go to that host. A LAN server
 you control still forwards each photo to the model's provider; a hosted
-endpoint sees every photo.
+endpoint sees every photo. The only other calls out are a book's catalog
+lookups (Open Library, the Library of Congress, Google Books), which send its
+ISBN, or the title and author the models read off it; never a photo.
 
 Measured on four real phone photos of one book (2026-10-02): gemini-3.8-flash
 put the corners within 0.3–0.9% of the true ones and turned angled faces
@@ -494,27 +496,27 @@ number thick cards are sold by: 55, 75, 100, 130, 180), for a raw card or the
 card inside a slab. A standard card is 0.35 mm; 35 pt is the size of the
 holder it fits, not its own thickness.
 
-## Build plan (kitbash, verified 2026-10-01)
+## Built on
 
-| Part | Verdict | Choice |
+| Part | How | Choice |
 | --- | --- | --- |
 | Triangulating badge outlines | Dependency | [mapbox/earcut](https://github.com/mapbox/earcut) (ISC) |
 | Writing GLB | Dependency | [donmccurdy/glTF-Transform](https://github.com/donmccurdy/glTF-Transform) (MIT) |
 | Decoding HEIC | Dependency | [catdad-experiments/libheif-js](https://github.com/catdad-experiments/libheif-js) (LGPL-3.0, used unmodified). sharp's binaries leave out HEVC. |
 | Reading barcodes | Dependency | [Sec-ant/zxing-wasm](https://github.com/Sec-ant/zxing-wasm) (MIT). Its `.wasm` is loaded from `node_modules`, not its default CDN. |
 | Pictures from scanner PDFs | Dependency | [unjs/unpdf](https://github.com/unjs/unpdf) (MIT, pdf.js inside) |
-| Frames from video | Outside program | [FFmpeg](https://ffmpeg.org), run from the `PATH`, never bundled: it is GPL, Thicken MIT. Kitbash, 2026-10-03: [eugeneware/ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (GPL-3.0) would put a GPL binary in every install, video or not; [ffmpegwasm/ffmpeg.wasm](https://github.com/ffmpegwasm/ffmpeg.wasm) is built for browsers. Choosing the frames is ours. |
+| Frames from video | Outside program | [FFmpeg](https://ffmpeg.org), run from the `PATH`, never bundled: it is GPL, Thicken MIT. [eugeneware/ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (GPL-3.0) would put a GPL binary in every install, video or not; [ffmpegwasm/ffmpeg.wasm](https://github.com/ffmpegwasm/ffmpeg.wasm) is built for browsers. Choosing the frames is ours. |
 | Reading camera details (EXIF) | Dependency | [devongovett/exif-reader](https://github.com/devongovett/exif-reader) (MIT): parses the EXIF block sharp returns |
 | Drawing previews | Dependency | [google/model-viewer](https://github.com/google/model-viewer) (Apache-2.0): frames and lights a GLB; three.js inside |
 | Running the preview browser | Dependency | [microsoft/playwright](https://github.com/microsoft/playwright) (`playwright-core`, Apache-2.0): drives an installed Chrome or Edge, no browser download |
-| Book dimension sources | Write | Read [palmerabollo/node-isbn](https://github.com/palmerabollo/node-isbn)'s provider fallback. Ours is per dimension, not first-provider-wins. Kitbash, 2026-10-03: the Library of Congress's one field (MARC 300) is read with a regular expression, not a MARC library. |
-| Hardcovers | Write | Kitbash, 2026-10-03: four rounded boxes from `src/glb.ts`, and the binding asked of the vision models like a card's corners. |
-| Holofoil | Kitbash | Kitbash, 2026-10-03: which areas shine for each kind of foil read from [simeydotme/pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) (GPL-3.0: facts read, nothing copied); the film values are `KHR_materials_iridescence`'s defaults, as [KhronosGroup/glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) uses them; glTF-Transform, already a dependency, writes the extension. |
+| Book dimension sources | Write | Read [palmerabollo/node-isbn](https://github.com/palmerabollo/node-isbn)'s provider fallback. Ours is per dimension, not first-provider-wins. The Library of Congress's one field (MARC 300) is read with a regular expression, not a MARC library. |
+| Hardcovers | Write | Four rounded boxes from `src/glb.ts`, and the binding asked of the vision models like a card's corners. |
+| Holofoil | Write | Which areas shine for each kind of foil read from [simeydotme/pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) (GPL-3.0: facts read, nothing copied); the film values are `KHR_materials_iridescence`'s defaults, as [KhronosGroup/glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) uses them; glTF-Transform, already a dependency, writes the extension. |
 | Profiles, box, classifier, CLI | Write | |
-| Slab holder, card and label | Write | Kitbash, 2026-10-03: glTF-Transform's materials (already a dependency) for the clear holder; the card and label plates, where they sit, and putting them together are ours. Khronos's [glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) were the reference for clear materials. |
-| Finding faces in photos | Write | Vision models over any OpenAI-compatible endpoint, primary and peer (src/vision.ts): one POST each, no SDK. Kitbash, 2026-10-02. |
+| Slab holder, card and label | Write | glTF-Transform's materials (already a dependency) for the clear holder; the card and label plates, where they sit, and putting them together are ours. Khronos's [glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) were the reference for clear materials. |
+| Finding faces in photos | Write | Vision models over any OpenAI-compatible endpoint, primary and peer (src/vision.ts): one POST each, no SDK. |
 | Straightening faces | Adapt, don't depend | [jlouthan/perspective-transform](https://github.com/jlouthan/perspective-transform) (MIT): the 4-point homography; the resampling over sharp's pixels is ours. sharp has no perspective warp, and OpenCV.js is megabytes for one. |
-| Snapping corners to edges | Write | `snap` in src/image.ts moves a model's corners (about 1% off) onto the real edges. It samples brightness steps along each side, takes the line they support nearest the model's, and fits it by least squares, in about 70 ms a face. Kitbash pointed at [puffinsoft/jscanify](https://github.com/puffinsoft/jscanify)'s corner ranking; a line fit near the model's corners was enough. |
+| Snapping corners to edges | Write | `snap` in src/image.ts moves a model's corners (about 1% off) onto the real edges. It samples brightness steps along each side, takes the line they support nearest the model's, and fits it by least squares, in about 70 ms a face. [puffinsoft/jscanify](https://github.com/puffinsoft/jscanify)'s corner ranking was read; a line fit near the model's corners was enough. |
 
 For refractor and holo effects in a viewer, `simeydotme/pokemon-cards-css` is
 a reference only. It is GPL-3.0, so read it and don't copy it.
@@ -530,8 +532,6 @@ for images. Private for now; it goes public once it is clean and packaged.
 Publishing to npm needs a build step, because Node won't strip types inside
 `node_modules`.
 
-## Used by
+## License
 
-- vaultflip.cards: slabbed cards
-- michaelbeardsley-now: certification badges
-- The home library project: books
+MIT. See [LICENSE](LICENSE).

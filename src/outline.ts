@@ -2,8 +2,7 @@
 // boundary per separate opaque region (a medal and a ribbon that doesn't
 // touch it are two), in pixel coordinates (y down), plus the color just
 // inside the edge for the badge's sides. Holes inside a region are left to
-// the front face's alpha mask. Ported from michaelbeardsley-now's
-// src/lib/badge-shape.ts, minus its site-path cache and string format.
+// the front face's alpha mask.
 
 export type Point = [number, number];
 
