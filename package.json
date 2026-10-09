@@ -1,19 +1,30 @@
 {
   "name": "thicken",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Flat images in, 3D assets (GLB) out.",
+  "version": "0.1.0",
+  "description": "Flat images in, 3D assets (GLB) out: photos of books, graded slabs, cards, badges and boxes made into models at their real size.",
   "license": "MIT",
+  "author": "Michael Beardsley (https://github.com/bikemeardsley)",
+  "repository": "github:bikemeardsley/thicken",
+  "keywords": ["3d", "glb", "gltf", "photos", "books", "trading-cards", "graded-cards", "slab", "badge", "vision"],
   "type": "module",
   "bin": {
-    "thicken": "src/cli.ts"
+    "thicken": "dist/cli.js"
   },
+  "exports": {
+    ".": {
+      "types": "./dist/thicken.d.ts",
+      "default": "./dist/thicken.js"
+    }
+  },
+  "files": ["dist"],
   "engines": {
     "node": ">=22.18"
   },
   "scripts": {
     "test": "node --test test/*.test.ts",
-    "check": "tsc"
+    "check": "tsc",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "@gltf-transform/core": "4.5.1",

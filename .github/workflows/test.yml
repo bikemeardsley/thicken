@@ -35,3 +35,11 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+      # As npm users get it: built to JavaScript (Node won't strip types in node_modules), installed, and run.
+      - name: Install the package and run it
+        shell: bash
+        run: |
+          npm pack --pack-destination "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP" && npm init -y > /dev/null && npm install ./thicken-*.tgz
+          npx thicken badge "$GITHUB_WORKSPACE/test/fixtures/badge.png" -o badge.glb
+          node --input-type=module -e "import { thicken } from 'thicken'; if (typeof thicken !== 'function') process.exit(1)"

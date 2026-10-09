@@ -10,20 +10,23 @@ With a vision roster, uncropped photos are cut into straightened faces, and
 a phone video can add more views.
 
 ```
-npm install
-node src/cli.ts book-scan.pdf                     # ISBN read off the back cover, size looked up
-node src/cli.ts book cover.heic --isbn 9780061120084
-node src/cli.ts --isbn 9780061120084              # no photo: cover and size from Open Library
-node src/cli.ts slab front.jpg back.jpg --holder bgs
-node src/cli.ts card front.jpg back.jpg --pt 130    # a thick patch card
-node src/cli.ts badge badge.png --width 50 --depth 3.5
-node src/cli.ts book front.heic back.heic IMG_0042.MOV  # with vision: the video's frames show the spine
-node src/cli.ts batch ~/Pictures/books --preview  # one model per photo, PDF, video or subfolder, each with a preview
-node src/cli.ts preview ~/Pictures/books/thicken  # previews for models already made
-npm test
+npm install -g thicken                    # or npx thicken …, with Node 22.18+
+thicken book-scan.pdf                     # ISBN read off the back cover, size looked up
+thicken book cover.heic --isbn 9780061120084
+thicken --isbn 9780061120084              # no photo: cover and size from Open Library
+thicken slab front.jpg back.jpg --holder bgs
+thicken card front.jpg back.jpg --pt 130  # a thick patch card
+thicken badge badge.png --width 50 --depth 3.5
+thicken book front.heic back.heic IMG_0042.MOV  # with vision: the video's frames show the spine
+thicken batch ~/Pictures/books --preview  # one model per photo, PDF, video or subfolder, each with a preview
+thicken preview ~/Pictures/books/thicken  # previews for models already made
 ```
 
-The same as a function: `thicken(files, options)` in `src/thicken.ts`.
+The same as a function: `import { thicken } from 'thicken'`, then
+`thicken(files, options)` gives the GLB's bytes and the sidecar.
+
+From a clone: `npm install`, then `node src/cli.ts …` in place of `thicken
+…`, and `npm test`.
 
 ## The Thicken object
 
@@ -545,10 +548,11 @@ diagram in `.archify/`.
 
 ## Stack
 
-TypeScript on Node 22.18+, run directly (Node strips the types), with `sharp`
-for images. Private for now; it goes public once it is clean and packaged.
-Publishing to npm needs a build step, because Node won't strip types inside
-`node_modules`.
+TypeScript on Node 22.18+, with `sharp` for images. From a clone it runs
+directly (Node strips the types). The npm package is JavaScript built into
+`dist` (`npm run build`, run by `npm pack` and `npm publish`), because Node
+won't strip types inside `node_modules`. Every push installs the packed
+package on Windows, macOS and Linux and runs it.
 
 ## License
 
