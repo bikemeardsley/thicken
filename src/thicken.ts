@@ -17,7 +17,7 @@ import { book } from './profiles/book.ts';
 import { box } from './profiles/box.ts';
 import { card } from './profiles/card.ts';
 import { slab } from './profiles/slab.ts';
-import { identify, lookAll, visionOn, visionRecord, type Sight } from './vision.ts';
+import { identify, lookAll, readOf, visionOn, visionRecord, type Sight } from './vision.ts';
 
 /** A kind of object Thicken knows. */
 export interface Profile {
@@ -28,6 +28,8 @@ export interface Profile {
   faces: Record<string, string>;
   /** Anything more the vision models need to find its faces the right way up. */
   note?: string;
+  /** What the vision models read off it as printed, each a JSON field (a slab's "grade"); a description in a list for a list. */
+  reads?: Record<string, string | [string]>;
   /** Short questions the vision models answer along with the faces, each a JSON field (a card's "corners"). */
   asks?: Record<string, string>;
   /** Faces left where the models put them, not snapped to the nearest strong edge (it's often the wrong one). */
@@ -140,6 +142,7 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
       ...(sight.answers.some((a) => a.faces) || pictures[i].source.time !== undefined ? [] : [`${named_(i)} (no vision model answered, so it was used whole: run again, or crop it)`]),
     ])),
   ];
+  const printed = readOf(sights);
   return {
     glb: built.glb,
     sidecar: {
@@ -150,6 +153,8 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
       // How each identifying fact was found, for anyone deciding how far to trust it.
       identifiedBy: { profile: named ? 'given' : identity ? 'vision' : 'recognized', ...(own.identifiedBy as object | undefined) },
       codes: recorded,
+      // What the vision models read off it (a slab's grade, a card's player and set, a book's title), and how sure.
+      ...(Object.keys(printed.read).length && printed),
       ...((sights || identity) && { vision: visionRecord(sights, identity) }),
       build: { thicken: VERSION, createdAt: new Date().toISOString(), ms: Math.round(performance.now() - started), glbBytes: built.glb.length },
     },

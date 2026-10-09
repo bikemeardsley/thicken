@@ -17,12 +17,19 @@ const TIMEOUT_MS = 180_000;
 const MAX_FACES = 12; // twice a box's six: more is noise, and settling compares every pair
 
 /** What the models are told about a kind of object: a profile (src/profiles). */
-/** A profile: its faces, a note on how it stands, and short questions to answer as well, each answer one word. */
-export interface Kind { name: string; about?: string; faces: Record<string, string>; note?: string; asks?: Record<string, string>; unsnapped?: string[] }
+/**
+ * A profile: its faces, a note on how it stands, what to read off it as printed (a description, or one in a list for
+ * a list), and short questions to answer as well, each answer one word.
+ */
+export interface Kind {
+  name: string; about?: string; faces: Record<string, string>; note?: string;
+  reads?: Record<string, string | [string]>; asks?: Record<string, string>; unsnapped?: string[];
+}
+type Read = Record<string, string | string[]>;
 /** One model's answer, corners in the picture's own pixels. */
 export interface Answer {
   model: string; ms: number; status?: number; error?: string;
-  faces?: { face: string; corners: number[][] }[]; title?: string; authors?: string[]; asked?: Record<string, string>; // finding faces
+  faces?: { face: string; corners: number[][] }[]; read?: Read; asked?: Record<string, string>; // finding faces
   object?: string; sizeMm?: number[]; // saying what it is
 }
 /**
@@ -30,23 +37,23 @@ export interface Answer {
  * real edges; the corners as the models gave them; and who agreed.
  */
 export interface Seen { face: string; corners: number[][]; asSeen: number[][]; by: string[]; agreed: boolean }
-export interface Sight { faces: Seen[]; title?: string; authors?: string[]; asked?: Record<string, string>; answers: Answer[]; disputed: string[] }
+export interface Sight { faces: Seen[]; asked?: Record<string, string>; answers: Answer[]; disputed: string[] }
 /** What the models said the object is: a profile's name (none, if none fits), its estimated size, and whether they disagreed. */
 export interface Identity { profile?: string; sizeMm?: number[]; disputed: boolean; answers: Answer[] }
 
 export const visionOn = () => Boolean(process.env.THICKEN_VISION_URL && process.env.THICKEN_VISION_MODELS);
 const roster = () => process.env.THICKEN_VISION_MODELS!.split(',').map((m) => m.trim()).filter(Boolean);
 
-const facesPrompt = ({ name, about, faces, note, asks = {} }: Kind) => `This photo shows ${about ?? `a ${name}`}, on whatever it was set down on. For every face of it you can see, even partly, say which face it is and give the pixel coordinates of its four corners in this ${SIZE} x ${SIZE} image.
+const facesPrompt = ({ name, about, faces, note, reads = {}, asks = {} }: Kind) => `This photo shows ${about ?? `a ${name}`}, on whatever it was set down on. For every face of it you can see, even partly, say which face it is and give the pixel coordinates of its four corners in this ${SIZE} x ${SIZE} image.
 
 Faces: ${Object.entries(faces).map(([face, words]) => (words === face ? `"${face}"` : `"${face}" (${words})`)).join(', ')}.
 
 Give each face's corners in that face's own reading order: top-left, top-right, bottom-right, bottom-left, as the face would look held upright in front of you. For a side, upright is with the object standing as it normally does; for the top, looking down on it from the front (its back edge at the top); for the bottom, with the object tipped back onto its back (its front edge at the top).${note ? ` ${note}` : ''} A corner hidden from view goes where it would be.
 
-Also read its title, and authors if it has them.${Object.entries(asks).map(([key, question]) => `\n"${key}": ${question}`).join('')}
+${Object.keys(reads).length ? `\nAlso read off it, as printed, leaving out anything it doesn't show:${Object.entries(reads).map(([key, what]) => `\n"${key}": ${what}${Array.isArray(what) ? ' (a list)' : ''}`).join('')}\n` : ''}${Object.entries(asks).map(([key, question]) => `\n"${key}": ${question}`).join('')}
 
 Answer with JSON only, no prose:
-{"faces":[{"face":"front","corners":[[x,y],[x,y],[x,y],[x,y]]}],"title":"","authors":[]${Object.keys(asks).map((key) => `,"${key}":""`).join('')}}`;
+{"faces":[{"face":"front","corners":[[x,y],[x,y],[x,y],[x,y]]}]${Object.entries(reads).map(([key, what]) => `,"${key}":${Array.isArray(what) ? '[]' : '""'}`).join('')}${Object.keys(asks).map((key) => `,"${key}":""`).join('')}}`;
 
 const identifyPrompt = (kinds: Kind[]) => `This photo shows one object. Which of these is it? Pick the most specific that fits.
 ${kinds.map(({ name, about }) => `- "${name}": ${about}`).join('\n')}
@@ -82,10 +89,9 @@ export async function look(picture: Picture, kind: Kind): Promise<Sight> {
   const keys = Object.keys(kind.asks ?? {});
   // Disagreeing on a face, or on an answer, asks the next model.
   const clash = (asked: Answer[]) => settle(asked).disputed.length > 0 || keys.some((key) => new Set(asked.flatMap((a) => a.asked?.[key] ?? [])).size > 1);
-  const answers = await consult(jpeg, prompt, (json) => parseFaces(json, Object.keys(kind.faces), keys), clash);
+  const answers = await consult(jpeg, prompt, (json) => parseFaces(json, Object.keys(kind.faces), keys, Object.keys(kind.reads ?? {})), clash);
   const settled = settle(answers);
   const back = <T extends { corners: number[][] }>(faces: T[]) => faces.map((f) => ({ ...f, corners: f.corners.map(toPicture) }));
-  const named = answers.find((a) => a.title);
   // Each question's answer: the one most models gave, the higher seat's on a tie.
   const asked = Object.fromEntries(keys.flatMap((key) => {
     const said = answers.flatMap((a) => (a.asked?.[key] ? [a.asked[key]] : []));
@@ -96,13 +102,33 @@ export async function look(picture: Picture, kind: Kind): Promise<Sight> {
   // the frame inside it and the ridge around it), where the nearest strong edge is often the wrong one.
   const faces = back(settled.faces).map((f) => ({ ...f, corners: kind.unsnapped?.includes(f.face) ? f.corners : snap(picture, f.corners), asSeen: f.corners }));
   if (trainingOn()) {
-    const label = { faces: faces.map(({ face, corners, agreed }) => ({ face, corners: corners.map((p) => toSent(p).map(Math.round)), agreed })), title: named?.title, authors: named?.authors, ...(keys.length && { asked }) };
+    const { read } = readOf([{ faces, answers, disputed: [] }]);
+    const label = { faces: faces.map(({ face, corners, agreed }) => ({ face, corners: corners.map((p) => toSent(p).map(Math.round)), agreed })), read, ...(keys.length && { asked }) };
     await keep(jpeg, { task: 'faces', profile: kind.name, prompt, answers, label, disputed: settled.disputed });
   }
   return {
-    faces, title: named?.title, authors: named?.authors, ...(Object.keys(asked).length && { asked }),
+    faces, ...(Object.keys(asked).length && { asked }),
     answers: answers.map((a) => ({ ...a, faces: a.faces && back(a.faces) })), disputed: settled.disputed,
   };
+}
+
+/**
+ * What the models read off the object, over every picture: each field as given most often (the first given on a
+ * tie: the primary's on the first picture), and how sure: "agreed" (given more than once, nothing else given),
+ * "once" (one answer) or "disputed" (other answers differ; every model's is in the vision record).
+ */
+export function readOf(sights: Sight[] = []): { read: Read; readBy: Record<string, string> } {
+  const said = sights.flatMap(({ answers }) => answers.flatMap(({ read }) => Object.entries(read ?? {})));
+  const same = (a: string | string[], b: string | string[]) => JSON.stringify(a).toLowerCase().replace(/\s+/g, ' ') === JSON.stringify(b).toLowerCase().replace(/\s+/g, ' ');
+  const read: Read = {};
+  const readBy: Record<string, string> = {};
+  for (const key of new Set(said.map(([key]) => key))) {
+    const values = said.filter(([k]) => k === key).map(([, value]) => value);
+    const count = (value: string | string[]) => values.filter((v) => same(v, value)).length;
+    read[key] = values.reduce((best, value) => (count(value) > count(best) ? value : best));
+    readBy[key] = count(read[key]) < values.length ? 'disputed' : values.length > 1 ? 'agreed' : 'once';
+  }
+  return { read, readBy };
 }
 
 /** Which kind of object a picture shows, and roughly how big, from the roster's answers: two agreeing settle it. */
@@ -189,15 +215,20 @@ async function consult(jpeg: Buffer, prompt: string, parse: (json: any) => Parti
  * A face list from an answer: the profile's own faces, a few at most, each four corners inside the image, give or
  * take a little. Corners that make no face (a bow tie) stay in, to lose to a peer's; cut() never warps them.
  */
-function parseFaces(json: any, names: string[], keys: string[] = []): Partial<Answer> | undefined {
+function parseFaces(json: any, names: string[], keys: string[] = [], reads: string[] = []): Partial<Answer> | undefined {
   const faces = (Array.isArray(json?.faces) ? json.faces.slice(0, MAX_FACES) : [])
     .filter((f: any) => typeof f?.face === 'string' && names.includes(f.face.toLowerCase()) && Array.isArray(f.corners) && f.corners.length === 4
       && f.corners.every((p: unknown) => Array.isArray(p) && p.length === 2 && p.every((n) => Number.isFinite(n) && n > -SIZE / 10 && n < SIZE * 1.1)))
     .map((f: any) => ({ face: f.face.toLowerCase(), corners: f.corners.map((p: number[]) => p.map(Number)) }));
   if (!faces.length) return undefined;
-  const authors = Array.isArray(json.authors) ? json.authors.filter((a: unknown) => typeof a === 'string' && a) : [];
+  // What was read: a string as given, or a list of them; numbers (a year, a grade) as their text.
+  const text = (value: unknown) => (typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '');
+  const read = Object.fromEntries(reads.flatMap((key) => {
+    const value = Array.isArray(json[key]) ? json[key].map(text).filter(Boolean) : text(json[key]);
+    return value.length ? [[key, value]] : [];
+  }));
   const asked = Object.fromEntries(keys.flatMap((key) => (typeof json[key] === 'string' && json[key].trim() ? [[key, json[key].trim().toLowerCase()]] : [])));
-  return { faces, ...(typeof json.title === 'string' && json.title && { title: json.title }), ...(authors.length && { authors }), ...(Object.keys(asked).length && { asked }) };
+  return { faces, ...(Object.keys(read).length && { read }), ...(Object.keys(asked).length && { asked }) };
 }
 
 /**

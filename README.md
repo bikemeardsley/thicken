@@ -36,10 +36,15 @@ profile's own terms:
   dates, subjects, Dewey and Library of Congress classes, pages), and how sure
   the match is when it was found by title.
 - **A graded slab:** its grader, cert number and verification link, its
-  holder, and the card and label inside it, each sized and placed.
+  holder, and the card and label inside it, each sized and placed. With
+  vision, the label read: grade, its words, subgrades, autograph, and the
+  card as the grader names it.
 - **A raw card:** its size, its thickness in points for a thick card, its
-  corners and its foil.
-- **Every object:** which faces are your photos and which are stand-ins,
+  corners and its foil. With vision, what's printed on it: player or
+  character, team, year, maker, set, number, parallel.
+- **A box:** with vision, its name, brand, edition, rating and year.
+- **Every object:** what the vision models read off it, and how sure;
+  which faces are your photos and which are stand-ins,
   how each fact was found, what is still worth photographing, and what each
   vision model answered.
 
@@ -70,8 +75,8 @@ Name the profile, or leave it out and Thicken picks one:
   The sidecar keeps the grader, the cert number from the link, and the link
   itself (`verifyUrl`).
 - So does an older label's Code 128 cert barcode, but only on a photo shaped
-  like a holder. The grader then isn't known: a PSA-size holder is assumed,
-  with a warning.
+  like a holder. The grader is then the one the vision models read off the
+  label; with no vision, a PSA-size holder is assumed, with a warning.
 - Artwork with transparency around a shape that isn't just a rectangle means
   a **badge**.
 - Otherwise, with [vision](#vision-optional), the models are shown the
@@ -86,9 +91,10 @@ The sidecar's `identifiedBy.profile` says which way it was chosen: `given`,
 
 **Adding a profile** is one file in `src/profiles`, listed in `PROFILES`
 (`src/thicken.ts`): its name; a few words on what it is and on each of its
-faces, which is all the vision models are told; optionally how its codes or
-pictures give it away unaided; and how to build it from the photos placed on
-its faces. Generic profiles are named for the shape they build (`box`, and
+faces, which is all the vision models are told; what to read off it (more is
+better: the sidecar is for apps to take what they want from); optionally how
+its codes or pictures give it away unaided; and how to build it from the
+photos placed on its faces. Generic profiles are named for the shape they build (`box`, and
 later perhaps `flat` or `cylinder`), not "unknown": a shape Thicken can't
 build is refused rather than forced into one it can.
 
@@ -241,6 +247,11 @@ THICKEN_VISION_MODELS=gemini-3.8-flash-high,gpt-6-luna,gpt-5.6-terra,gemini-3.1-
   face's own upright reading order, so which way up comes with it.
 - Thicken cuts each face out and straightens it (a perspective warp). The
   table goes, and an angled shot gives two faces.
+- The models also read what's printed on the object, each profile saying
+  what to read (a slab's label, a card's player and set, a book's title).
+  The sidecar's `read` keeps each field as most answers gave it, over every
+  photo, and `readBy` how sure: `agreed`, `once` (one answer) or `disputed`
+  (others differ; every answer is in the sidecar's `vision`).
 - Two answers agreeing (corners within 3% of the photo's diagonal, in the
   same order) is the confidence. When two put a face in different places or
   turns, the next model is asked; if it can't settle it, the primary's answer
@@ -321,7 +332,8 @@ THICKEN_DATASET=../thicken-dataset  # outside the repo: it holds your photos
   becomes one example. The image is saved exactly as sent (1000 × 1000 JPEG,
   no EXIF). `metadata.jsonl` gets a line with the prompt, every model's
   answer, and the label: the settled answer, with its corners snapped onto
-  the real edges, in the image's own pixels. Disputed faces and objects are
+  the real edges, in the image's own pixels, and what was read (`read`;
+  examples before 2026-10-08 have `title` and `authors` instead). Disputed faces and objects are
   marked, so they can be checked by hand before training on them.
 - It is the layout Hugging Face's `imagefolder` loader reads:
   `load_dataset("imagefolder", data_dir="../thicken-dataset")`.

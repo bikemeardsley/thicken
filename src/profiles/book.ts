@@ -15,7 +15,7 @@ import { foilMap, regionIn, rounded } from '../foil.ts';
 import { addPart, box, roundedBox, sideMaterial, toGlb, type Face, type Side } from '../glb.ts';
 import { load, texture, turned, type Picture } from '../image.ts';
 import type { Code, Faces, Profile } from '../thicken.ts';
-import { pooled, type Sight } from '../vision.ts';
+import { pooled, readOf, type Sight } from '../vision.ts';
 
 export const book: Profile = {
   name: 'book',
@@ -26,6 +26,10 @@ export const book: Profile = {
   },
   note: 'The book stands on its bottom edge, front cover toward you, its spine and page edge each seen from its own side with the top of the book up. A sticker is part of the front cover: give its corners in the cover\'s own order.',
   unsnapped: ['sticker'],
+  reads: {
+    title: 'its title', subtitle: 'its subtitle', authors: ['its authors'], series: 'the series and its number in it ("Discworld 12")',
+    publisher: 'the publisher or imprint', edition: 'any edition or printing it names ("First edition", "Movie tie-in")',
+  },
   asks: { binding: 'is it a "hardcover" (stiff boards that stand a little past the pages at the top, bottom and page edge, with a dust jacket or without) or a "paperback" (a soft cover flush with its pages)?' },
   // An ISBN barcode (EAN-13 starting 978 or 979) says it's a book, which, and which photos show its back.
   read: (scanned) => {
@@ -81,10 +85,12 @@ async function make(
   const log: Log = { warnings: [], lookups: [] };
   const review: string[] = [];
   // No ISBN: the book found by the title and authors the vision models read, with how sure the match is.
-  const read = sights?.find((sight) => sight.title);
-  const match = !known && read?.title ? await byTitle(read.title, read.authors ?? [], log) : undefined;
+  const { read: printed } = readOf(sights);
+  const title = [printed.title, printed.subtitle].filter(Boolean).join(': ');
+  const read = title ? { title, authors: [printed.authors ?? []].flat() } : undefined;
+  const match = !known && read ? await byTitle(read.title, read.authors, log) : undefined;
   if (match && match.confidence < SURE) review.push(`which book this is (found by its title, ${Math.round(match.confidence * 100)}% sure: check it, or give --isbn)`);
-  if (read?.title && !known && !match) log.warnings.push(`no book in Open Library close to the title read, "${read.title}"`);
+  if (read && !known && !match) log.warnings.push(`no book in Open Library close to the title read, "${read.title}"`);
   const isbn = known ?? match?.isbn;
   const proofs = codes.filter(({ use }) => use === 'isbn').map(({ picture, at = [] }) => ({ picture, face: 'back', at }));
   // A foil sticker is kept apart from the book's sides, which are what's cut out.

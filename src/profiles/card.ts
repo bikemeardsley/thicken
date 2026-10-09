@@ -21,6 +21,12 @@ export const cornersOf = (sights?: Sight[]) => {
   const most = pooled(sights, 'corners', Object.keys(CORNER_MM));
   return { radiusMm: CORNER_MM[most ?? 'slight'], corners: most ?? 'slight', cornersBy: most ? 'vision' : 'assumed' };
 };
+/** What's printed on a card, front or back (and on a slab's label about the card in it). */
+export const CARD_READS = {
+  name: 'who or what it shows: the player, character or subject', team: 'the team, for a sports card', year: 'its year',
+  maker: 'the manufacturer or brand (Topps, Panini, Upper Deck, Pokémon…)', set: 'the set or series', number: 'the card number, as printed ("58/102", "#215")',
+  variant: 'any parallel, insert, rarity or serial numbering ("Refractor", "Rookie", "12/99")',
+} satisfies Record<string, string>;
 export const CARDSTOCK = '#ece8df';
 export const PT_MM = 0.0254; // a point: a thousandth of an inch
 const SHAPE_TOLERANCE = 0.04;
@@ -30,6 +36,7 @@ export const card: Profile = {
   about: 'a single trading card on its own, not sealed in a plastic holder',
   faces: { front: 'front', back: 'back', art: 'the picture box on the front: the artwork\'s panel, to the edge of its frame' },
   note: 'The picture box is part of the front: give its corners in the front\'s own order, top-left first.',
+  reads: CARD_READS,
   asks: { corners: CORNERS_ASK, foil: foilAsk('the front') },
   unsnapped: ['art'],
   build: async (pictures, { options, sights }) => {
