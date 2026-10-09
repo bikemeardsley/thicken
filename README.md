@@ -40,12 +40,16 @@ profile's own terms:
   the match is when it was found by title.
 - **A graded slab:** its grader, cert number and verification link, its
   holder, and the card and label inside it, each sized and placed. With
-  vision, the label read: grade, its words, subgrades, autograph, and the
-  card as the grader names it.
+  vision, the label read: the card's grade (its number and words, "9 MINT",
+  any qualifier and subgrades), an autograph's own grade when the label
+  grades one apart from the card ("AUTO 10"), who signed it and when, and
+  the card as the grader names it.
 - **A raw card:** its size, its thickness in points for a thick card, its
   corners and its foil. With vision, what's printed on it: player or
   character, team, year, maker, set, number, parallel.
 - **A box:** with vision, its name, brand, edition, rating and year.
+- **A badge:** with vision, what it names, who issued it, its level,
+  subject, date, any credential number, and every other word on it.
 - **Every object:** what the vision models read off it, and how sure;
   which faces are your photos and which are stand-ins,
   how each fact was found, what is still worth photographing, and what each

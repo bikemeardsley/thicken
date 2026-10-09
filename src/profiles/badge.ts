@@ -12,7 +12,12 @@ import type { Profile } from '../thicken.ts';
 
 export const badge: Profile = {
   name: 'badge',
-  faces: {}, // artwork, not a photo of an object: nothing for the vision models to find
+  faces: {}, // artwork, not a photo of an object: nothing for the vision models to find, only to read
+  reads: {
+    name: 'what it names: the certification, award, achievement, rank or title', issuer: 'who issued or awards it',
+    level: 'any level, tier or grade ("Associate", "Professional", "Gold", "Level 2")', subject: 'the field, skill, product or event it is for',
+    date: 'any year or date it gives', id: 'any credential, serial or badge number', text: ['every other word or number on it'],
+  },
   read: (_scanned, [picture]) => ({ recognized: isArtwork(picture), use: [] }),
   build: ([picture], { options }) => make(picture, options),
 };
