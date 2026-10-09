@@ -15,6 +15,10 @@ export const box: Profile = {
   name: 'box',
   about: 'a box-shaped object (a game case, a phone, a deck of cards, packaging)',
   faces: { front: 'front', back: 'back', left: 'left side', right: 'right side', top: 'top', bottom: 'bottom' },
+  reads: {
+    title: 'its name: the product, game, film or model', brand: 'the brand or maker', edition: 'any edition, version, platform or model number',
+    rating: 'any age or content rating (ESRB "T", PEGI 12)', year: 'a year it gives',
+  },
   build: async (pictures, { options, sights, estimateMm }) => {
     const given = options.sizeMm ?? [];
     const size = [0, 1, 2].map((i) => given[i] ?? estimateMm?.[i] ?? 0);

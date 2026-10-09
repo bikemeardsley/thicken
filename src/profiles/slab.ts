@@ -10,8 +10,8 @@ import { cardFoil, foilAsk, foilKind, foilMap, PICTURE_BOX, regionIn, regionOf, 
 import { addPart, clearMaterial, colorMaterial, foiled, pictureMaterial, plate, ring, toGlb } from '../glb.ts';
 import { mapping, straighten, subjectBox, texture, type Picture } from '../image.ts';
 import type { Faces, Profile, Scanned } from '../thicken.ts';
-import type { Sight } from '../vision.ts';
-import { CARD_DEPTH_MM, CARD_MM, CARDSTOCK, CORNERS_ASK, cornersOf, PT_MM } from './card.ts';
+import { readOf, type Sight } from '../vision.ts';
+import { CARD_DEPTH_MM, CARD_MM, CARD_READS, CARDSTOCK, CORNERS_ASK, cornersOf, PT_MM } from './card.ts';
 
 // A grader's QR code points at its own verification page, which says whose holder this is.
 const GRADER_SITES: Record<string, string> = { 'psacard.com': 'psa', 'beckett.com': 'bgs', 'cgccards.com': 'cgc', 'gosgc.com': 'sgc', 'taggrading.com': 'tag' };
@@ -31,6 +31,12 @@ export const slab: Profile = {
     hologram: 'a shiny holographic security sticker or strip on the label, if there is one',
   },
   note: 'The card, the label, the card\'s picture box and the label\'s hologram are inside the holder, on whichever side is shown: give their corners in the holder\'s own order (top-left as it stands with its label at the top), even when the card is printed sideways.',
+  // The label's words: the grade, and the card as the grader describes it.
+  reads: {
+    grader: 'the grading company (PSA, Beckett, CGC, SGC, TAG…)', grade: 'the grade\'s number or letter ("10", "9.5", "A" for authentic)',
+    gradeName: 'the grade\'s words ("GEM MT", "MINT", "PRISTINE")', cert: 'the certification number', subgrades: 'any subgrades, as printed ("Centering 9.5, Corners 9")',
+    autograph: 'an autograph or its grade, if the label notes one', ...CARD_READS,
+  },
   asks: { corners: CORNERS_ASK, foil: foilAsk('the card\'s front, inside the holder') },
   unsnapped: ['label', 'art', 'hologram'],
   read: (scanned, [picture]) => {
@@ -40,8 +46,12 @@ export const slab: Profile = {
   },
   build: async (pictures, { options, facts, sights }) => {
     const label = { grader: facts.grader as string | undefined, cert: facts.cert as string | undefined, verifyUrl: facts.verifyUrl as string | undefined };
-    const { glb, sidecar } = await make(pictures, { holder: options.holder ?? label.grader, holderGiven: Boolean(options.holder), sizeMm: options.sizeMm, pt: options.pt, label, sights });
-    return { glb, sidecar: { ...sidecar, identifiedBy: { grader: options.holder ? 'given' : label.grader ? 'qr' : 'assumed', cert: facts.certFrom } } };
+    // With no QR code to say whose holder it is, the grader the models read off the label.
+    const said = String(readOf(sights).read.grader ?? '').toLowerCase();
+    const read = Object.keys(HOLDERS).find((holder) => !holder.includes('-') && said.includes(holder)) ?? (said.includes('beckett') ? 'bgs' : undefined);
+    const grader = options.holder ?? label.grader ?? read;
+    const { glb, sidecar } = await make(pictures, { holder: grader, holderGiven: Boolean(options.holder), sizeMm: options.sizeMm, pt: options.pt, label: { ...label, grader: label.grader ?? read }, sights });
+    return { glb, sidecar: { ...sidecar, identifiedBy: { grader: options.holder ? 'given' : label.grader ? 'qr' : read ? 'vision' : 'assumed', cert: facts.certFrom } } };
   },
 };
 
@@ -165,7 +175,7 @@ async function make(
 ) {
   const warnings: string[] = [];
   const review: string[] = [];
-  if (!holder && sizeMm.length < 3) warnings.push('a PSA-size holder is assumed (no QR code named the grader): --holder for another');
+  if (!holder && sizeMm.length < 3) warnings.push('a PSA-size holder is assumed (no QR code or label named the grader): --holder for another');
   holder ??= 'psa';
   // The models' card and label in each photo, kept apart from the slab's own faces, which are what's cut out.
   const inner = (sights ?? []).map((sight) => new Map(sight.faces.filter(({ face }) => face !== 'front' && face !== 'back').map(({ face, corners }) => [face, corners])));

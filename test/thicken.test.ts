@@ -850,6 +850,32 @@ test('slab: a tall holder is told by its label, the same size on every holder bu
   assert.equal((await thicken([photo], { profile: 'slab', holder: 'psa' })).sidecar.holder, 'psa');
 });
 
+test('slab: the models read its label, the grade and the card, and with no QR code the grader they read picks the holder', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  const [slab, label, card] = [[0, 0, 80.5, 136], [15.25, 4.5, 65.25, 20], [12, 30, 68.5, 125]]; // a tall label: 62%
+  const photo = path.join(folder, 'IMG_1.png');
+  await slabPhoto(photo, [[slab, '#c8ccd0'], [label, '#f8f8f8'], [card, '#2e7d32']]);
+  const prompts: string[] = [];
+  const fetch = catalog({}, {
+    vision: async ({ model, prompt }) => {
+      prompts.push(prompt);
+      const faces = [{ face: 'front', corners: letterboxed(slab) }, { face: 'card', corners: letterboxed(card) }, { face: 'label', corners: letterboxed(label) }];
+      return model === 'a'
+        ? { faces, grader: 'CGC', grade: '10', gradeName: 'GEM MINT', name: 'Charizard', set: 'Base Set', year: '1999' }
+        : { faces, grader: 'CGC', grade: 10, gradeName: 'Gem  Mint', name: 'Charizard', year: 2000 };
+    },
+  });
+  t.after(() => fetch.mock.restore());
+  const { sidecar } = await thicken([photo], { profile: 'slab' });
+  assert.ok(prompts[0].includes('"grade":""'), 'the models are asked for the grade');
+  assert.deepEqual(sidecar.read, { grader: 'CGC', grade: '10', gradeName: 'GEM MINT', name: 'Charizard', set: 'Base Set', year: '1999' });
+  assert.deepEqual(sidecar.readBy, { grader: 'agreed', grade: 'agreed', gradeName: 'agreed', name: 'agreed', set: 'once', year: 'disputed' });
+  assert.deepEqual([sidecar.holder, sidecar.grader, (sidecar.identifiedBy as { grader: string }).grader], ['cgc-tall', 'cgc', 'vision']);
+});
+
 test('slab: the cert is the first whole cert number in the QR link, not a tracking number after it', async (t) => {
   const { prepareZXingModule, writeBarcode } = await import('zxing-wasm/full');
   prepareZXingModule({ overrides: { wasmBinary: readFileSync(createRequire(import.meta.url).resolve('zxing-wasm/full/zxing_full.wasm')) } });
