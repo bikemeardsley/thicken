@@ -60,6 +60,24 @@ test('badge: cut-out artwork, its outline extruded to a closed solid at real-wor
   }
 });
 
+test('badge: with vision, what it names and who issued it are read off it, with no faces to find or review', async (t) => {
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  const prompts: string[] = [];
+  const fetch = catalog({}, {
+    vision: async ({ model, prompt }) => {
+      prompts.push(prompt);
+      return model === 'a' ? { name: 'Solutions Architect', issuer: 'Example Cloud', level: 'Associate' } : { name: 'Solutions Architect', issuer: 'Example Cloud' };
+    },
+  });
+  t.after(() => fetch.mock.restore());
+  const { sidecar } = await thicken([fixture('badge.png')], { widthMm: 35, depthMm: 2 });
+  assert.ok(!prompts[0].includes('corners') && prompts[0].includes('"issuer":""'), 'asked to read, not to find faces');
+  assert.deepEqual([sidecar.read, sidecar.readBy, sidecar.review], [
+    { name: 'Solutions Architect', issuer: 'Example Cloud', level: 'Associate' }, { name: 'agreed', issuer: 'agreed', level: 'once' }, [],
+  ]);
+});
+
 // book-scan.pdf: two pages of 500 × 800 (a 5 × 8 in shape) as a scanner app
 // writes them: the front cover, then the back with ISBN 9780140328721's barcode.
 test('book: a scanned PDF, its ISBN read off the back cover, its size from Open Library', async (t) => {

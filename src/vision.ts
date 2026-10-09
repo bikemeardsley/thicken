@@ -44,16 +44,25 @@ export interface Identity { profile?: string; sizeMm?: number[]; disputed: boole
 export const visionOn = () => Boolean(process.env.THICKEN_VISION_URL && process.env.THICKEN_VISION_MODELS);
 const roster = () => process.env.THICKEN_VISION_MODELS!.split(',').map((m) => m.trim()).filter(Boolean);
 
-const facesPrompt = ({ name, about, faces, note, reads = {}, asks = {} }: Kind) => `This photo shows ${about ?? `a ${name}`}, on whatever it was set down on. For every face of it you can see, even partly, say which face it is and give the pixel coordinates of its four corners in this ${SIZE} x ${SIZE} image.
+/** The question about one picture: where its faces are, if it has any to find (artwork doesn't), and what's on it. */
+const facesPrompt = ({ name, about, faces, note, reads = {}, asks = {} }: Kind) => {
+  const finding = Object.keys(faces).length > 0;
+  const json = [
+    ...(finding ? ['"faces":[{"face":"front","corners":[[x,y],[x,y],[x,y],[x,y]]}]'] : []),
+    ...Object.entries(reads).map(([key, what]) => `"${key}":${Array.isArray(what) ? '[]' : '""'}`),
+    ...Object.keys(asks).map((key) => `"${key}":""`),
+  ];
+  return `${finding ? `This photo shows ${about ?? `a ${name}`}, on whatever it was set down on. For every face of it you can see, even partly, say which face it is and give the pixel coordinates of its four corners in this ${SIZE} x ${SIZE} image.
 
 Faces: ${Object.entries(faces).map(([face, words]) => (words === face ? `"${face}"` : `"${face}" (${words})`)).join(', ')}.
 
-Give each face's corners in that face's own reading order: top-left, top-right, bottom-right, bottom-left, as the face would look held upright in front of you. For a side, upright is with the object standing as it normally does; for the top, looking down on it from the front (its back edge at the top); for the bottom, with the object tipped back onto its back (its front edge at the top).${note ? ` ${note}` : ''} A corner hidden from view goes where it would be.
+Give each face's corners in that face's own reading order: top-left, top-right, bottom-right, bottom-left, as the face would look held upright in front of you. For a side, upright is with the object standing as it normally does; for the top, looking down on it from the front (its back edge at the top); for the bottom, with the object tipped back onto its back (its front edge at the top).${note ? ` ${note}` : ''} A corner hidden from view goes where it would be.` : `This picture shows ${about ?? `a ${name}`}.${note ? ` ${note}` : ''}`}
 
-${Object.keys(reads).length ? `\nAlso read off it, as printed, leaving out anything it doesn't show:${Object.entries(reads).map(([key, what]) => `\n"${key}": ${what}${Array.isArray(what) ? ' (a list)' : ''}`).join('')}\n` : ''}${Object.entries(asks).map(([key, question]) => `\n"${key}": ${question}`).join('')}
+${Object.keys(reads).length ? `${finding ? 'Also read' : 'Read'} off it, as printed, leaving out anything it doesn't show:${Object.entries(reads).map(([key, what]) => `\n"${key}": ${what}${Array.isArray(what) ? ' (a list)' : ''}`).join('')}\n` : ''}${Object.entries(asks).map(([key, question]) => `\n"${key}": ${question}`).join('')}
 
 Answer with JSON only, no prose:
-{"faces":[{"face":"front","corners":[[x,y],[x,y],[x,y],[x,y]]}]${Object.entries(reads).map(([key, what]) => `,"${key}":${Array.isArray(what) ? '[]' : '""'}`).join('')}${Object.keys(asks).map((key) => `,"${key}":""`).join('')}}`;
+{${json.join(',')}}`;
+};
 
 const identifyPrompt = (kinds: Kind[]) => `This photo shows one object. Which of these is it? Pick the most specific that fits.
 ${kinds.map(({ name, about }) => `- "${name}": ${about}`).join('\n')}
@@ -220,7 +229,7 @@ function parseFaces(json: any, names: string[], keys: string[] = [], reads: stri
     .filter((f: any) => typeof f?.face === 'string' && names.includes(f.face.toLowerCase()) && Array.isArray(f.corners) && f.corners.length === 4
       && f.corners.every((p: unknown) => Array.isArray(p) && p.length === 2 && p.every((n) => Number.isFinite(n) && n > -SIZE / 10 && n < SIZE * 1.1)))
     .map((f: any) => ({ face: f.face.toLowerCase(), corners: f.corners.map((p: number[]) => p.map(Number)) }));
-  if (!faces.length) return undefined;
+  if (!faces.length && names.length) return undefined;
   // What was read: a string as given, or a list of them; numbers (a year, a grade) as their text.
   const text = (value: unknown) => (typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '');
   const read = Object.fromEntries(reads.flatMap((key) => {
@@ -228,7 +237,7 @@ function parseFaces(json: any, names: string[], keys: string[] = [], reads: stri
     return value.length ? [[key, value]] : [];
   }));
   const asked = Object.fromEntries(keys.flatMap((key) => (typeof json[key] === 'string' && json[key].trim() ? [[key, json[key].trim().toLowerCase()]] : [])));
-  return { faces, ...(Object.keys(read).length && { read }), ...(Object.keys(asked).length && { asked }) };
+  return { ...(faces.length && { faces }), ...(Object.keys(read).length && { read }), ...(Object.keys(asked).length && { asked }) };
 }
 
 /**

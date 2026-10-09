@@ -31,11 +31,19 @@ export const slab: Profile = {
     hologram: 'a shiny holographic security sticker or strip on the label, if there is one',
   },
   note: 'The card, the label, the card\'s picture box and the label\'s hologram are inside the holder, on whichever side is shown: give their corners in the holder\'s own order (top-left as it stands with its label at the top), even when the card is printed sideways.',
-  // The label's words: the grade, and the card as the grader describes it.
+  // The label's words: the card's grade (a number and its words: 9, MINT), an autograph's own grade when the label
+  // grades one apart from the card (AUTO 10; not every slab has one), and the card as the grader describes it.
   reads: {
-    grader: 'the grading company (PSA, Beckett, CGC, SGC, TAG…)', grade: 'the grade\'s number or letter ("10", "9.5", "A" for authentic)',
-    gradeName: 'the grade\'s words ("GEM MT", "MINT", "PRISTINE")', cert: 'the certification number', subgrades: 'any subgrades, as printed ("Centering 9.5, Corners 9")',
-    autograph: 'an autograph or its grade, if the label notes one', ...CARD_READS,
+    grader: 'the grading company (PSA, Beckett, CGC, SGC, TAG…)',
+    grade: 'the card\'s own grade, its number or letter ("9", "10", "9.5", "A" for authentic): never an autograph\'s grade',
+    gradeName: 'the words of the card\'s grade, beside its number ("MINT", "GEM MT", "NM-MT", "PRISTINE", "AUTHENTIC")',
+    qualifier: 'any qualifier on the card\'s grade ("OC" off-center, "MK" marks, "ST" stain)',
+    subgrades: 'any subgrades, as printed ("Centering 9.5, Corners 9, Edges 9.5, Surface 9")',
+    autoGrade: 'the autograph\'s own grade, only when the label grades the autograph apart from the card (the 10 in "AUTO 10")',
+    autoGradeName: 'the words of the autograph\'s grade (the "AUTO" in "AUTO 10")',
+    autograph: 'how the label notes an autograph, if it does ("Signature Series", "Authentic Autograph")',
+    signed: 'who signed it and when, if the label says ("G. ANTETOKOUNMPO, 8/2/25")',
+    cert: 'the certification number', ...CARD_READS,
   },
   asks: { corners: CORNERS_ASK, foil: foilAsk('the card\'s front, inside the holder') },
   unsnapped: ['label', 'art', 'hologram'],

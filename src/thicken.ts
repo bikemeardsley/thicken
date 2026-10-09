@@ -119,7 +119,7 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
   const facts = profile.read?.(scanned, pictures) ?? { recognized: false, use: [] };
   const recorded: Code[] = scanned.map(({ picture, format, text }, i) => ({ picture, format, ...(facts.use[i] && { use: facts.use[i], text }) }));
   // With a vision roster, the models find each photo's faces, which are cut out and straightened (src/vision.ts).
-  const sights = visionOn() && Object.keys(profile.faces).length ? await lookAll(pictures, profile) : undefined;
+  const sights = visionOn() && (Object.keys(profile.faces).length || profile.reads) ? await lookAll(pictures, profile) : undefined;
   const built = await profile.build(pictures, { options, facts, codes: recorded.map((code, i) => ({ ...code, at: scanned[i].at })), sights, estimateMm: identity?.sizeMm });
 
   const named_ = (i: number) => {
@@ -139,7 +139,7 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
       ...sight.faces.filter(({ face, agreed }) => !agreed && !sight.disputed.includes(face))
         .map(({ face, by }) => `${face} in ${named_(i)} (only ${by[0]} answered, so no second model checked it: check it)`),
       // A frame no model answered for is just left out (src/faces.ts): one of a handful, nothing to review.
-      ...(sight.answers.some((a) => a.faces) || pictures[i].source.time !== undefined ? [] : [`${named_(i)} (no vision model answered, so it was used whole: run again, or crop it)`]),
+      ...(sight.answers.some((a) => !a.error) || pictures[i].source.time !== undefined ? [] : [`${named_(i)} (no vision model answered, so it was used whole: run again, or crop it)`]),
     ])),
   ];
   const printed = readOf(sights);
