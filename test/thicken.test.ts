@@ -161,6 +161,14 @@ test('book: a photo of the back alone is enough, the front cover coming from Ope
   assert.ok(Math.min(...await colorOf(doc, [0, 0, -1])) > 180, 'back is the photo');
 });
 
+test('book: an ISBN alone, no photo, is a book with Open Library\'s cover', async (t) => {
+  const cover = await sharp({ create: { width: 500, height: 800, channels: 3, background: '#1d2b53' } }).jpeg().toBuffer();
+  const fetch = catalog({ physical_dimensions: '8 x 5 x 1 inches' }, { cover });
+  t.after(() => fetch.mock.restore());
+  const { sidecar } = await thicken([], { isbn: '9780140328721' });
+  assert.deepEqual([sidecar.isbn, sidecar.faces?.front, sidecar.widthMm, sidecar.heightMm], ['9780140328721', 'openlibrary', 127, 203.2]);
+});
+
 test('book: pictures are placed by what they show, whatever their names, order or which way up', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
@@ -676,8 +684,13 @@ test('book: any number of photos, each on its face, the sharpest kept, the thick
     await save('IMG_5.png', sharp(sprayed, { raw: { width: 50, height: 800, channels: 3 } }).png()), // the page edge
     await save('IMG_6.png', solid(500, 60, '#e8dcc0')), // the top
   ];
-  const fetch = catalog({ physical_dimensions: '8 x 5 inches' }, {
-    data: { title: 'Fantastic Mr Fox', authors: [{ name: 'Roald Dahl' }], publishers: [{ name: 'Puffin' }], publish_date: '1988', number_of_pages: 100 },
+  const fetch = catalog({ physical_dimensions: '8 x 5 inches', works: [{ key: '/works/OL45804W' }], languages: [{ key: '/languages/eng' }] }, {
+    data: {
+      title: 'Fantastic Mr Fox', authors: [{ name: 'Roald Dahl' }], publishers: [{ name: 'Puffin' }], publish_date: '1988', number_of_pages: 100,
+      subject_people: [{ name: 'Mr. Fox' }], identifiers: { goodreads: ['6693'] },
+      excerpts: [{ text: 'Down in the valley there were three farms.', first_sentence: true }],
+    },
+    search: { docs: [{ key: '/works/OL45804W', first_publish_year: 1970, edition_count: 99 }] },
   });
   t.after(() => fetch.mock.restore());
   const { glb, sidecar } = await thicken(files);
@@ -697,11 +710,16 @@ test('book: any number of photos, each on its face, the sharpest kept, the thick
   assert.ok(sidecar.warnings.includes('the photos say 14 mm thick, the page count 7.5 mm: check the spine photo\'s crop'));
   assert.deepEqual(pick(sidecar.catalog as Record<string, unknown>, ['title', 'authors', 'publishers', 'publishDate']),
     { title: 'Fantastic Mr Fox', authors: ['Roald Dahl'], publishers: ['Puffin'], publishDate: '1988' });
+  // The edition's work, when it was first published and in what language, and every id, but nobody's prose.
+  assert.deepEqual(pick(sidecar.catalog as Record<string, unknown>, ['work', 'firstPublished', 'editionCount', 'languages', 'subjectPeople', 'identifiers']), {
+    work: 'https://openlibrary.org/works/OL45804W', firstPublished: 1970, editionCount: 99, languages: ['eng'], subjectPeople: ['Mr. Fox'], identifiers: { goodreads: ['6693'] },
+  });
 
   // Every code is listed, but only the one used keeps its text; GPS is never recorded.
   assert.deepEqual(sidecar.codes, [{ picture: 0, format: 'QRCode' }, { picture: 2, format: 'EAN13', use: 'isbn', text: '9780140328721' }]);
   const text = JSON.stringify(sidecar);
   assert.ok(!text.includes('hunter2') && !text.includes('GPS'), 'nothing private in the sidecar');
+  assert.ok(!text.includes('three farms'), 'no excerpt of the book in the sidecar');
   assert.ok((sidecar.lookups as { host: string; status: number }[]).some(({ host, status }) => host === 'openlibrary.org' && status === 200));
 
   const doc = await read(glb);

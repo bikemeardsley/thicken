@@ -348,9 +348,15 @@ assumed slab holder. A size off by a few millimeters still shows the object;
 
 - **Size:** `widthMm`, `heightMm`, `depthMm`; `measuredBy`, the source of
   each; `depthEstimates`, every thickness estimate made.
-- **Identity:** `isbn` and `catalog` (title, authors, publishers, publish
-  date, subjects, Dewey and LC classification), or `grader`, `cert` and
-  `verifyUrl`; `identifiedBy`, how each was found.
+- **Identity:** `isbn` and `catalog`, everything Open Library has on the
+  edition and its work: title, authors, publishers and where, dates (this
+  edition's, its copyright, and the work's first), edition name, format,
+  series, languages, subjects with their places, people and times, Dewey and
+  LC classes, weight, contents, every id it lists (ISBN-10 and -13, LCCN,
+  OCLC, Goodreads, LibraryThing…), links, cover, and the work's page and
+  edition count. Never descriptions or excerpts: they're someone else's
+  writing. Or, for a slab, `grader`, `cert` and `verifyUrl`;
+  `identifiedBy`, how each was found.
 - **Photos:** for each, its file and page (or, for a video's frame, the
   seconds into it), format, original size, bytes, camera, lens, capture time
   (the camera's own clock and UTC offset), sharpness, and the face it became;

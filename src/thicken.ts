@@ -102,7 +102,7 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
     throw new Error('a video is for the vision models, which find the object in its frames: set up a vision roster (see the README), or leave the video out');
   }
   const pictures =(await Promise.all(inputs.map((input) => load(input)))).flat();
-  if (!pictures.length) throw new Error('give a picture to make it from');
+  if (!pictures.length && !options.isbn) throw new Error('give a picture to make it from, or a book\'s --isbn');
 
   const scanned = named === badge ? [] : await scan(pictures);
   let profile = named ?? PROFILES.find((p) => p.read?.(scanned, pictures).recognized);
