@@ -128,20 +128,18 @@ async function make(
   let format: string | undefined; // as the catalog lists the edition: "Hardcover", "Paperback"…
   let catalog: Record<string, unknown> | undefined;
   if (isbn) {
-    // The catalog record, whatever the size sources: title, authors and the rest, for the sidecar.
+    // The catalog record, whatever the size sources: everything Open Library knows of the edition and its work, for
+    // the sidecar, and its size and format.
     const data = (await fetchJson(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`, log))?.[`ISBN:${isbn}`];
-    catalog = data && catalogRecord(data);
-    pages = positive(data?.number_of_pages) ?? paginated(data?.pagination);
+    const edition = await fetchJson(`https://openlibrary.org/isbn/${isbn}.json`, log);
+    const work = (await fetchJson(`https://openlibrary.org/search.json?q=isbn:${isbn}&fields=key,first_publish_year,edition_count&limit=1`, log))?.docs?.[0];
+    catalog = data && catalogRecord(data, edition, work);
+    take('openlibrary', orient(parseDims(edition?.physical_dimensions), aspect));
+    pages = positive(data?.number_of_pages) ?? paginated(data?.pagination) ?? positive(edition?.number_of_pages) ?? paginated(edition?.pagination);
+    format = edition?.physical_format;
   }
   pages ??= match?.pages;
   catalog ??= match && { title: match.title, authors: match.authors, openLibrary: match.openLibrary, editions: match.editions };
-  if (isbn && missing()) {
-    const edition = await fetchJson(`https://openlibrary.org/isbn/${isbn}.json`, log);
-    take('openlibrary', orient(parseDims(edition?.physical_dimensions), aspect));
-    pages ??= positive(edition?.number_of_pages) ?? paginated(edition?.pagination);
-    format = edition?.physical_format;
-    if (catalog && format) catalog.format = format;
-  }
   if (isbn && missing()) {
     // The Library of Congress catalog: free, no key, and on 15 books tried (2026-10-03) the height for 10 where Open
     // Library had 4, so asked second. It describes a book as "177 p. ; 20 cm." (MARC field 300): the page count and
@@ -346,20 +344,43 @@ function pageTextures(): Promise<{ down: Uint8Array; across: Uint8Array }> {
   return made;
 }
 
-/** The fields of Open Library's books-API record worth keeping. */
-function catalogRecord(data: any): Record<string, unknown> {
-  const names = (list: unknown) => (Array.isArray(list) ? list.map((item) => item?.name).filter(Boolean) : undefined);
+/**
+ * Open Library's record of an edition (books API and edition record) and its work (search): all of it, for whatever
+ * reads the sidecar to use as it likes, but for other people's prose (descriptions, excerpts, first sentences),
+ * which a published sidecar mustn't carry, and ebook lending, which goes stale.
+ */
+function catalogRecord(data: any, edition: any, work: any): Record<string, unknown> {
+  const names = (list: unknown) => (Array.isArray(list) ? list.map((item) => item?.name ?? item?.title).filter(Boolean) : undefined);
+  const workKey = edition?.works?.[0]?.key ?? work?.key;
   return {
     title: data.title,
     subtitle: data.subtitle,
+    byStatement: data.by_statement,
     authors: names(data.authors),
     publishers: names(data.publishers),
+    publishPlaces: names(data.publish_places),
     publishDate: data.publish_date,
-    subjects: names(data.subjects)?.slice(0, 12),
+    copyrightDate: edition?.copyright_date,
+    firstPublished: work?.first_publish_year,
+    edition: edition?.edition_name,
+    format: edition?.physical_format,
+    series: edition?.series,
+    languages: edition?.languages?.map((language: { key: string }) => language.key.split('/').pop()),
+    subjects: names(data.subjects),
+    subjectPlaces: names(data.subject_places),
+    subjectPeople: names(data.subject_people),
+    subjectTimes: names(data.subject_times),
     dewey: data.classifications?.dewey_decimal_class,
     lcc: data.classifications?.lc_classifications,
     weight: data.weight,
+    notes: typeof data.notes === 'string' ? data.notes : data.notes?.value,
+    tableOfContents: names(data.table_of_contents),
+    identifiers: data.identifiers, // isbn_10, isbn_13, lccn, oclc, goodreads, librarything…, as Open Library lists them
+    links: data.links?.map(({ title, url }: { title: string; url: string }) => ({ title, url })),
+    cover: data.cover?.large,
     openLibrary: data.url,
+    work: workKey && `https://openlibrary.org${workKey}`,
+    editionCount: work?.edition_count,
   };
 }
 
