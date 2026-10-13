@@ -46,6 +46,8 @@ jobs:
           cd "$RUNNER_TEMP" && npm init -y > /dev/null && npm install ./thicken-*.tgz
           npx thicken badge "$GITHUB_WORKSPACE/test/fixtures/badge.png" -o badge.glb
           node --input-type=module -e "import { thicken } from 'thicken'; if (typeof thicken !== 'function') process.exit(1)"
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
+            | npx thicken mcp | grep -q '"serverInfo":{"name":"thicken"'
   # A pull request from a fork adds a profile (CONTRIBUTING.md): new files only, each a plain file under 1 MB, in
   # src/profiles, test/profiles and test/fixtures/<profile>/, plus the README's regenerated table. Editing, deleting
   # or renaming anything, a symlink, or the README beyond its table fails here, before any of its code runs.

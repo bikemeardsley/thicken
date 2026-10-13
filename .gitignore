@@ -8,6 +8,8 @@ dist/
 out/
 *.glb
 *.gltf
+# but the samples, which are meant to be downloaded
+!examples/*.glb
 
 # Diagrams made with archify, kept locally
 .archify/

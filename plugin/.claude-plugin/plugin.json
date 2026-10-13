@@ -1,0 +1,55 @@
+{
+  "name": "thicken",
+  "displayName": "thicken",
+  "version": "0.1.0",
+  "description": "Photos in, 3D models out, at their real size: books, graded card slabs, raw cards, boxes, badges and lettering as GLB models, each with a JSON sidecar of what it is.",
+  "author": { "name": "Michael Beardsley" },
+  "homepage": "https://github.com/bikemeardsley/thicken",
+  "repository": "https://github.com/bikemeardsley/thicken",
+  "license": "MIT",
+  "keywords": ["3d", "glb", "gltf", "photos", "books", "trading-cards", "mcp"],
+  "icon": "./.claude-plugin/icon.png",
+  "documentationUrl": "https://github.com/bikemeardsley/thicken#readme",
+  "supportUrl": "https://github.com/bikemeardsley/thicken/issues",
+  "userConfig": {
+    "vision_url": {
+      "type": "string",
+      "title": "Vision endpoint (optional)",
+      "description": "An OpenAI-compatible API, such as https://openrouter.ai/api/v1 or your own server. With one, photos needn't be cropped and the models read what's printed. Each photo is sent there.",
+      "default": ""
+    },
+    "vision_key": {
+      "type": "string",
+      "title": "Vision endpoint's key (optional)",
+      "description": "Sent only to the vision endpoint, never recorded.",
+      "sensitive": true,
+      "default": ""
+    },
+    "vision_models": {
+      "type": "string",
+      "title": "Vision models (optional)",
+      "description": "Your endpoint's model names, comma-separated, primary first: the first two are asked together.",
+      "default": ""
+    },
+    "google_books_key": {
+      "type": "string",
+      "title": "Google Books API key (optional)",
+      "description": "Your own quota for book sizes; without one, Google Books is asked on the shared keyless quota. Sent only to Google Books.",
+      "sensitive": true,
+      "default": ""
+    }
+  },
+  "mcpServers": {
+    "thicken": {
+      "command": "npx",
+      "args": ["-y", "thicken@0.1.0", "mcp"],
+      "env": {
+        "THICKEN_VISION_URL": "${user_config.vision_url}",
+        "THICKEN_VISION_KEY": "${user_config.vision_key}",
+        "THICKEN_VISION_MODELS": "${user_config.vision_models}",
+        "GOOGLE_BOOKS_API_KEY": "${user_config.google_books_key}"
+      },
+      "startup_timeout_sec": 120
+    }
+  }
+}

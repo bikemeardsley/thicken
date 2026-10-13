@@ -1,0 +1,12 @@
+{
+  "name": "thicken",
+  "owner": { "name": "Michael Beardsley" },
+  "description": "thicken: photos in, 3D models out, at their real size.",
+  "plugins": [
+    {
+      "name": "thicken",
+      "source": "./plugin",
+      "description": "Books, graded card slabs, raw cards, boxes, badges and lettering as GLB models at their real size, each with a JSON sidecar of what it is."
+    }
+  ]
+}

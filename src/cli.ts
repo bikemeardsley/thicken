@@ -2,18 +2,20 @@
 // thicken [profile] <picture, PDF or video>... [-o out.glb] [--preview] [options]
 // thicken batch [profile] <folder> [-o out-folder] [--preview] [--force] [options]
 // thicken preview <model.glb or folder>...
-// With no profile named, Thicken picks one per model (see src/thicken.ts).
+// thicken mcp    (the MCP server on stdio, for AI agents: src/mcp.ts)
+// With no profile named, thicken picks one per model (see src/thicken.ts).
 // Writes each GLB and, beside it, a JSON sidecar of the same name.
-import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { batchItems, PROFILES, thicken, type Options, type Sidecar } from './thicken.ts';
+import { batchItems, PROFILES, type Options, type Sidecar } from './thicken.ts';
+import { inputsKey, make, sidecarOf } from './write.ts';
 
 const USAGE = `usage: thicken [${PROFILES.map((p) => p.name).join('|')}] <picture, PDF or video>... [-o out.glb] [--preview]
        thicken batch [profile] <folder> [-o out-folder] [--preview] [--force]
        thicken preview <model.glb or folder>...
+       thicken mcp    (the MCP server on stdio, for AI agents)
 Profiles (src/profiles), each from:
 ${PROFILES.map((p) => `  ${p.name.padEnd(8)} ${p.input.replace(/`/g, '')}`).join('\n')}
 Options: --size WxHxD (mm; any left out are looked up or estimated), --isbn 978... (a book),
@@ -36,7 +38,7 @@ cropped: the models find each face, and it is cut out and straightened.
 Training mode (off by default): with THICKEN_DATASET=<folder> also set, every question put to
 the vision models is kept there as a training example.`;
 
-// Settings such as the vision roster can live in a .env file where Thicken is run.
+// Settings such as the vision roster can live in a .env file where thicken is run.
 if (existsSync('.env')) process.loadEnvFile();
 
 const { positionals, values } = parseArgs({
@@ -54,9 +56,9 @@ const { positionals, values } = parseArgs({
     help: { type: 'boolean', short: 'h' },
   },
 });
-const command = positionals[0] === 'batch' || positionals[0] === 'preview' ? positionals.shift() : 'make';
+const command = ['batch', 'preview', 'mcp'].includes(positionals[0]) ? positionals.shift() : 'make';
 const profile = command !== 'preview' && PROFILES.some((p) => p.name === positionals[0]) ? positionals.shift() : undefined;
-const nothingGiven = positionals.length === 0 && (command !== 'make' || !values.isbn);
+const nothingGiven = positionals.length === 0 && command !== 'mcp' && (command !== 'make' || !values.isbn);
 if (values.help || nothingGiven) {
   console.error(USAGE);
   process.exit(values.help ? 0 : 1);
@@ -73,27 +75,12 @@ const options: Options = {
   depthMm: mm(values.depth),
 };
 
-const sidecarOf = (glb: string) => glb.replace(/(\.glb)?$/i, '.json');
 const readSidecar = (glb: string): Promise<Sidecar | undefined> =>
   readFile(sidecarOf(glb), 'utf8').then((text) => JSON.parse(text), () => undefined);
 
-/** What a model was made from: each picture's name, size and time (words, for lettering, as they are). A changed picture changes it, whatever its date. */
-async function inputsKey(files: string[]) {
-  const parts = await Promise.all(files.map(async (file) => {
-    const { size, mtimeMs } = await stat(file).catch(() => ({ size: 0, mtimeMs: 0 }));
-    return [path.basename(file), size, mtimeMs];
-  }));
-  return createHash('sha256').update(JSON.stringify(parts)).digest('hex').slice(0, 16);
-}
-
-/** Make one model and write it, then its sidecar (last, so a sidecar means a finished model). */
-async function build(files: string[], out?: string) {
-  const { glb, sidecar } = await thicken(files, options);
-  const named = files[0] ? path.join(path.dirname(files[0]), path.parse(files[0]).name) : `${sidecar.isbn}`;
-  out ??= `${named}.glb`;
-  await mkdir(path.dirname(path.resolve(out)), { recursive: true });
-  await writeFile(out, glb);
-  await writeFile(sidecarOf(out), `${JSON.stringify({ ...sidecar, inputsKey: await inputsKey(files) }, null, 2)}\n`);
+/** Make one model and write it (src/write.ts), and say so. */
+async function build(files: string[], to?: string) {
+  const { out, sidecar } = await make(files, options, to);
   console.log(`${out}: ${sidecar.profile}, ${sidecar.widthMm} × ${sidecar.heightMm} × ${sidecar.depthMm} mm`);
   for (const warning of sidecar.warnings) console.warn(`  warning: ${warning}`);
   return { out, sidecar };
@@ -120,7 +107,9 @@ async function previewer() {
 }
 
 try {
-  if (command === 'make') {
+  if (command === 'mcp') {
+    await (await import('./mcp.ts')).serve(); // stdio stays open: the server answers until the agent closes it
+  } else if (command === 'make') {
     const { out, sidecar } = await build(positionals, values.out);
     if (sidecar.review.length) console.log(`  to review: ${sidecar.review.join('; ')}`);
     const preview = values.preview ? await previewer() : undefined;

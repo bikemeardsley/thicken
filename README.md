@@ -57,7 +57,7 @@ read off it. Every field is in [USAGE.md](USAGE.md#what-the-sidecar-records).
 
 ## Contents
 
-- [Try it](#try-it) · [How it works](#how-it-works) · [The thicken object](#the-thicken-object) · [What it makes](#what-it-makes)
+- [Try it](#try-it) · [From an AI agent](#from-an-ai-agent) · [How it works](#how-it-works) · [The thicken object](#the-thicken-object) · [What it makes](#what-it-makes)
 - In detail ([USAGE.md](USAGE.md)): [batch](USAGE.md#batch) · [photos](USAGE.md#photos-any-number) ·
   [vision](USAGE.md#vision-optional) · [video](USAGE.md#video-optional) · [training mode](USAGE.md#training-mode-off-by-default) ·
   [review](USAGE.md#review) · [the sidecar](USAGE.md#what-the-sidecar-records) · [previews](USAGE.md#preview) ·
@@ -85,6 +85,20 @@ as they are; uncropped photos, angled shots and video need a vision roster,
 any OpenAI-compatible endpoint ([Vision](USAGE.md#vision-optional)). As a
 library: `import { thicken } from 'thicken'`, then `thicken(files, options)`
 gives the GLB's bytes and the sidecar.
+
+## From an AI agent
+
+thicken is an MCP server too (`thicken mcp`), with an Agent Skill that tells
+the agent when and how to use it: ask for a model of the book on your desk,
+and the agent makes it. In Claude Code:
+
+```
+/plugin marketplace add bikemeardsley/thicken
+/plugin install thicken@thicken
+```
+
+Or for any MCP client, `npx -y thicken mcp` on stdio. Codex, Copilot,
+Cursor, Gemini CLI and the rest are in [USAGE.md](USAGE.md#from-an-ai-agent).
 
 ## How it works
 

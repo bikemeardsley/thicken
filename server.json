@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.bikemeardsley/thicken",
+  "description": "Photos in, 3D models out, at their real size: books, card slabs, cards, boxes, badges, lettering.",
+  "repository": { "url": "https://github.com/bikemeardsley/thicken", "source": "github" },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "thicken",
+      "version": "0.1.0",
+      "transport": { "type": "stdio" },
+      "packageArguments": [{ "type": "positional", "value": "mcp" }],
+      "environmentVariables": [
+        { "name": "THICKEN_VISION_URL", "description": "An OpenAI-compatible vision endpoint (optional): photos needn't be cropped", "isRequired": false },
+        { "name": "THICKEN_VISION_KEY", "description": "The vision endpoint's key", "isRequired": false, "isSecret": true },
+        { "name": "THICKEN_VISION_MODELS", "description": "The endpoint's model names, comma-separated, primary first", "isRequired": false },
+        { "name": "GOOGLE_BOOKS_API_KEY", "description": "Your own Google Books quota, for book sizes", "isRequired": false, "isSecret": true }
+      ]
+    }
+  ]
+}
