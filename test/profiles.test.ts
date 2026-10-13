@@ -3,9 +3,10 @@
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { PROFILES } from '../src/thicken.ts';
+import { codes, load } from '../src/image.ts';
+import { PROFILES, type Scanned } from '../src/thicken.ts';
 import { README, withTable } from '../scripts/readme.ts';
-import './helpers.ts';
+import { fixture } from './helpers.ts';
 
 const files = readdirSync(new URL('../src/profiles/', import.meta.url)).filter((file) => file.endsWith('.ts'));
 const words = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
@@ -28,8 +29,30 @@ for (const profile of PROFILES) {
       }
     }
     for (const face of profile.unsnapped ?? []) assert.ok(face in profile.faces, `${profile.name}: unsnapped "${face}" is one of its faces`);
+    assert.ok(profile.read === undefined || typeof profile.read === 'function', `${profile.name}: read is a function`);
   });
 }
+
+// Whose each fixture is: the folder it's in (test/fixtures/<profile>/), or, for the first ones, this list.
+const OWNERS: Record<string, string | undefined> = {
+  'badge.png': 'badge', 'book-back.jpg': 'book', 'book-scan.pdf': 'book', 'slab.jpg': 'slab', 'slab-barcode.jpg': 'slab', 'plain.jpg': undefined,
+};
+const fixtures = readdirSync(new URL('fixtures/', import.meta.url), { recursive: true, withFileTypes: true })
+  .filter((entry) => entry.isFile())
+  .map((entry) => {
+    const name = `${entry.parentPath.replace(/\\/g, '/').split('/fixtures').at(-1)!.replace(/^\//, '')}/${entry.name}`.replace(/^\//, '');
+    return { name, owner: name.includes('/') ? name.split('/')[0] : OWNERS[name] };
+  });
+
+test('profiles: none claims another\'s photos unaided (the first that recognizes a photo takes it)', async () => {
+  for (const { name, owner } of fixtures) {
+    const pictures = await load(fixture(name));
+    const scanned: Scanned[] = [];
+    for (const [picture, image] of pictures.entries()) for (const code of await codes(image)) scanned.push({ picture, ...code });
+    const claimed = PROFILES.filter((p) => p.read?.(scanned, pictures).recognized).map((p) => p.name);
+    assert.ok(claimed.every((profile) => profile === owner), `${name} is ${owner ?? 'nobody'}'s, but ${claimed.join(' and ')} recognized it`);
+  }
+});
 
 test('profiles: the README lists every profile as it is (npm run readme)', () => {
   const readme = readFileSync(README, 'utf8').replace(/\r\n/g, '\n');
