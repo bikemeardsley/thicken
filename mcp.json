@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "thicken": { "command": "npx", "args": ["-y", "thicken@0.1.0", "mcp"] }
+  }
+}

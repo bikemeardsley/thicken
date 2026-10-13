@@ -104,7 +104,7 @@ const STAND_IN = { openlibrary: 'Open Library\'s cover, not your copy', color: '
 export const stillToShoot = (faces: Faces = {}) =>
   Object.entries(faces).flatMap(([face, from]) => (from === 'photo' || from === 'pages' || from === 'plain' ? [] : [`${face} (${STAND_IN[from]})`]));
 
-const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string;
+export const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string;
 
 export async function thicken(inputs: string[], options: Options = {}): Promise<{ glb: Uint8Array; sidecar: Sidecar }> {
   const started = performance.now();

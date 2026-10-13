@@ -12,6 +12,7 @@ Everything in detail; the [README](README.md) has the short version.
 - [Preview](#preview)
 - [Inputs](#inputs)
 - [Dimensions](#dimensions)
+- [From an AI agent](#from-an-ai-agent)
 
 ## Batch
 
@@ -420,3 +421,88 @@ whose shape is off the holder's by more than 4% warns.
 number thick cards are sold by: 55, 75, 100, 130, 180), for a raw card or the
 card inside a slab. A standard card is 0.35 mm; 35 pt is the size of the
 holder it fits, not its own thickness.
+
+## From an AI agent
+
+`thicken mcp` serves two tools on stdio: `thicken_make` (photos, a video,
+words or an ISBN in; the GLB and its sidecar written, their paths and main
+facts back) and `thicken_profiles` (the kinds of object). The Agent Skill
+tells an agent when to use them and what to ask first. Everything runs from
+npm with `npx`, on Node 22.18 or later; the first run downloads the package.
+
+For the vision roster, give the server the same environment as the CLI
+(`THICKEN_VISION_URL`, `THICKEN_VISION_KEY`, `THICKEN_VISION_MODELS`, and
+optionally `GOOGLE_BOOKS_API_KEY`). The server is stdio only: it reads and
+writes files on your machine, so it never listens on a port.
+
+### Claude Code
+
+As a plugin (the tools plus the skill), which asks for the optional vision
+settings and keeps the keys in secure storage:
+
+```
+/plugin marketplace add bikemeardsley/thicken
+/plugin install thicken@thicken
+```
+
+Or the tools alone:
+
+```sh
+claude mcp add --scope user thicken -- npx -y thicken mcp
+# with vision: add -e THICKEN_VISION_URL=... -e THICKEN_VISION_KEY=... -e THICKEN_VISION_MODELS=...
+```
+
+### Codex
+
+```sh
+codex plugin marketplace add bikemeardsley/thicken
+codex plugin add thicken@thicken
+```
+
+Or in `~/.codex/config.toml`, with time for the first download:
+
+```toml
+[mcp_servers.thicken]
+command = "npx"
+args = ["-y", "thicken", "mcp"]
+startup_timeout_sec = 120
+# env = { THICKEN_VISION_URL = "...", THICKEN_VISION_KEY = "...", THICKEN_VISION_MODELS = "..." }
+```
+
+### GitHub Copilot CLI
+
+```sh
+copilot plugin marketplace add bikemeardsley/thicken
+copilot plugin install thicken@thicken
+```
+
+### Cursor, Windsurf, Cline and other MCP clients
+
+Add the server under `mcpServers` in the client's MCP settings (Cursor:
+`~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "thicken": { "command": "npx", "args": ["-y", "thicken", "mcp"] }
+  }
+}
+```
+
+### Gemini CLI
+
+```sh
+gemini extensions install https://github.com/bikemeardsley/thicken
+```
+
+### As an Agent Skill
+
+For agents that read `SKILL.md` (Cline, Cursor, Copilot, Goose, OpenCode,
+Amp, Zed and more):
+
+```sh
+npx skills add bikemeardsley/thicken
+```
+
+The skill uses the MCP tools when they're connected, and otherwise the CLI
+through `npx -y thicken`.

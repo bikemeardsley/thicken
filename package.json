@@ -1,11 +1,12 @@
 {
   "name": "thicken",
   "version": "0.1.0",
-  "description": "Flat images in, 3D assets (GLB) out: photos of books, graded slabs, cards, badges and boxes made into models at their real size.",
+  "description": "Photos in, 3D models out, at their real size: books, graded card slabs, raw cards, boxes, badges and lettering as GLB models, each with a JSON sidecar of what it is.",
   "license": "MIT",
   "author": "Michael Beardsley (https://github.com/bikemeardsley)",
   "repository": "github:bikemeardsley/thicken",
-  "keywords": ["3d", "glb", "gltf", "photos", "books", "trading-cards", "graded-cards", "slab", "badge", "lettering", "vision"],
+  "mcpName": "io.github.bikemeardsley/thicken",
+  "keywords": ["3d", "glb", "gltf", "photos", "books", "trading-cards", "graded-cards", "slab", "badge", "lettering", "vision", "mcp"],
   "type": "module",
   "bin": {
     "thicken": "dist/cli.js"
@@ -31,6 +32,7 @@
     "@gltf-transform/core": "4.5.1",
     "@gltf-transform/extensions": "4.5.1",
     "@google/model-viewer": "4.3.1",
+    "@modelcontextprotocol/sdk": "1.32.0",
     "earcut": "3.2.4",
     "exif-reader": "2.0.3",
     "libheif-js": "1.23.2",
@@ -38,6 +40,7 @@
     "playwright-core": "1.63.0",
     "sharp": "0.35.5",
     "unpdf": "1.8.1",
+    "zod": "4.6.5",
     "zxing-wasm": "3.1.4"
   },
   "devDependencies": {

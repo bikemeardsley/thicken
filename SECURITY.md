@@ -36,6 +36,9 @@ attacker gains.
   (`THICKEN_VISION_URL`), each photo, re-encoded without its EXIF, goes to
   that endpoint with `THICKEN_VISION_KEY`; nothing else does. Each lookup
   has a timeout. Nothing else is contacted.
+- **As an MCP server** (`thicken mcp`), it speaks only on stdio, to the agent
+  that started it, and never listens on a port: its tools read and write files
+  on your machine, where the agent asks.
 - **Programs it runs:** `ffmpeg` from your `PATH`, only to read a video; an
   installed Chrome or Edge, headless, only for previews, with the viewer and
   the model served from disk and no other request answered.
