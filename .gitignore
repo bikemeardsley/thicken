@@ -8,3 +8,6 @@ dist/
 out/
 *.glb
 *.gltf
+
+# Diagrams made with archify, kept locally
+.archify/

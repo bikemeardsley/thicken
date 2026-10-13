@@ -107,7 +107,7 @@ function caption(glb: string): string {
 }
 
 /** An installed Chrome or Edge (Edge is on every Windows machine), else Playwright's own Chromium if installed. */
-async function launch(): Promise<Browser> {
+export async function launch(): Promise<Browser> {
   for (const channel of ['chrome', 'msedge', undefined]) {
     try {
       return await chromium.launch({ channel, args: ['--enable-unsafe-swiftshader'] }); // WebGL without a GPU

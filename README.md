@@ -551,10 +551,6 @@ holder it fits, not its own thickness.
 For refractor and holo effects in a viewer, `simeydotme/pokemon-cards-css` is
 a reference only. It is GPL-3.0, so read it and don't copy it.
 
-**Made with** (tools, not dependencies):
-[tt-a1i/archify](https://github.com/tt-a1i/archify) drew the architecture
-diagram in `.archify/`.
-
 ## Stack
 
 TypeScript on Node 22.18+, with `sharp` for images. From a clone it runs

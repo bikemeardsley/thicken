@@ -1,0 +1,30 @@
+{
+  "text": "thicken",
+  "font": "Titan One",
+  "fontLicense": "OFL-1.1",
+  "color": "gold",
+  "widthMm": 100,
+  "heightMm": 20.2,
+  "depthMm": 7.9,
+  "measuredBy": {
+    "width": "default",
+    "depth": "round"
+  },
+  "review": [],
+  "warnings": [],
+  "profile": "lettering",
+  "sources": [
+    "thicken"
+  ],
+  "identifiedBy": {
+    "profile": "given"
+  },
+  "codes": [],
+  "build": {
+    "thicken": "0.1.0",
+    "createdAt": "2026-10-13T21:55:44.519Z",
+    "ms": 339,
+    "glbBytes": 1225368
+  },
+  "inputsKey": "42dd6596947fae0f"
+}

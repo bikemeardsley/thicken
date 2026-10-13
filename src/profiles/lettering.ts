@@ -13,7 +13,11 @@ import type { Profile } from '../thicken.ts';
 
 // opentype.js (MIT) reads the font: the three calls used here.
 interface Outline { toPathData(decimals: number): string; getBoundingBox(): { x1: number; y1: number; x2: number; y2: number } }
-interface Font { getPath(text: string, x: number, y: number, size: number): Outline; charToGlyph(char: string): { index: number } }
+interface Font {
+  getPath(text: string, x: number, y: number, size: number): Outline;
+  getPaths(text: string, x: number, y: number, size: number): Outline[];
+  charToGlyph(char: string): { index: number };
+}
 const opentype = createRequire(import.meta.url)('opentype.js') as { parse(buffer: ArrayBuffer): Font };
 
 const FONT = new URL('../../fonts/TitanOne-Regular.ttf', import.meta.url); // from src/profiles, and from dist/profiles built
@@ -37,26 +41,30 @@ export const lettering: Profile = {
     const bytes = readFileSync(FONT);
     const font = opentype.parse(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
     const missing = [...new Set(text)].filter((char) => char.trim() && font.charToGlyph(char).index === 0);
-    const outline = font.getPath(text, 0, 0, EM_PX);
-    const box = outline.getBoundingBox();
+    const shown = [...text].map((char) => (missing.includes(char) ? ' ' : char)).join(''); // not the font's placeholder box
+    const box = font.getPath(shown, 0, 0, EM_PX).getBoundingBox();
     if (!(box.x2 > box.x1)) throw new Error(`the font has none of the letters in "${text}"`);
 
-    // The words drawn, then each pixel's distance from their outline.
-    const pad = 4 * STEP_PX;
-    const [w, h] = [Math.ceil(box.x2 - box.x1) + 2 * pad, Math.ceil(box.y2 - box.y1) + 2 * pad];
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><path transform="translate(${pad - box.x1} ${pad - box.y1})" d="${outline.toPathData(3)}"/></svg>`;
-    const alpha = await sharp(Buffer.from(svg)).ensureAlpha().extractChannel(3).raw().toBuffer();
-    const sdf = signedDistance(alpha, w, h);
-    const grid = { sdf, w, h, cols: Math.floor((w - 1) / STEP_PX) + 1, rows: Math.floor((h - 1) / STEP_PX) + 1 };
-    const rise = inflate(grid); // px, at each grid point
+    // Each letter inflated on its own, where the font sets it: letters closer than the mesh's grid would otherwise
+    // be webbed together, and touching balloons just touch.
+    const letters = await Promise.all(font.getPaths(shown, 0, 0, EM_PX).filter((outline) => {
+      const { x1, x2 } = outline.getBoundingBox();
+      return x2 > x1;
+    }).map(inflated));
     let radius = 0; // how high the thickest stroke's middle rises: half its width, round in section
-    for (const r of rise) radius = Math.max(radius, r);
+    for (const { rise } of letters) for (const r of rise) radius = Math.max(radius, r);
 
     const widthMm = options.widthMm ?? WIDTH_MM;
     const mmPerPx = widthMm / (box.x2 - box.x1);
     const liftMm = options.depthMm ? options.depthMm / 2 / radius : mmPerPx; // per px of rise: round unless --depth
-    const middle = [pad + (box.x2 - box.x1) / 2, pad + (box.y2 - box.y1) / 2];
-    const part = pillow(grid, rise.map((r) => r * liftMm), ([x, y]) => [(x - middle[0]) * mmPerPx, (middle[1] - y) * mmPerPx]);
+    const middle = [(box.x1 + box.x2) / 2, (box.y1 + box.y2) / 2];
+    const part = emptyPart();
+    for (const { grid, rise, origin } of letters) {
+      const letter = pillow(grid, rise.map((r) => r * liftMm), ([x, y]) => [(origin[0] + x - middle[0]) * mmPerPx, (middle[1] - origin[1] - y) * mmPerPx]);
+      part.index.push(...letter.index.map((k) => k + part.position.length / 3));
+      part.position.push(...letter.position);
+      part.normal.push(...letter.normal);
+    }
 
     const doc = new Document();
     const mesh = doc.createMesh('lettering');
@@ -131,33 +139,57 @@ function edt1d(grid: Float64Array, offset: number, stride: number, length: numbe
   }
 }
 
+/** One letter drawn on its own, a margin round it, with how high each point of its grid rises (px) and where its drawing's top left is in the words' (px). */
+async function inflated(outline: Outline): Promise<{ grid: Grid; rise: Float64Array; origin: number[] }> {
+  const box = outline.getBoundingBox();
+  const pad = 4 * STEP_PX;
+  const [w, h] = [Math.ceil(box.x2 - box.x1) + 2 * pad, Math.ceil(box.y2 - box.y1) + 2 * pad];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><path transform="translate(${pad - box.x1} ${pad - box.y1})" d="${outline.toPathData(3)}"/></svg>`;
+  const alpha = await sharp(Buffer.from(svg)).ensureAlpha().extractChannel(3).raw().toBuffer();
+  const grid = { sdf: signedDistance(alpha, w, h), w, h, cols: Math.floor((w - 1) / STEP_PX) + 1, rows: Math.floor((h - 1) / STEP_PX) + 1 };
+  return { grid, rise: inflate(grid), origin: [box.x1 - pad, box.y1 - pad] };
+}
+
 interface Grid { sdf: Float64Array; w: number; h: number; cols: number; rows: number }
 const sdfAt = ({ sdf, w, h }: Grid, x: number, y: number) => sdf[Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))];
 
 /**
  * How high each grid point inside the letters rises, in px: √u, where ∇²u = −2 inside the outline and u = 0 on it,
- * solved by successive over-relaxation. Across a strip of half-width a that's √(a² − x²): a circle.
+ * solved by successive over-relaxation. Across a strip of half-width a that's √(a² − x²): a circle. A point beside
+ * the outline reaches it in less than a step, as far as the distance's change of sign says (Shortley and Weller's
+ * arms), so near the edge u goes with the true distance in, and the rim follows the outline, not the grid.
  */
 function inflate(grid: Grid): Float64Array {
   const { cols, rows } = grid;
-  const inside = new Uint8Array(cols * rows);
-  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) inside[j * cols + i] = Number(sdfAt(grid, i * STEP_PX, j * STEP_PX) > 0);
+  const s = new Float64Array(cols * rows);
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) s[j * cols + i] = sdfAt(grid, i * STEP_PX, j * STEP_PX);
+  // Each inside point's four neighbors (−1 where the outline comes first, where u is 0) and their weights.
+  const points: { k: number; near: number[]; weight: number[]; total: number }[] = [];
+  for (let j = 1; j + 1 < rows; j++) {
+    for (let i = 1; i + 1 < cols; i++) {
+      const k = j * cols + i;
+      if (s[k] <= 0) continue;
+      const near = [k - 1, k + 1, k - cols, k + cols];
+      const arm = near.map((n) => (s[n] > 0 ? STEP_PX : STEP_PX * Math.max(0.05, s[k] / (s[k] - s[n]))));
+      const weight = arm.map((a, e) => 2 / (a * (a + arm[e ^ 1]))); // e ^ 1: the arm opposite, along the same line
+      points.push({ k, near: near.map((n, e) => (s[n] > 0 ? n : -1 - e)), weight, total: weight.reduce((sum, w) => sum + w, 0) });
+    }
+  }
   const u = new Float64Array(cols * rows);
-  const source = 2 * STEP_PX * STEP_PX;
   for (let sweep = 0, change = Infinity; sweep < 5000 && change > 1e-3; sweep++) {
     change = 0;
-    for (let j = 1; j + 1 < rows; j++) {
-      for (let i = 1; i + 1 < cols; i++) {
-        const k = j * cols + i;
-        if (!inside[k]) continue;
-        const step = (u[k - 1] + u[k + 1] + u[k - cols] + u[k + cols] + source) / 4 - u[k];
-        u[k] += 1.9 * step;
-        change = Math.max(change, Math.abs(step));
-      }
+    for (const { k, near, weight, total } of points) {
+      let sum = 2;
+      for (let e = 0; e < 4; e++) if (near[e] >= 0) sum += weight[e] * u[near[e]];
+      const step = sum / total - u[k];
+      u[k] += 1.9 * step;
+      change = Math.max(change, Math.abs(step));
     }
   }
   return u.map(Math.sqrt);
 }
+
+const EDGE_PX = STEP_PX / 4; // a point this near the outline joins it: the seam
 
 /**
  * The letters as one closed surface: a grid over every cell the letters reach, its points risen by `rise` (mm) on the
@@ -179,12 +211,19 @@ function pillow(grid: Grid, rise: Float64Array, place: (px: number[]) => number[
     if (front[k] < 0) {
       let [x, y] = [i * STEP_PX, j * STEP_PX];
       const s = at(x, y);
-      if (s > 0) {
-        front[k] = add(x, y, rise[k]);
-        back[k] = add(x, y, -rise[k]);
+      const [gx, gy] = [(at(x + 1, y) - at(x - 1, y)) / 2, (at(x, y + 1) - at(x, y - 1)) / 2];
+      const g2 = gx * gx + gy * gy;
+      if (s > EDGE_PX) {
+        // The first row inside the outline, all moved to half a step in, so the steep rim rises evenly round the
+        // letter instead of in a saw-tooth (the rise goes as √ of the distance in, where the grid's points don't).
+        let r = rise[k];
+        if (s < STEP_PX && g2 > 1e-9) {
+          [x, y] = [x + ((STEP_PX / 2 - s) * gx) / g2, y + ((STEP_PX / 2 - s) * gy) / g2];
+          r *= Math.sqrt(STEP_PX / 2 / s);
+        }
+        front[k] = add(x, y, r);
+        back[k] = add(x, y, -r);
       } else {
-        const [gx, gy] = [(at(x + 1, y) - at(x - 1, y)) / 2, (at(x, y + 1) - at(x, y - 1)) / 2];
-        const g2 = gx * gx + gy * gy;
         if (g2 > 1e-9) [x, y] = [x - (s * gx) / g2, y - (s * gy) / g2];
         front[k] = back[k] = add(x, y, 0);
       }
@@ -194,7 +233,7 @@ function pillow(grid: Grid, rise: Float64Array, place: (px: number[]) => number[
   for (let j = 0; j + 1 < rows; j++) {
     for (let i = 0; i + 1 < cols; i++) {
       const corners = [[i, j], [i, j + 1], [i + 1, j + 1], [i + 1, j]]; // a, d, c, b: counterclockwise once y is up
-      const inside = corners.map(([ci, cj]) => at(ci * STEP_PX, cj * STEP_PX) > 0);
+      const inside = corners.map(([ci, cj]) => at(ci * STEP_PX, cj * STEP_PX) > EDGE_PX);
       if (!inside.some(Boolean)) continue;
       for (const tri of [[0, 1, 2], [0, 2, 3]]) {
         if (!tri.some((c) => inside[c])) continue; // all on the outline: front and back would coincide
