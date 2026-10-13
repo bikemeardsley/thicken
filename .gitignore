@@ -11,3 +11,4 @@ out/
 
 # Diagrams made with archify, kept locally
 .archify/
+.diagram-design

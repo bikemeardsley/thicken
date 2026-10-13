@@ -153,14 +153,15 @@ test('slab: the models read its label, the grade and the card, and with no QR co
 test('slab: the cert is the first whole cert number in the QR link, not a tracking number after it', async (t) => {
   const { prepareZXingModule, writeBarcode } = await import('zxing-wasm/full');
   prepareZXingModule({ overrides: { wasmBinary: readFileSync(createRequire(import.meta.url).resolve('zxing-wasm/full/zxing_full.wasm')) } });
-  const written = await writeBarcode('https://www.psacard.com/cert/12345678?ref=98765432', { format: 'QRCode', scale: 2 });
+  // In capitals, as real labels' QR codes hold their links.
+  const written = await writeBarcode('HTTPS://WWW.PSACARD.COM/CERT/12345678?REF=98765432', { format: 'QRCode', scale: 2 });
   const qr = Buffer.from(await written.image!.arrayBuffer());
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
   const front = path.join(folder, 'front.png');
   await sharp({ create: { width: 296, height: 500, channels: 3, background: '#ffffff' } }).composite([{ input: qr, left: 20, top: 20 }]).png().toFile(front);
   const { sidecar } = await thicken([front]);
-  assert.deepEqual([sidecar.grader, sidecar.cert], ['psa', '12345678']);
+  assert.deepEqual([sidecar.grader, sidecar.cert, sidecar.verifyUrl], ['psa', '12345678', 'https://www.psacard.com/CERT/12345678?REF=98765432']);
 });
 
 test('slab: a label\'s codes say what it is, not which side a photo shows: without vision, two photos stop the run', async (t) => {
