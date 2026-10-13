@@ -43,3 +43,18 @@ jobs:
           cd "$RUNNER_TEMP" && npm init -y > /dev/null && npm install ./thicken-*.tgz
           npx thicken badge "$GITHUB_WORKSPACE/test/fixtures/badge.png" -o badge.glb
           node --input-type=module -e "import { thicken } from 'thicken'; if (typeof thicken !== 'function') process.exit(1)"
+  # A pull request from a fork adds a profile (CONTRIBUTING.md), so it touches only that profile's own files: its
+  # source, its tests, fixtures, and the README's regenerated table. Anything more fails here, for a closer look.
+  profile-only:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Only a profile's own files
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          outside=$(git diff --name-only "origin/$BASE...HEAD" | grep -vE '^(src/profiles/[a-z0-9-]+\.ts|test/profiles/[a-z0-9-]+\.test\.ts|test/fixtures/.+|README\.md)$' || true)
+          if [ -n "$outside" ]; then printf 'Outside a profile'"'"'s own files (open an issue first):\n%s\n' "$outside"; exit 1; fi

@@ -8,22 +8,21 @@
 // cover's ISBN feeds the book's size lookup without being typed in. The
 // sidecar records how each fact was found, what still needs review, and how
 // the model was built.
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { codes, load, VIDEO, type Picture } from './image.ts';
-import { badge } from './profiles/badge.ts';
-import { book } from './profiles/book.ts';
-import { box } from './profiles/box.ts';
-import { card } from './profiles/card.ts';
-import { slab } from './profiles/slab.ts';
 import { identify, lookAll, readOf, visionOn, visionRecord, type Sight } from './vision.ts';
 
 /** A kind of object Thicken knows. */
 export interface Profile {
   name: string;
-  /** What it is, in a few words, for the vision models choosing a profile; one without (a badge is artwork, not a photo) isn't offered. */
-  about?: string;
+  /** What it is, in a few words: for the README, and for the vision models choosing a profile (one with faces to find). */
+  about: string;
+  /** For the README's table of profiles: what it's made from, and what it makes. */
+  input: string;
+  makes: string;
   /** Its faces, each in a few words, for the vision models finding them in a photo. */
   faces: Record<string, string>;
   /** Anything more the vision models need to find its faces the right way up. */
@@ -34,13 +33,24 @@ export interface Profile {
   asks?: Record<string, string>;
   /** Faces left where the models put them, not snapped to the nearest strong edge (it's often the wrong one). */
   unsnapped?: string[];
+  /** A generic shape (box), taking anything of its shape: tried after every specific profile. */
+  generic?: boolean;
   /** Unaided: whether its codes or pictures give it away, each code's use, and what they say. */
   read?(scanned: Scanned[], pictures: Picture[]): Facts;
   build(pictures: Picture[], job: Job): Promise<{ glb: Uint8Array; sidecar: Built }>;
 }
 
-/** The kinds of object Thicken knows, in the order they're tried unaided. */
-export const PROFILES: Profile[] = [book, slab, badge, card, box];
+const isProfile = (value: any): value is Profile => typeof value?.name === 'string' && typeof value.build === 'function' && typeof value.faces === 'object';
+/**
+ * The kinds of object Thicken knows: every profile in src/profiles, found by itself, so a new one is one file and
+ * nothing else (CONTRIBUTING.md). Alphabetical, the generic shapes last, the order they're tried unaided. From a
+ * clone the files are .ts; from npm, built, .js.
+ */
+const folder = new URL('./profiles/', import.meta.url);
+const ext = path.extname(fileURLToPath(import.meta.url));
+export const PROFILES: Profile[] = (await Promise.all(readdirSync(folder).filter((file) => file.endsWith(ext)).sort().map((file) => import(new URL(file, folder).href))))
+  .flatMap((module) => Object.values(module).filter(isProfile))
+  .sort((a, b) => Number(Boolean(a.generic)) - Number(Boolean(b.generic)));
 
 export interface Options {
   profile?: string;
@@ -98,7 +108,7 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
   const started = performance.now();
   const { sizeMm = [] } = options;
   if (sizeMm.some((mm) => mm !== undefined && !(mm > 0))) throw new Error('sizes must be positive millimeters, e.g. 152x229x25');
-  const named = options.profile ? PROFILES.find((p) => p.name === options.profile) : options.isbn ? book : undefined;
+  const named = PROFILES.find((p) => p.name === (options.profile ?? (options.isbn ? 'book' : undefined)));
   if (options.profile && !named) throw new Error(`no "${options.profile}" profile (known: ${PROFILES.map((p) => p.name).join(', ')})`);
   if (!visionOn() && inputs.some((input) => VIDEO.test(input))) {
     throw new Error('a video is for the vision models, which find the object in its frames: set up a vision roster (see the README), or leave the video out');
@@ -106,10 +116,11 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
   const pictures =(await Promise.all(inputs.map((input) => load(input)))).flat();
   if (!pictures.length && !options.isbn) throw new Error('give a picture to make it from, or a book\'s --isbn');
 
-  const scanned = named === badge ? [] : await scan(pictures);
+  // A profile with no faces is artwork (a badge), not a photo of an object: no codes to read.
+  const scanned = named && !Object.keys(named.faces).length ? [] : await scan(pictures);
   let profile = named ?? PROFILES.find((p) => p.read?.(scanned, pictures).recognized);
   // Nothing gives it away: with a vision roster, the models say which it is, and roughly how big.
-  const identity = profile || !visionOn() ? undefined : await identify(pictures[0], PROFILES.filter((p) => p.about));
+  const identity = profile || !visionOn() ? undefined : await identify(pictures[0], PROFILES.filter((p) => Object.keys(p.faces).length));
   profile ??= PROFILES.find((p) => p.name === identity?.profile);
   if (!profile) {
     throw new Error(`can't tell what this is: no ISBN barcode, no grader's QR code or cert barcode, not cut-out artwork${

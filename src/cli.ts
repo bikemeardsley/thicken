@@ -14,11 +14,11 @@ import { batchItems, PROFILES, thicken, type Options, type Sidecar } from './thi
 const USAGE = `usage: thicken [${PROFILES.map((p) => p.name).join('|')}] <picture, PDF or video>... [-o out.glb] [--preview]
        thicken batch [profile] <folder> [-o out-folder] [--preview] [--force]
        thicken preview <model.glb or folder>...
-  book   front back spine (any order) [--isbn 978...] [--size WxHxD]  (mm; any left out are looked up or estimated)
-  slab   front [back]  [--holder psa|psa-thick|psa-tall|bgs|cgc|cgc-tall|sgc|tag] [--size WxHxD] [--pt N]
-  card   front [back]  [--size WxH] [--pt N]  (a raw trading card; --pt for a thick one: 55, 75, 100, 130, 180)
-  badge  artwork       [--width mm] [--depth mm]
-  box    front [back, sides]  [--size WxHxD]  (anything box-shaped; with vision, the size can be estimated)
+Profiles (src/profiles), each from:
+${PROFILES.map((p) => `  ${p.name.padEnd(8)} ${p.input.replace(/`/g, '')}`).join('\n')}
+Options: --size WxHxD (mm; any left out are looked up or estimated), --isbn 978... (a book),
+  --holder psa|psa-thick|psa-tall|bgs|cgc|cgc-tall|sgc|tag (a slab), --pt N (a thick card's points:
+  55, 75, 100, 130, 180), --width and --depth (a badge, in mm).
 Pictures: JPEG, PNG, HEIC, WebP, AVIF, GIF, TIFF, SVG, or a scanner app's PDF (one picture per page).
 Video (MOV, MP4), with a vision roster and ffmpeg installed: a handful of its sharpest frames go
 to the models as more pictures, and show any face no photo does.

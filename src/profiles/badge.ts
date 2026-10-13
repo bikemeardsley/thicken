@@ -12,6 +12,9 @@ import type { Profile } from '../thicken.ts';
 
 export const badge: Profile = {
   name: 'badge',
+  about: 'cut-out digital artwork: a certification badge, logo or sticker design',
+  input: 'Artwork with transparency around its shape (`--width`, `--depth` in mm)',
+  makes: 'The artwork\'s own outline, extruded: the art on its face, its edge color on the sides and back',
   faces: {}, // artwork, not a photo of an object: nothing for the vision models to find, only to read
   reads: {
     name: 'what it names: the certification, award, achievement, rank or title', issuer: 'who issued or awards it',

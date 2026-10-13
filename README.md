@@ -62,17 +62,18 @@ a vault of your slabs. The fields are under
 ## What it makes
 
 Thicken makes the 3D object; what it knows about kinds of object lives in
-profiles, one file each in `src/profiles`. Two families:
+profiles, one file each in `src/profiles`. Anyone can add one
+([CONTRIBUTING.md](CONTRIBUTING.md)). Every profile there today:
 
-| Profile | Input | Output |
-| --- | --- | --- |
-| **Digital artwork made into an object** | | |
-| Badge | Artwork with transparency | The artwork's own outline, extruded |
-| **A real object rebuilt at its real size** | | |
-| Box | Front [back, sides], and its size (or a vision estimate) | Softly rounded box with the photos on its faces: anything box-shaped, from a game case to a phone |
-| Book | Front cover, back, spine (any order, any of them), or just an ISBN | Softly rounded box at the book's size: covers, spine, page edges |
-| Graded slab | Front [back] | A clear plastic holder at its real size, with the card and the grade label inside it, each cut from the photos |
-| Raw card | Front [back] | A thin plate, its corners cut as the vision models say the card's are (square, slight or round), its foil shimmering where they say it is, 63.5 × 88.9 mm unless `--size` says otherwise, 0.35 mm thick unless `--pt` gives a thick card's points |
+<!-- profiles:start (made by npm run readme) -->
+| Profile | What it is | From | Makes | With vision, reads |
+| --- | --- | --- | --- | --- |
+| `badge` | cut-out digital artwork: a certification badge, logo or sticker design | Artwork with transparency around its shape (`--width`, `--depth` in mm) | The artwork's own outline, extruded: the art on its face, its edge color on the sides and back | name, issuer, level, subject, date, id, text |
+| `book` | a book, hardcover or paperback | Front cover, back, spine and page sides, in any order and any of them; or just an ISBN | The book at its real size, from its ISBN's catalog record: a paperback softly rounded, a hardcover with boards standing past its pages | title, subtitle, authors, series, publisher, edition |
+| `card` | a single trading card on its own, not sealed in a plastic holder | Front, and its back | A thin plate, 63.5 × 88.9 mm unless `--size` says, 0.35 mm unless `--pt` gives a thick card's points; its corners cut and its foil shimmering as the vision models see them | name, team, year, maker, set, number, variant |
+| `slab` | a graded trading card sealed in a clear plastic holder with a label | Front, and its back | A clear plastic holder at its grader's size, with the card and the grade label inside it, each cut from the photos | grader, grade, gradeName, qualifier, subgrades, autoGrade, autoGradeName, autograph, signed, cert, name, team, year, maker, set, number, variant |
+| `box` | a box-shaped object (a game case, a phone, a deck of cards, packaging) | Front, and any of its back and sides; its size (`--size`), or the vision models' estimate | A softly rounded box with the photos on its faces | title, brand, edition, rating, year |
+<!-- profiles:end -->
 
 Name the profile, or leave it out and Thicken picks one:
 
@@ -96,14 +97,15 @@ Name the profile, or leave it out and Thicken picks one:
 The sidecar's `identifiedBy.profile` says which way it was chosen: `given`,
 `recognized` (codes or the artwork), or `vision`.
 
-**Adding a profile** is one file in `src/profiles`, listed in `PROFILES`
-(`src/thicken.ts`): its name; a few words on what it is and on each of its
-faces, which is all the vision models are told; what to read off it (more is
-better: the sidecar is for apps to take what they want from); optionally how
-its codes or pictures give it away unaided; and how to build it from the
-photos placed on its faces. Generic profiles are named for the shape they build (`box`, and
+**Adding a profile** is one file in `src/profiles`, found by itself, nothing
+else to change: its name; a few words on what it is and on each of its faces,
+which is all the vision models are told; what to read off it (more is better:
+the sidecar is for apps to take what they want from); optionally how its codes
+or pictures give it away unaided; and how to build it from the photos placed
+on its faces. Generic profiles are named for the shape they build (`box`, and
 later perhaps `flat` or `cylinder`), not "unknown": a shape Thicken can't
-build is refused rather than forced into one it can.
+build is refused rather than forced into one it can. Contributions welcome:
+[CONTRIBUTING.md](CONTRIBUTING.md) says how.
 
 Pictures are placed on faces by what they show (see
 [Photos](#photos-any-number)). With no front, Open Library's cover stands in,
