@@ -20,6 +20,8 @@ import { pooled, readOf, type Sight } from '../vision.ts';
 export const book: Profile = {
   name: 'book',
   about: 'a book, hardcover or paperback',
+  input: 'Front cover, back, spine and page sides, in any order and any of them; or just an ISBN',
+  makes: 'The book at its real size, from its ISBN\'s catalog record: a paperback softly rounded, a hardcover with boards standing past its pages',
   faces: {
     front: 'front cover', back: 'back cover', spine: 'spine', edge: 'the page edge opposite the spine', top: 'top', bottom: 'bottom',
     sticker: 'a shiny foil sticker or seal on the front cover (gold, silver or holographic: an award seal, a signed-copy sticker), if there is one',

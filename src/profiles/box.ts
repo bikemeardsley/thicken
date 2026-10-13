@@ -13,7 +13,10 @@ const FACES: Face[] = ['front', 'back', 'left', 'right', 'top', 'bottom'];
 
 export const box: Profile = {
   name: 'box',
+  generic: true,
   about: 'a box-shaped object (a game case, a phone, a deck of cards, packaging)',
+  input: 'Front, and any of its back and sides; its size (`--size`), or the vision models\' estimate',
+  makes: 'A softly rounded box with the photos on its faces',
   faces: { front: 'front', back: 'back', left: 'left side', right: 'right side', top: 'top', bottom: 'bottom' },
   reads: {
     title: 'its name: the product, game, film or model', brand: 'the brand or maker', edition: 'any edition, version, platform or model number',

@@ -34,6 +34,8 @@ const SHAPE_TOLERANCE = 0.04;
 export const card: Profile = {
   name: 'card',
   about: 'a single trading card on its own, not sealed in a plastic holder',
+  input: 'Front, and its back',
+  makes: 'A thin plate, 63.5 × 88.9 mm unless `--size` says, 0.35 mm unless `--pt` gives a thick card\'s points; its corners cut and its foil shimmering as the vision models see them',
   faces: { front: 'front', back: 'back', art: 'the picture box on the front: the artwork\'s panel, to the edge of its frame' },
   note: 'The picture box is part of the front: give its corners in the front\'s own order, top-left first.',
   reads: CARD_READS,

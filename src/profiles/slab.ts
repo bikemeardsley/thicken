@@ -22,6 +22,8 @@ const SLAB_SHAPE_TOLERANCE = 0.06; // a photo this close to a holder's shape, gi
 export const slab: Profile = {
   name: 'slab',
   about: 'a graded trading card sealed in a clear plastic holder with a label',
+  input: 'Front, and its back',
+  makes: 'A clear plastic holder at its grader\'s size, with the card and the grade label inside it, each cut from the photos',
   faces: {
     front: 'the side showing the grade: the label that names the card and gives its grade, and the card\'s face',
     back: 'the reverse: the back of the label (a logo, hologram or QR code, no grade) and the back of the card',

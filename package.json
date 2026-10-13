@@ -21,10 +21,11 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "test": "node --test test/*.test.ts",
+    "test": "node --test test/*.test.ts test/profiles/*.test.ts",
     "check": "tsc",
     "build": "tsc -p tsconfig.build.json",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "readme": "node scripts/readme.ts"
   },
   "dependencies": {
     "@gltf-transform/core": "4.5.1",
