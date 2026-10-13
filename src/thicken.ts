@@ -35,6 +35,8 @@ export interface Profile {
   unsnapped?: string[];
   /** A generic shape (box), taking anything of its shape: tried after every specific profile. */
   generic?: boolean;
+  /** Made from words, not pictures (lettering): what's given in place of files is its text, handed to build as `job.words`. */
+  words?: boolean;
   /** Unaided: whether its codes or pictures give it away, each code's use, and what they say. */
   read?(scanned: Scanned[], pictures: Picture[]): Facts;
   build(pictures: Picture[], job: Job): Promise<{ glb: Uint8Array; sidecar: Built }>;
@@ -72,7 +74,7 @@ export interface Code { picture: number; format: string; use?: string; text?: st
 /** What a profile read unaided: whether this is its kind of object, each code's use (by its place among those scanned), and the facts. */
 export interface Facts { recognized: boolean; use: (string | undefined)[]; [fact: string]: unknown }
 /** What a profile builds from: the options, what it read, the codes as recorded, and what the vision models saw and estimated. */
-export interface Job { options: Options; facts: Facts; codes: Code[]; sights?: Sight[]; estimateMm?: number[] }
+export interface Job { options: Options; facts: Facts; codes: Code[]; sights?: Sight[]; estimateMm?: number[]; words?: string[] }
 
 export interface Sidecar {
   profile: string;
@@ -110,11 +112,11 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
   if (sizeMm.some((mm) => mm !== undefined && !(mm > 0))) throw new Error('sizes must be positive millimeters, e.g. 152x229x25');
   const named = PROFILES.find((p) => p.name === (options.profile ?? (options.isbn ? 'book' : undefined)));
   if (options.profile && !named) throw new Error(`no "${options.profile}" profile (known: ${PROFILES.map((p) => p.name).join(', ')})`);
-  if (!visionOn() && inputs.some((input) => VIDEO.test(input))) {
+  if (!named?.words && !visionOn() && inputs.some((input) => VIDEO.test(input))) {
     throw new Error('a video is for the vision models, which find the object in its frames: set up a vision roster (see the README), or leave the video out');
   }
-  const pictures =(await Promise.all(inputs.map((input) => load(input)))).flat();
-  if (!pictures.length && !options.isbn) throw new Error('give a picture to make it from, or a book\'s --isbn');
+  const pictures = named?.words ? [] : (await Promise.all(inputs.map((input) => load(input)))).flat();
+  if (!pictures.length && !options.isbn && !named?.words) throw new Error('give a picture to make it from, or a book\'s --isbn');
 
   // A profile with no faces is artwork (a badge), not a photo of an object: no codes to read.
   const scanned = named && !Object.keys(named.faces).length ? [] : await scan(pictures);
@@ -131,7 +133,7 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
   const recorded: Code[] = scanned.map(({ picture, format, text }, i) => ({ picture, format, ...(facts.use[i] && { use: facts.use[i], text }) }));
   // With a vision roster, the models find each photo's faces, which are cut out and straightened (src/vision.ts).
   const sights = visionOn() && (Object.keys(profile.faces).length || profile.reads) ? await lookAll(pictures, profile) : undefined;
-  const built = await profile.build(pictures, { options, facts, codes: recorded.map((code, i) => ({ ...code, at: scanned[i].at })), sights, estimateMm: identity?.sizeMm });
+  const built = await profile.build(pictures, { options, facts, codes: recorded.map((code, i) => ({ ...code, at: scanned[i].at })), sights, estimateMm: identity?.sizeMm, ...(profile.words && { words: inputs }) });
 
   const named_ = (i: number) => {
     const { file, page, time } = pictures[i].source;

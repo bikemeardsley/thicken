@@ -5,7 +5,7 @@
   "license": "MIT",
   "author": "Michael Beardsley (https://github.com/bikemeardsley)",
   "repository": "github:bikemeardsley/thicken",
-  "keywords": ["3d", "glb", "gltf", "photos", "books", "trading-cards", "graded-cards", "slab", "badge", "vision"],
+  "keywords": ["3d", "glb", "gltf", "photos", "books", "trading-cards", "graded-cards", "slab", "badge", "lettering", "vision"],
   "type": "module",
   "bin": {
     "thicken": "dist/cli.js"
@@ -16,7 +16,7 @@
       "default": "./dist/thicken.js"
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "fonts"],
   "engines": {
     "node": ">=22.18"
   },
@@ -34,6 +34,7 @@
     "earcut": "3.2.4",
     "exif-reader": "2.0.3",
     "libheif-js": "1.23.2",
+    "opentype.js": "2.0.0",
     "playwright-core": "1.63.0",
     "sharp": "0.35.5",
     "unpdf": "1.8.1",
