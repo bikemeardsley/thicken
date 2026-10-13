@@ -77,10 +77,10 @@ const sidecarOf = (glb: string) => glb.replace(/(\.glb)?$/i, '.json');
 const readSidecar = (glb: string): Promise<Sidecar | undefined> =>
   readFile(sidecarOf(glb), 'utf8').then((text) => JSON.parse(text), () => undefined);
 
-/** What a model was made from: each picture's name, size and time. A changed picture changes it, whatever its date. */
+/** What a model was made from: each picture's name, size and time (words, for lettering, as they are). A changed picture changes it, whatever its date. */
 async function inputsKey(files: string[]) {
   const parts = await Promise.all(files.map(async (file) => {
-    const { size, mtimeMs } = await stat(file);
+    const { size, mtimeMs } = await stat(file).catch(() => ({ size: 0, mtimeMs: 0 }));
     return [path.basename(file), size, mtimeMs];
   }));
   return createHash('sha256').update(JSON.stringify(parts)).digest('hex').slice(0, 16);
@@ -154,6 +154,7 @@ try {
     }
   } else {
     if (values.isbn) throw new Error('--isbn names one book; a batch reads each book\'s own barcode');
+    if (PROFILES.find((p) => p.name === profile)?.words) throw new Error(`${profile} is made from words, not a folder: thicken ${profile} <words>`);
     const [folder] = positionals;
     const outFolder = values.out ?? path.join(folder, 'thicken');
     const items = await batchItems(folder, outFolder);
