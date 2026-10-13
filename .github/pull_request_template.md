@@ -5,7 +5,8 @@
 ## For a new profile ([CONTRIBUTING.md](../CONTRIBUTING.md))
 
 - [ ] One file, `src/profiles/<name>.ts`, exporting one profile named as the file
-- [ ] Tests in `test/profiles/<name>.test.ts`, on pictures the test draws or I made
+- [ ] Tests in `test/profiles/<name>.test.ts`, on pictures the test draws or I made (in `test/fixtures/<name>/`)
+- [ ] Nothing runs when the file loads; `read` claims only pictures that are certainly this kind of object
 - [ ] Each standard size has its source in a comment
 - [ ] `npm run readme`, `npm run check` and `npm test` pass
 - [ ] No new dependencies or command-line options

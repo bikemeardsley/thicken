@@ -48,7 +48,7 @@ const isProfile = (value: any): value is Profile => typeof value?.name === 'stri
  */
 const folder = new URL('./profiles/', import.meta.url);
 const ext = path.extname(fileURLToPath(import.meta.url));
-export const PROFILES: Profile[] = (await Promise.all(readdirSync(folder).filter((file) => file.endsWith(ext)).sort().map((file) => import(new URL(file, folder).href))))
+export const PROFILES: Profile[] = (await Promise.all(readdirSync(folder).filter((file) => file.endsWith(ext) && !file.endsWith('.d.ts')).sort().map((file) => import(new URL(file, folder).href))))
   .flatMap((module) => Object.values(module).filter(isProfile))
   .sort((a, b) => Number(Boolean(a.generic)) - Number(Boolean(b.generic)));
 

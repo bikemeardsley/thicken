@@ -10,6 +10,11 @@ import sharp from 'sharp';
 export const fixture = (name: string) => fileURLToPath(new URL(`fixtures/${name}`, import.meta.url));
 
 delete process.env.THICKEN_DATASET; // test photos never go into a real training set
+// Tests run offline: a test that needs the web stands in for it with catalog(), and any other fetch fails, so no test
+// passes or fails by what a real service answered today.
+globalThis.fetch = async (url) => {
+  throw new Error(`tests run offline: ${String(url)} was fetched with no stand-in (catalog() in test/helpers.ts)`);
+};
 
 export const hasFfmpeg = spawnSync('ffmpeg', ['-version']).status === 0;
 

@@ -53,16 +53,25 @@ talk it over before you write code.
    again in `review`.
 4. **Test it** in `test/profiles/<name>.test.ts`. Use pictures the test
    draws itself (sharp, SVG; see `test/profiles/slab.test.ts`), or small
-   images you made, in `test/fixtures/`. No photos of real products, cover
-   art, logos or anyone else's artwork: the repo has to stay publishable.
-   Tests run offline: `catalog()` in `test/helpers.ts` stands in for web
-   lookups and the vision models.
+   images you made, in `test/fixtures/<name>/`. No photos of real products,
+   cover art, logos or anyone else's artwork: the repo has to stay
+   publishable. Tests run offline (a fetch with no stand-in fails):
+   `catalog()` in `test/helpers.ts` stands in for web lookups and the
+   vision models.
 5. **Check it:** `npm run readme` (rewrites the README's table of profiles),
    `npm run check`, `npm test`. `test/profiles.test.ts` checks every profile
-   for what it must have.
+   for what it must have, and that no profile recognizes another's
+   pictures: your `read` must not claim the other profiles' fixtures, nor
+   theirs yours.
 
 ## Rules
 
+- **Nothing runs when it loads.** thicken loads every profile on every run,
+  so a profile file only declares: no top-level code beyond its constants
+  and its profile. Work happens in `read` and `build`.
+- **Recognize only your own.** `read` says a picture is yours from what's
+  certain (a code, a shape no other object has); anything less is left to
+  the vision models, which choose by `about`.
 - **Real sizes, with sources.** Each standard size gets a comment saying
   where it came from: a spec, a maker's page, a measured example. Estimates
   are fine, marked as estimates.
@@ -79,11 +88,17 @@ talk it over before you write code.
 
 ## The pull request
 
-It should touch only `src/profiles/<name>.ts`, `test/profiles/<name>.test.ts`,
-files in `test/fixtures/`, and `README.md` (the regenerated table). A check
-marks a pull request from a fork that touches anything else. Fill in the
-template; the maintainer approves or declines it, and an approved profile
-ships in the next release.
+It adds new files only: `src/profiles/<name>.ts`,
+`test/profiles/<name>.test.ts`, and fixtures in `test/fixtures/<name>/`, each
+under 1 MB; and changes `README.md` only in its regenerated table. A check
+fails a pull request from a fork that edits, deletes or renames anything
+else, before any of its code runs; improving an existing profile starts as an
+issue. Fill in the template; the maintainer approves or declines it, and an
+approved profile ships in the next release.
+
+The review reads the whole profile: what it does at load, which hosts it
+contacts and what it sends them, how broadly `read` claims pictures, and
+where its sizes come from.
 
 By contributing, you agree your work is released under the
 [MIT license](LICENSE).

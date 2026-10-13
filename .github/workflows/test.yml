@@ -10,6 +10,9 @@ permissions:
   contents: read
 jobs:
   test:
+    # After the file check on a fork's pull request, so a pull request that fails it runs none of its code here.
+    needs: profile-only
+    if: ${{ !cancelled() && needs.profile-only.result != 'failure' }}
     strategy:
       fail-fast: false
       matrix:
@@ -43,8 +46,9 @@ jobs:
           cd "$RUNNER_TEMP" && npm init -y > /dev/null && npm install ./thicken-*.tgz
           npx thicken badge "$GITHUB_WORKSPACE/test/fixtures/badge.png" -o badge.glb
           node --input-type=module -e "import { thicken } from 'thicken'; if (typeof thicken !== 'function') process.exit(1)"
-  # A pull request from a fork adds a profile (CONTRIBUTING.md), so it touches only that profile's own files: its
-  # source, its tests, fixtures, and the README's regenerated table. Anything more fails here, for a closer look.
+  # A pull request from a fork adds a profile (CONTRIBUTING.md): new files only, each a plain file under 1 MB, in
+  # src/profiles, test/profiles and test/fixtures/<profile>/, plus the README's regenerated table. Editing, deleting
+  # or renaming anything, a symlink, or the README beyond its table fails here, before any of its code runs.
   profile-only:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
@@ -52,9 +56,22 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Only a profile's own files
+      - name: Only a new profile's own files
         env:
           BASE: ${{ github.base_ref }}
         run: |
-          outside=$(git diff --name-only "origin/$BASE...HEAD" | grep -vE '^(src/profiles/[a-z0-9-]+\.ts|test/profiles/[a-z0-9-]+\.test\.ts|test/fixtures/.+|README\.md)$' || true)
-          if [ -n "$outside" ]; then printf 'Outside a profile'"'"'s own files (open an issue first):\n%s\n' "$outside"; exit 1; fi
+          fail=0
+          while IFS=$'\t' read -r meta file; do
+            set -- $meta # :old-mode new-mode old-blob new-blob status
+            if [[ "$5" == A && ( "$file" =~ ^src/profiles/[a-z][a-z0-9-]*\.ts$ || "$file" =~ ^test/profiles/[a-z][a-z0-9-]*\.test\.ts$ || "$file" =~ ^test/fixtures/[a-z][a-z0-9-]*/[^/]+$ ) ]] \
+              || [[ "$5" == M && "$file" == README.md ]]; then
+              if [ "$2" != 100644 ]; then echo "not a plain file: $file"; fail=1; fi
+              if [ "$(git cat-file -s "$4")" -gt 1048576 ]; then echo "over 1 MB: $file"; fail=1; fi
+            else
+              echo "not a new profile's own file ($5): $file"; fail=1
+            fi
+          done < <(git diff --raw --no-renames --no-abbrev "origin/$BASE...HEAD")
+          table() { sed '/<!-- profiles:start/,/<!-- profiles:end -->/d'; }
+          if ! diff <(git show "origin/$BASE:README.md" | table) <(table < README.md) > /dev/null; then echo "README.md changed outside its table of profiles"; fail=1; fi
+          if [ $fail = 1 ]; then echo "A profile pull request adds only a profile's own files: anything else starts as an issue (CONTRIBUTING.md)."; fi
+          exit $fail
