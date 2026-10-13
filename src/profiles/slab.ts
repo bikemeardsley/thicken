@@ -82,7 +82,9 @@ function readLabel(scanned: Scanned[]) {
       if (!found.grader) {
         // The cert number is the first path segment, query value or fragment segment that is one, whole.
         const cert = [...url.pathname.split('/'), ...url.searchParams.values(), ...url.hash.split(/[#/?&=]/)].find((part) => CERT.test(part));
-        Object.assign(found, { grader: GRADER_SITES[site], verifyUrl: text });
+        // QR codes hold URLs in capitals (their compact alphanumeric mode): the link as a browser takes it, scheme
+        // and host in lowercase, its path as printed.
+        Object.assign(found, { grader: GRADER_SITES[site], verifyUrl: url?.href ?? text });
         if (cert) Object.assign(found, { cert: cert.toUpperCase(), certFrom: 'qr' });
       }
       use[i] = 'grader';
