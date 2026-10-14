@@ -5,6 +5,11 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/thicken"><img src="https://img.shields.io/npm/v/thicken?color=cb3837&logo=npm" alt="npm"></a>
   <a href="https://github.com/bikemeardsley/thicken/actions/workflows/test.yml"><img src="https://github.com/bikemeardsley/thicken/actions/workflows/test.yml/badge.svg" alt="Tests"></a>
+  <a href="https://registry.modelcontextprotocol.io/?q=thicken"><img src="https://img.shields.io/badge/MCP_Registry-111111?logo=modelcontextprotocol&logoColor=white" alt="In the official MCP Registry"></a>
+  <a href="https://skills.sh/bikemeardsley/thicken/thicken"><img src="https://img.shields.io/badge/skills.sh-111111" alt="On skills.sh"></a>
+  <a href="https://www.khronos.org/gltf/"><img src="https://img.shields.io/badge/glTF_2.0-87C540" alt="glTF 2.0"></a>
+  <br>
+  <a href="#development"><img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript"></a>
   <a href="#try-it"><img src="https://img.shields.io/node/v/thicken?color=339933&logo=nodedotjs&logoColor=white" alt="Node 22.18 or later"></a>
   <a href="LICENSE"><img src="https://img.shields.io/npm/l/thicken?color=blue" alt="MIT license"></a>
   <a href="https://buymeacoffee.com/bikemeardsley"><img src="https://img.shields.io/badge/Buy_Me_a_Coffee-FFDD00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee"></a>
