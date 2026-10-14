@@ -36,7 +36,8 @@ boxes, badges, lettering. **Start with [README.md](../README.md)**, then
 ## A release
 
 Bump the version in `package.json`, `server.json` (twice),
-`plugin/.claude-plugin/plugin.json` (`version` and the pin), `mcp.json`,
+`plugin/.claude-plugin/plugin.json` (`version` and the pin), `plugin/plugin.json`
+and `plugin/mcp.json` (the Agent Plugin, for Copilot), `mcp.json`,
 `gemini-extension.json` and `plugin/package.json` (test/mcp.test.ts fails
 until they agree). `npm publish` (staged: approve it on npmjs.com); then, once
 the version is on npm, `npm install --package-lock-only --ignore-scripts` in
