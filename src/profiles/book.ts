@@ -452,7 +452,7 @@ async function fetchBytes(url: string, log: Log): Promise<Buffer | undefined> {
   const started = performance.now();
   const note = (status: Lookup['status']) => log.lookups.push({ host, path, status, ms: Math.round(performance.now() - started) });
   try {
-    const response = await fetch(url, { headers: { 'User-Agent': 'Thicken (3D models from photos)' }, signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS) });
+    const response = await fetch(url, { headers: { 'User-Agent': 'thicken (3D models from photos; https://github.com/bikemeardsley/thicken)' }, signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS) });
     note(response.status);
     if (response.ok) return Buffer.from(await response.arrayBuffer());
     if (response.status !== 404) log.warnings.push(`${host} answered ${response.status}`);

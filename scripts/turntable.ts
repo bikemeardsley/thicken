@@ -6,7 +6,8 @@
 //   float: a slow, uneven drift, small turns, a lean and a rise and fall, as a balloon floats (the logo)
 //   node scripts/turntable.ts <model.glb> <out.webp> [--motion spin|float] [--still out.png] [--width 900]
 //     [--height 300] [--zoom 100] [--tilt 75] [--frames 90] [--fps 15] [--exposure 1.0] [--environment neutral|legacy]
-//     [--shadow 0.6]
+//     [--shadow 0.6] [--lean=-6] [--bob 0.008] [--turn=1|-1]   (spin: its lean in degrees, bob as a share of its
+//     height, and which way it turns; a negative number goes after an =, or it's read as an option)
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { parseArgs } from 'node:util';
@@ -20,15 +21,17 @@ const { positionals: [model, out], values } = parseArgs({
     width: { type: 'string', default: '900' }, height: { type: 'string', default: '300' }, zoom: { type: 'string', default: '100' },
     tilt: { type: 'string', default: '75' }, frames: { type: 'string', default: '90' }, fps: { type: 'string', default: '15' },
     exposure: { type: 'string', default: '1.0' }, environment: { type: 'string', default: 'neutral' }, shadow: { type: 'string', default: '0' },
+    lean: { type: 'string', default: '-6' }, bob: { type: 'string', default: '0.008' }, turn: { type: 'string', default: '1' },
   },
 });
+const [lean, bob, turn] = ['lean', 'bob', 'turn'].map((key) => Number(values[key as keyof typeof values]));
 if (!model || !out) throw new Error('usage: node scripts/turntable.ts <model.glb> <out.webp> [--motion spin|float] [options]');
 const [width, height, zoom, tilt, frames, fps] = ['width', 'height', 'zoom', 'tilt', 'frames', 'fps'].map((key) => Number(values[key as keyof typeof values]));
 const FOV = 30; // degrees: a fixed lens and distance, so the model never seems to zoom as it moves
 
 /** Where the model is at t (0 to 1, one loop): its roll, pitch and yaw in degrees, and its rise, a share of its height. */
 const MOTIONS: Record<string, (t: number) => { roll: number; pitch: number; yaw: number; rise: number }> = {
-  spin: (t) => ({ roll: -6, pitch: 0, yaw: 360 * t, rise: 0.025 * Math.sin(4 * Math.PI * t) }),
+  spin: (t) => ({ roll: lean, pitch: 0, yaw: 360 * turn * t, rise: bob * Math.sin(2 * Math.PI * t) }),
   float: (t) => ({
     roll: 2.5 * Math.sin(2 * Math.PI * t + 1),
     pitch: 3 * Math.sin(4 * Math.PI * t),
