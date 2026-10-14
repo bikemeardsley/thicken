@@ -11,25 +11,21 @@
   <a href="https://www.als.net/donate/"><img src="https://img.shields.io/badge/Donate-ALS_Research-blueviolet" alt="Donate to ALS research"></a>
 </p>
 
-<h3 align="center">Photos in. Out comes the object: its 3D model, and the record of what it is.</h3>
+<h3 align="center">Photos in. Out comes the object: its 3D model and its metadata.</h3>
 
-thicken turns photos of a real object into two files that belong together: a
-**GLB model** at the object's real size, in millimeters, and a **JSON record**
-of everything known about it, read off the object by vision models and looked
-up in public catalogs, where its kind has one. What thicken knows about a kind
-of object (how it's built, what to read off it, where to look it up) lives in
-a **profile**: a few come with thicken, and you can
-[add your own](#adding-a-profile) for any kind of object. Put the model in a
-web page or Blender; build a collection, an inventory or an app on the record.
+thicken turns photos of a real object into a **GLB model** at its real size
+and its **metadata** as JSON, read off the object by vision models and looked
+up in public catalogs. What it knows about each kind of object lives in a
+**profile**: a few come with thicken, and you can [add your own](#adding-a-profile).
 
 <p align="center">
-  <img src=".github/show/giannis.webp" width="49%" alt="Photos of the front and back of a CGC-graded Giannis Antetokounmpo autograph card on a wooden table, beside the clear 3D slab thicken made from them, turning all the way round">
-  <img src=".github/show/erving.webp" width="49%" alt="Photos of the front and back of a PSA-graded 1976 Topps Julius Erving in a tall holder, beside its 3D model, turning all the way round">
-  <img src=".github/show/psyduck.webp" width="49%" alt="Photos of the front and back of a reverse-holo Psyduck card, beside its 3D model, the foil shimmering as it turns">
+  <img src=".github/show/giannis.webp" height="220" alt="Photos of the front and back of a CGC-graded Giannis Antetokounmpo autograph card on a wooden table, beside the clear 3D slab thicken made from them, turning all the way round">
+  <img src=".github/show/erving.webp" height="220" alt="Photos of the front and back of a PSA-graded 1976 Topps Julius Erving in a tall holder, beside its 3D model, turning all the way round">
+  <img src=".github/show/psyduck.webp" height="220" alt="Photos of the front and back of a reverse-holo Psyduck card, beside its 3D model, the foil shimmering as it turns">
 </p>
-<p align="center"><sub>In each, the photos going in and the model coming out, turned all the way round; each model comes with its record, like the one below. The logo above is a thicken model too, made by its lettering profile: <code>thicken lettering thicken</code>.</sub></p>
+<p align="center"><sub>In each, the photos going in and the model coming out, with its metadata, like the one below. The logo above is a thicken model too, made by its lettering profile: <code>thicken lettering thicken</code>.</sub></p>
 
-**The other half: the record.** Part of the first one's, a graded Giannis Antetokounmpo card:
+**The other half: its metadata.** Part of the first one's, a graded Giannis Antetokounmpo card:
 
 ```json
 {
@@ -106,10 +102,7 @@ Cursor, Gemini CLI and the rest are in [USAGE.md](USAGE.md#from-an-ai-agent).
 ## How it works
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/flow-dark.svg">
-    <img src=".github/flow.svg" width="820" alt="Photos, a video, words or an ISBN go in; thicken matches them to a profile, processes them (the vision models find each face, cut it out and straighten it, and read what's printed), builds the object at its real size, and writes a GLB model and a JSON sidecar.">
-  </picture>
+  <img src=".github/flow.svg" width="820" alt="Photos, a video, words or an ISBN go in; thicken matches them to a profile, processes them (the vision models find each face, cut it out and straighten it, and read what's printed), builds the object at its real size, and writes a GLB model and a JSON sidecar.">
 </p>
 
 What thicken knows about a kind of object lives in its **profile**: how to
@@ -123,7 +116,7 @@ the geometry from known sizes and maps your photos onto it.
 
 What thicken makes is more than a 3D shape. Each run writes a **thicken
 object**: the model (a GLB at the object's real size, in millimeters) and,
-beside it, its record (the JSON sidecar), which knows what the object is, in
+beside it, its metadata (the JSON sidecar), which knows what the object is, in
 its profile's own terms. For the profiles that come with thicken, for
 example:
 

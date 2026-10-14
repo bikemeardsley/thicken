@@ -1,6 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="280" viewBox="0 8 960 280" role="img" aria-labelledby="thicken-flow-title thicken-flow-desc">
   <title id="thicken-flow-title">How thicken works</title>
   <desc id="thicken-flow-desc">Photos, a video, words or an ISBN go in; thicken matches them to a profile (book, slab, card, box, badge, lettering, and more to come), processes them (the vision models find each face, cut it out and straighten it, and read what's printed), builds the object at its real size, and writes a GLB model and a JSON sidecar.</desc>
+  <style>
+    /* Dark, for a viewer whose browser prefers it: one file, so a plain img shows it on GitHub and npm alike. */
+    @media (prefers-color-scheme: dark) {
+      [fill="#ffffff"] { fill: #0d1117 }
+      [fill="#15181c"] { fill: #e6edf3 }
+      [stroke="#15181c"] { stroke: #e6edf3 }
+      [fill="#57606a"] { fill: #9198a1 }
+      [stroke="#57606a"] { stroke: #9198a1 }
+      [stroke="#6e7781"] { stroke: #7d8590 }
+      [fill="rgba(87,96,106,0.10)"] { fill: rgba(145,152,161,0.12) }
+      [fill="rgba(184,144,47,0.10)"] { fill: rgba(224,183,76,0.12) }
+      [stroke="#b8902f"] { stroke: #e0b74c }
+    }
+  </style>
   <defs>
     <marker id="thicken-flow-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
       <polygon points="0 0, 8 3, 0 6" fill="#57606a"/>

@@ -80,7 +80,7 @@ export async function serve(): Promise<void> {
   }));
   server.registerTool('thicken_make', {
     title: 'Make a 3D model with thicken',
-    description: 'Turns photos of one real object (or artwork, or words, or a book\'s ISBN) into two files that belong together: a GLB model at the object\'s real size, in millimeters, and a JSON record of what it is, read off it by vision models and looked up in public catalogs (its profile\'s records: thicken_profiles lists each kind of object and what it records). Writes both files and returns their paths and the main facts. Photos need not be cropped when a vision roster is set up (THICKEN_VISION_URL, THICKEN_VISION_MODELS); without one, give straight-on photos cropped to the object, and name the profile. One object a call: for several, call once each.',
+    description: 'Turns photos of one real object (or artwork, or words, or a book\'s ISBN) into two files that belong together: a GLB model at the object\'s real size, in millimeters, and its metadata as JSON, read off it by vision models and looked up in public catalogs (thicken_profiles lists each kind of object and the metadata it records). Writes both files and returns their paths and the main facts. Photos need not be cropped when a vision roster is set up (THICKEN_VISION_URL, THICKEN_VISION_MODELS); without one, give straight-on photos cropped to the object, and name the profile. One object a call: for several, call once each.',
     inputSchema: makeInput,
   }, async (args) => ({ content: [{ type: 'text', text: await made(args) }] }));
   await server.connect(new StdioServerTransport());
