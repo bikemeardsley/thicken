@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/logo.webp" width="560" alt="thicken, in gold 3D bubble letters, swaying gently: the logo is a thicken model">
+  <img src=".github/logo.webp" width="560" alt="thicken, in gold 3D bubble letters, drifting slowly: the logo is a thicken model">
 </p>
 
 <p align="center">
@@ -16,22 +16,20 @@
 thicken turns photos of a real object into two files that belong together: a
 **GLB model** at the object's real size, in millimeters, and a **JSON record**
 of everything known about it, read off the object by vision models and looked
-up wherever its kind has a catalog. What thicken knows about a kind of object
-(how it's built, what to read off it, where to look it up) lives in a
-**profile**: a few come with it, and you can [add your own](#adding-a-profile)
-for any kind of object. Put the model in a web page or Blender; build a
-collection, an inventory or an app on the record.
+up in public catalogs, where its kind has one. What thicken knows about a kind
+of object (how it's built, what to read off it, where to look it up) lives in
+a **profile**: a few come with thicken, and you can
+[add your own](#adding-a-profile) for any kind of object. Put the model in a
+web page or Blender; build a collection, an inventory or an app on the record.
 
 <p align="center">
-  <img src=".github/show/giannis.webp" height="220" alt="A photo of a CGC-graded Giannis Antetokounmpo autograph card on a wooden table, beside the clear 3D slab thicken made from it, turning">
-  <img src=".github/show/erving.webp" height="220" alt="A photo of a PSA-graded 1976 Topps Julius Erving in a tall holder, beside its 3D model, turning">
-  <br>
-  <img src=".github/show/psyduck.webp" height="220" alt="A photo of a reverse-holo Psyduck card, beside its 3D model, the foil shimmering as it turns">
-  <img src=".github/show/skipping.webp" height="220" alt="A photo of the hardcover Skipping Christmas, beside its 3D model, turning to show its back cover">
+  <img src=".github/show/giannis.webp" width="49%" alt="Photos of the front and back of a CGC-graded Giannis Antetokounmpo autograph card on a wooden table, beside the clear 3D slab thicken made from them, turning all the way round">
+  <img src=".github/show/erving.webp" width="49%" alt="Photos of the front and back of a PSA-graded 1976 Topps Julius Erving in a tall holder, beside its 3D model, turning all the way round">
+  <img src=".github/show/psyduck.webp" width="49%" alt="Photos of the front and back of a reverse-holo Psyduck card, beside its 3D model, the foil shimmering as it turns">
 </p>
-<p align="center"><sub>In each pair, a photo going in, and the GLB model coming out, turned all the way round. The logo above is a thicken model too: <code>thicken lettering thicken</code>.</sub></p>
+<p align="center"><sub>In each, the photos going in and the model coming out, turned all the way round; each model comes with its record, like the one below. The logo above is a thicken model too, made by its lettering profile: <code>thicken lettering thicken</code>.</sub></p>
 
-**And beside each model, its record.** The Giannis slab's, in part:
+**The other half: the record.** Part of the first one's, a graded Giannis Antetokounmpo card:
 
 ```json
 {
@@ -55,9 +53,10 @@ collection, an inventory or an app on the record.
 }
 ```
 
-The grader and cert come from the label's QR code; the rest the vision models
-read off it. What each profile records is under [What it makes](#what-it-makes);
-every field, in [USAGE.md](USAGE.md#what-the-sidecar-records).
+The grader and certificate number come from the label's QR code; the vision
+models read the rest off the slab. What each profile records is in
+[the table of profiles](#what-it-makes), and every field is described in
+[USAGE.md](USAGE.md#what-the-sidecar-records).
 
 ## Contents
 
