@@ -8,6 +8,7 @@
   <a href="https://registry.modelcontextprotocol.io/?q=thicken"><img src="https://img.shields.io/badge/MCP_Registry-111111?logo=modelcontextprotocol&logoColor=white" alt="In the official MCP Registry"></a>
   <a href="https://skills.sh/bikemeardsley/thicken/thicken"><img src="https://img.shields.io/badge/skills.sh-111111" alt="On skills.sh"></a>
   <a href="https://cursor.directory/plugins/thicken"><img src="https://img.shields.io/badge/cursor.directory-111111?logo=cursor&logoColor=white" alt="On cursor.directory"></a>
+  <a href="https://smithery.ai/skills/bikemeardsley/thicken"><img src="https://img.shields.io/badge/Smithery-111111" alt="On Smithery"></a>
   <a href="https://www.khronos.org/gltf/"><img src="https://img.shields.io/badge/glTF_2.0-87C540" alt="glTF 2.0"></a>
   <br>
   <a href="#development"><img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript"></a>
