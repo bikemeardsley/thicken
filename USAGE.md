@@ -103,9 +103,11 @@ the same every time, not a texture from anywhere else.
 A slab's holder is clear plastic: glossy and alpha-blended, so whatever is
 behind it shows through, a web page included. It is built as a holder is: a
 rim all round (2.5 mm, its corners rounder on CGC's than PSA's) standing
-0.5 mm proud of the window on each face, and inside, ridges framing the label
-and the card, the rim and ridges a little denser so they read as the edges
-they are. The proportions come from real PSA and CGC slabs. Inside, halfway
+0.5 mm proud of the window on each face, and inside, faint ridges hugging the
+label and the card, the rim a little denser so it reads as the edge it is.
+The proportions come from real PSA and CGC slabs. A card or label found
+within 2 mm of the middle is centered across the holder, as graders center
+them. Inside, halfway
 through its depth, sit the card (a 0.35 mm plate, its corners cut as the
 vision models see this card's own corners: square, slight, about 1.6 mm, or
 round, 3.2 mm; never assumed from the card's year or kind, and slight only
