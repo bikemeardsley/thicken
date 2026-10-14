@@ -25,7 +25,9 @@ test('mcp: every manifest launches the version package.json says, and the plugin
   const server = JSON.parse(repo('server.json'));
   assert.deepEqual([server.version, server.packages[0].version, server.packages[0].packageArguments[0].value], [version, version, 'mcp']);
   assert.equal(JSON.parse(repo('plugin/package.json')).dependencies.thicken, version);
-  assert.equal(repo('plugin/skills/thicken/SKILL.md'), repo('skills/thicken/SKILL.md'), 'the plugin\'s copy of the skill matches');
+  // Line endings aside: the plugin's files check out as git would leave them (CRLF on Windows, by its default).
+  const lf = (text: string) => text.replace(/\r\n/g, '\n');
+  assert.equal(lf(repo('plugin/skills/thicken/SKILL.md')), lf(repo('skills/thicken/SKILL.md')), 'the plugin\'s copy of the skill matches');
 });
 const text = (result: Awaited<ReturnType<Client['callTool']>>) => (result.content as { type: string; text: string }[])[0].text;
 

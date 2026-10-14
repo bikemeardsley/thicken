@@ -10,3 +10,7 @@
 *.glb binary
 *.ttf binary
 *.webp binary
+
+# The plugin's files exactly as committed, on every checkout: the Claude plugin directory refuses a plugin whose
+# files git would rewrite on the way out (line endings included).
+plugin/** !text !eol
