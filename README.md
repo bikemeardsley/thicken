@@ -39,12 +39,12 @@ up in public catalogs. What it knows about each kind of object lives in a
     "autoGrade": "10", "autoGradeName": "AUTO",
     "signed": "G. ANTETOKOUNMPO, 8/2/25",
     "name": "Giannis Antetokounmpo", "year": "2024-25", "maker": "Panini",
-    "set": "Court Kings", "number": "#5", "variant": "Blank Slate"
+    "set": "Court Kings Basketball", "number": "#5", "variant": "Blank Slate"
   },
   "readBy": { "grade": "agreed", "autoGrade": "agreed", "set": "disputed" },
   "inside": {
-    "card": { "widthMm": 66.2, "heightMm": 89.4, "corners": "square", "foil": "none" },
-    "label": { "widthMm": 67, "heightMm": 26.8 }
+    "card": { "widthMm": 63.5, "heightMm": 88.9, "corners": "square", "foil": "none" },
+    "label": { "widthMm": 66.4, "heightMm": 26.9 }
   }
 }
 ```

@@ -51,7 +51,10 @@ export const slab: Profile = {
     cert: 'the certification number', ...CARD_READS,
   },
   asks: { corners: CORNERS_ASK, foil: foilAsk('the card\'s front, inside the holder') },
-  unsnapped: ['label', 'art', 'hologram'],
+  // None snapped onto edges: each runs beside lines nearer than the models' slip. The clear rim's highlights sit
+  // inside the holder's outline (one snapped the outline 11 px in, so everything inside measured 3% big), the well's
+  // edge beside the card's, the frames inside and around the label beside its border.
+  unsnapped: ['front', 'back', 'card', 'label', 'art', 'hologram'],
   read: (scanned, [picture]) => {
     const { use, grader, cert, certFrom, verifyUrl } = readLabel(scanned);
     // A grader's QR code says it's a slab; a cert barcode alone only on a photo shaped like a holder.
@@ -128,16 +131,18 @@ const SHAPE_TOLERANCE = 0.04;
 // for every holder but its corners; measure others' as their slabs turn up.
 const RIM_MM = 2.5; // the rim all round
 const RIM_PROUD_MM = 0.5; // how far the rim stands above the window, each face
-const FRAME_MM = 1.2; // the ridges framing the label and the card
-const FRAME_GAP_MM = 1.2; // between a ridge and what it frames
+const FRAME_MM = 0.6; // the ridges framing the label and the card: the edges of their wells
+const FRAME_GAP_MM = 0.3; // between a ridge and what it frames
+const WELL_OPACITY = 0.08; // the ridges, fainter than the rim: as dense, they looked like a sleeve round the card
 const SEAM_MM = 0.1; // between pieces that would otherwise share a surface
-const EDGE_OPACITY = 0.2; // the rim and ridges, denser than the window's plastic, as their edges catch the light (0.3 looked milky)
+const EDGE_OPACITY = 0.2; // the rim, denser than the window's plastic, as its edges catch the light (0.3 looked milky)
 const HOLDER_CORNER_MM: Record<string, number> = { psa: 2, 'psa-thick': 2, 'psa-tall': 2, cgc: 4, 'cgc-tall': 4 }; // others 3
 // A card shaped like a standard one (cards are cut more exactly than holders are measured) and near its size is one.
 const STANDARD_SHAPE = 0.02;
 const STANDARD_SIZE = 0.1;
 const LABEL_DEPTH_MM = 0.3;
 const GAP_MM = 0.5; // the least space kept between the label and the card
+const CENTERED_MM = 2; // holders center the card and the label across: a middle this near the holder's is the holder's
 const WALL_MM = 1; // the least plastic kept around anything inside
 const LABEL_EDGE = '#f4f4f2';
 
@@ -228,17 +233,21 @@ async function make(
     const mirror = side === 'back' ? -1 : 1;
     const holderQuad = [[-w / 2, h / 2], [w / 2, h / 2], [w / 2, -h / 2], [-w / 2, -h / 2]].map(([x, y]) => [mirror * x, y]);
     const found = corners ? inner[picture] ?? new Map<string, number[][]>() : new Map<string, number[][]>();
-    return [{ side, picture, mirror, found, toPhoto: mapping(holderQuad, quad), toHolder: mapping(quad, holderQuad) }];
+    const agreed = Boolean(sights?.[picture]?.faces.some(({ face, agreed }) => (face === 'front' || face === 'back') && agreed));
+    return [{ side, picture, mirror, found, agreed, toPhoto: mapping(holderQuad, quad), toHolder: mapping(quad, holderQuad) }];
   });
   const unused = roles.filter((role) => role === 'unused').length;
   if (unused) warnings.push(`${unused} picture(s) not used: none looked like another shot of a face`);
 
-  // Where the card and label are: where the models put them, averaged over both sides; else where a holder usually has them.
+  // Where the card and label are: where the models put them, averaged over the sides whose outline two models agreed
+  // on (one model's alone can be well off, and everything inside is measured against it), or over every side if
+  // none; else where a holder usually has them.
   const layout = defaultLayout(size);
   const placedBy = {} as Record<Inside, 'vision' | 'layout'>;
   const rects = {} as Record<Inside, Rect>;
+  const placing = sides.some(({ agreed }) => agreed) ? sides.filter(({ agreed }) => agreed) : sides;
   for (const part of ['card', 'label'] as const) {
-    const seen = sides.filter(({ found }) => found.has(part)).map(({ found, toHolder }) => rectOf(found.get(part)!.map(toHolder)));
+    const seen = placing.filter(({ found }) => found.has(part)).map(({ found, toHolder }) => rectOf(found.get(part)!.map(toHolder)));
     placedBy[part] = seen.length ? 'vision' : 'layout';
     rects[part] = seen.length
       ? { x0: mean(seen.map((r) => r.x0)), x1: mean(seen.map((r) => r.x1)), y0: mean(seen.map((r) => r.y0)), y1: mean(seen.map((r) => r.y1)) }
@@ -246,6 +255,11 @@ async function make(
   }
   rects.card = standardCard(rects.card);
   rects.label.y0 = Math.min(Math.max(rects.label.y0, rects.card.y1 + GAP_MM), rects.label.y1 - 1); // above the card, never over it
+  for (const part of ['card', 'label'] as const) {
+    const r = rects[part];
+    const middle = (r.x0 + r.x1) / 2;
+    if (Math.abs(middle) <= CENTERED_MM) rects[part] = { ...r, x0: r.x0 - middle, x1: r.x1 - middle };
+  }
   for (const part of ['card', 'label'] as const) {
     const r = rects[part];
     rects[part] = { x0: Math.max(r.x0, -w / 2 + WALL_MM), x1: Math.min(r.x1, w / 2 - WALL_MM), y0: Math.max(r.y0, -h / 2 + WALL_MM), y1: Math.min(r.y1, h / 2 - WALL_MM) };
@@ -285,8 +299,8 @@ async function make(
   for (const [side, region] of Object.entries(holograms)) foils[`label-${side}`] = await foilMap([region], labelAspect);
 
   // The model, built as a holder is: a rim all round, standing proud of the window it frames, and inside, the
-  // label and the card in their compartments, each framed by a ridge. All clear plastic, the rim and ridges a
-  // little denser so they read as the edges they are; the card and label halfway through its depth.
+  // label and the card in their wells, each framed by a faint ridge. All clear plastic, the rim a little denser so
+  // it reads as the edge it is; the card and label halfway through its depth.
   const doc = new Document();
   const mesh = doc.createMesh('slab');
   const d = size[2];
@@ -294,6 +308,7 @@ async function make(
   const windowCorner = Math.max(corner - RIM_MM, 0.5);
   const acrylic = clearMaterial(doc, 'acrylic');
   const ridges = clearMaterial(doc, 'acrylic-edges', EDGE_OPACITY);
+  const wells = clearMaterial(doc, 'acrylic-wells', WELL_OPACITY);
   addPart(doc, mesh, ring([w, h, d], [w - 2 * RIM_MM, h - 2 * RIM_MM], [corner, windowCorner]), ridges);
   // The window, a hair inside the rim, so no two surfaces coincide.
   const pane = plate([w - 2 * RIM_MM - SEAM_MM, h - 2 * RIM_MM - SEAM_MM, d - 2 * RIM_PROUD_MM], windowCorner);
@@ -307,7 +322,7 @@ async function make(
     // A ridge round each, inside the window and within its depth; where it meets the rim, it stops there.
     const outer = { x0: Math.max(r.x0 - FRAME_GAP_MM - FRAME_MM, windowBox.x0), x1: Math.min(r.x1 + FRAME_GAP_MM + FRAME_MM, windowBox.x1), y0: Math.max(r.y0 - FRAME_GAP_MM - FRAME_MM, windowBox.y0), y1: Math.min(r.y1 + FRAME_GAP_MM + FRAME_MM, windowBox.y1) };
     const [ow, oh] = [outer.x1 - outer.x0, outer.y1 - outer.y0];
-    addPart(doc, mesh, ring([ow, oh, d - 2 * RIM_PROUD_MM - 2 * SEAM_MM], [ow - 2 * FRAME_MM, oh - 2 * FRAME_MM], [0.6, 0.3], [(outer.x0 + outer.x1) / 2, (outer.y0 + outer.y1) / 2]), ridges);
+    addPart(doc, mesh, ring([ow, oh, d - 2 * RIM_PROUD_MM - 2 * SEAM_MM], [ow - 2 * FRAME_MM, oh - 2 * FRAME_MM], [0.3, 0.1], [(outer.x0 + outer.x1) / 2, (outer.y0 + outer.y1) / 2]), wells);
   }
   const cardDepth = Math.min(pt ? pt * PT_MM : CARD_DEPTH_MM, size[2] - 2 * WALL_MM); // a thick card, by its points, as fits
   const { radiusMm, corners, cornersBy } = cornersOf(sights);

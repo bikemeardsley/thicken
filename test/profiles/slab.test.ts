@@ -28,9 +28,10 @@ test('slab: a grader\'s QR code picks the holder, and the holder its size', asyn
   const { card, label } = sidecar.inside as Record<string, { widthMm: number; heightMm: number; placedBy: string }>;
   assert.deepEqual([card.widthMm, card.heightMm, card.placedBy, label.placedBy], [63.5, 88.9, 'layout', 'layout']);
   assertWatertight(doc);
-  // The holder is clear: blended, so a page shows through it; its rim and ridges denser, as their edges catch the light.
+  // The holder is clear: blended, so a page shows through it; its rim denser, as its edges catch the light, and the
+  // ridges round the card and label fainter, or they read as a sleeve.
   const materials = Object.fromEntries(doc.getRoot().listMaterials().map((material) => [material.getName(), material]));
-  assert.deepEqual([materials.acrylic.getAlphaMode(), materials.acrylic.getAlpha(), materials['acrylic-edges'].getAlpha()], ['BLEND', 0.12, 0.2]);
+  assert.deepEqual([materials.acrylic.getAlphaMode(), materials.acrylic.getAlpha(), materials['acrylic-edges'].getAlpha(), materials['acrylic-wells'].getAlpha()], ['BLEND', 0.12, 0.2, 0.08]);
   // The window is recessed: the rim alone reaches the holder's full depth.
   const zs = (name: string) => doc.getRoot().listMeshes()[0].listPrimitives().filter((p) => p.getMaterial()?.getName() === name)
     .flatMap((p) => { const positions = p.getAttribute('POSITION')!; return [...Array(positions.getCount()).keys()].map((i) => positions.getElement(i, [0, 0, 0])[2]); });
@@ -49,8 +50,9 @@ test('slab: with vision, the card and label are found in uncropped photos and se
   t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
   // A PSA slab (80.5 × 136 mm): its label across the top, and a green card a little lower than the usual layout has it
   // (its top 33 mm down, where the layout says 32.3), measuring a little big, 64.3 × 89.6 mm: near enough standard to be
-  // taken for it. Its back the same, the card's back blue.
-  const [slab, label, card] = [[0, 0, 80.5, 136], [4, 4.5, 76.5, 26.3], [8.1, 33, 72.4, 122.6]];
+  // taken for it; and 0.8 mm right of the middle, near enough to be centered, as holders center it. Its back the same,
+  // the card's back blue.
+  const [slab, label, card] = [[0, 0, 80.5, 136], [4, 4.5, 76.5, 26.3], [8.9, 33, 73.2, 122.6]];
   const hologram = [6, 8, 26, 22]; // on the back of the label, at its left as the back is seen
   const [front, back] = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
   await slabPhoto(front, [[slab, '#c8ccd0'], [label, '#f8f8f8'], [card, '#2e7d32']]);
@@ -75,7 +77,7 @@ test('slab: with vision, the card and label are found in uncropped photos and se
   const photos = (sidecar.vision as { photos: { faces: { face: string; by: string[]; agreed: boolean }[] }[] }).photos;
   assert.deepEqual(photos[1].faces.find(({ face }) => face === 'back'), { ...photos[1].faces.find(({ face }) => face === 'back'), by: ['a', 'c'], agreed: true });
   assert.ok(sidecar.review.every((item) => !item.includes('disagree')), 'the name was settled');
-  // Found, not laid out: the card where it really is, at the standard size, and the label above it.
+  // Found, not laid out: the card where it really is, at the standard size and centered across, and the label above it.
   const inside = sidecar.inside as Record<string, { widthMm: number; heightMm: number; atMm: number[]; placedBy: string }>;
   assert.deepEqual([inside.card.placedBy, inside.card.widthMm, inside.card.heightMm, inside.label.placedBy], ['vision', 63.5, 88.9, 'vision']);
   assert.ok(Math.abs(inside.card.atMm[0]) <= 0.2 && Math.abs(inside.card.atMm[1] - (68 - 77.8)) <= 0.2, `card at ${inside.card.atMm}`);
@@ -103,6 +105,32 @@ test('slab: with vision, the card and label are found in uncropped photos and se
   const pixel = (u: number, v: number) => [...data.subarray((Math.round(v * info.height) * info.width + Math.round(u * info.width)) * info.channels).subarray(0, 3)];
   assert.deepEqual([pixel(0.15, 0.5), pixel(0.7, 0.5)], [[255, 77, 153], [0, 102, 0]], 'foil on the hologram, print beside it');
   assertWatertight(doc);
+});
+
+test('slab: the card and label are placed from the sides whose outline two models agreed on', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  // A standard card in the middle of a PSA slab. On the back, the models disagree on the slab's outline, each 12 mm
+  // short on one side, and a's stands (the higher seat): the card measured against it would come out 17% wide.
+  const [slab, label, card] = [[0, 0, 80.5, 136], [4, 4.5, 76.5, 26.3], [8.5, 33, 72, 121.9]];
+  const [front, back] = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
+  await slabPhoto(front, [[slab, '#c8ccd0'], [label, '#f8f8f8'], [card, '#2e7d32']]);
+  await slabPhoto(back, [[slab, '#c8ccd0'], [label, '#f8f8f8'], [card, '#1d4f9e']]);
+  const fetch = catalog({}, {
+    vision: async ({ model, photo }) => {
+      const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
+      const middle = (500 * info.width + 500) * info.channels;
+      const green = data[middle + 1] > data[middle + 2];
+      const outline = green ? slab : model === 'a' ? [12, 0, 80.5, 136] : [0, 0, 68.5, 136];
+      return { faces: [{ face: green ? 'front' : 'back', corners: letterboxed(outline) }, { face: 'card', corners: letterboxed(card) }, { face: 'label', corners: letterboxed(label) }] };
+    },
+  });
+  t.after(() => fetch.mock.restore());
+  const { sidecar } = await thicken([front, back], { profile: 'slab' });
+  const inside = sidecar.inside as Record<string, { widthMm: number; heightMm: number; atMm: number[] }>;
+  assert.deepEqual([inside.card.widthMm, inside.card.heightMm, inside.card.atMm[0]], [63.5, 88.9, 0]);
 });
 
 test('slab: a tall holder is told by its label, the same size on every holder but spanning much less of a tall one', async (t) => {
