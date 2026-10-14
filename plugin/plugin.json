@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "thicken",
+  "version": "0.1.0",
+  "description": "Photos in; out comes a 3D model (GLB) at the object's real size and its metadata as JSON. A profile for each kind of object; add your own.",
+  "author": { "name": "Michael Beardsley", "url": "https://github.com/bikemeardsley" },
+  "homepage": "https://github.com/bikemeardsley/thicken",
+  "repository": "https://github.com/bikemeardsley/thicken",
+  "license": "MIT",
+  "keywords": ["3d", "glb", "gltf", "photos", "metadata", "mcp"]
+}

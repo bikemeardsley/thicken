@@ -2,8 +2,19 @@
 
 The thicken MCP server (`npx -y thicken mcp`) and its skill, for Claude Code,
 Codex and Copilot CLI. The tools: `thicken_make` (photos, a video, words or an
-ISBN in; a GLB model and its JSON sidecar written) and `thicken_profiles`
-(the kinds of object it makes). The [README](../README.md) has the rest.
+ISBN in; a GLB model and its metadata, a JSON sidecar, written) and
+`thicken_profiles` (the kinds of object it makes). The [README](../README.md)
+has the rest.
+
+In Claude Code (2.1.275 or later):
+
+```
+/plugin install thicken --marketplace bikemeardsley/thicken
+```
+
+Or, in any version, `/plugin marketplace add bikemeardsley/thicken` and then
+`/plugin install thicken@thicken`. For Codex and Copilot CLI, see
+[USAGE.md](../USAGE.md#from-an-ai-agent).
 
 **What it reads and writes:** the files you point it at, and the model, its
 sidecar and an optional preview, written beside them or where you say.
