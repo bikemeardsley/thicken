@@ -48,4 +48,9 @@ attacker gains.
   Sidecars may be published.
 - **Profiles are code.** Every profile in `src/profiles` runs on each use;
   ones contributed from outside are reviewed line by line before they ship
-  ([CONTRIBUTING.md](CONTRIBUTING.md)).
+  ([CONTRIBUTING.md](CONTRIBUTING.md)). Your own, in `~/.thicken/profiles`
+  (or `THICKEN_PROFILES`), run too, with your permissions: keep only files
+  you wrote or trust there.
+- **`thicken profile contribute`** runs `git`, the GitHub CLI (`gh`) as you're
+  signed in to it, and `npm ci` in a temporary clone of your fork, then opens
+  a pull request from it. Nothing else is sent.

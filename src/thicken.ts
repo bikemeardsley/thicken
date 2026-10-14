@@ -8,10 +8,12 @@
 // cover's ISBN feeds the book's size lookup without being typed in. The
 // sidecar records how each fact was found, what still needs review, and how
 // the model was built.
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
+import { registerHooks } from 'node:module';
+import { homedir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { codes, load, VIDEO, type Picture } from './image.ts';
 import { identify, lookAll, readOf, visionOn, visionRecord, type Sight } from './vision.ts';
 
@@ -50,9 +52,54 @@ const isProfile = (value: any): value is Profile => typeof value?.name === 'stri
  */
 const folder = new URL('./profiles/', import.meta.url);
 const ext = path.extname(fileURLToPath(import.meta.url));
-export const PROFILES: Profile[] = (await Promise.all(readdirSync(folder).filter((file) => file.endsWith(ext) && !file.endsWith('.d.ts')).sort().map((file) => import(new URL(file, folder).href))))
-  .flatMap((module) => Object.values(module).filter(isProfile))
+const builtIn = (await Promise.all(readdirSync(folder).filter((file) => file.endsWith(ext) && !file.endsWith('.d.ts')).sort().map((file) => import(new URL(file, folder).href))))
+  .flatMap((module) => Object.values(module).filter(isProfile));
+
+/**
+ * Your own profiles, made with `thicken profile new`: every .ts (or .js) file in THICKEN_PROFILES, else
+ * ~/.thicken/profiles; an empty THICKEN_PROFILES means none. One named as a built-in replaces it, said on stderr: an
+ * improvement being tried before it's contributed. One that won't load is skipped, said the same way.
+ */
+export const MY_PROFILES = process.env.THICKEN_PROFILES ?? path.join(homedir(), '.thicken', 'profiles');
+const mine: Profile[] = [];
+const myFiles = MY_PROFILES && existsSync(MY_PROFILES)
+  ? readdirSync(MY_PROFILES).filter((file) => /\.(ts|js)$/.test(file) && !/\.(test|d)\.ts$/.test(file)).sort()
+  : [];
+if (myFiles.length) lendThicken();
+for (const file of myFiles) {
+  try {
+    mine.push(...Object.values(await import(pathToFileURL(path.join(MY_PROFILES, file)).href)).filter(isProfile));
+  } catch (error) {
+    process.stderr.write(`thicken: your profile ${path.join(MY_PROFILES, file)} didn't load, so it's left out: ${(error as Error).message}\n`);
+  }
+}
+for (const { name } of mine) {
+  if (builtIn.some((p) => p.name === name)) process.stderr.write(`thicken: your profile "${name}" (${MY_PROFILES}) is used in place of the built-in one\n`);
+}
+export const PROFILES: Profile[] = [...builtIn.filter((p) => !mine.some((m) => m.name === p.name)), ...mine]
+  .sort((a, b) => a.name.localeCompare(b.name))
   .sort((a, b) => Number(Boolean(a.generic)) - Number(Boolean(b.generic)));
+
+/**
+ * Lets your own profiles, wherever they are, import what the built-in ones do: thicken's parts ('thicken/kit'), a
+ * built-in profile ('thicken/profiles/card'), and thicken's own dependencies (sharp, glTF-Transform), found from
+ * thicken when not from the profile's folder.
+ */
+function lendThicken(): void {
+  registerHooks({
+    resolve(specifier, context, nextResolve) {
+      if (specifier === 'thicken/kit') return { url: new URL(`./kit${ext}`, import.meta.url).href, shortCircuit: true };
+      const profile = /^thicken\/profiles\/([a-z][a-z0-9-]*)$/.exec(specifier);
+      if (profile) return { url: new URL(`${profile[1]}${ext}`, folder).href, shortCircuit: true };
+      try {
+        return nextResolve(specifier, context);
+      } catch (error) {
+        if (/^(\.|\/|[a-z]:|node:|file:)/i.test(specifier)) throw error;
+        return nextResolve(specifier, { ...context, parentURL: import.meta.url });
+      }
+    },
+  });
+}
 
 export interface Options {
   profile?: string;

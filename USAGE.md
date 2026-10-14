@@ -12,6 +12,7 @@ Everything in detail; the [README](README.md) has the short version.
 - [Preview](#preview)
 - [Inputs](#inputs)
 - [Dimensions](#dimensions)
+- [Your own profiles](#your-own-profiles)
 - [From an AI agent](#from-an-ai-agent)
 
 ## Batch
@@ -421,6 +422,30 @@ whose shape is off the holder's by more than 4% warns.
 number thick cards are sold by: 55, 75, 100, 130, 180), for a raw card or the
 card inside a slab. A standard card is 0.35 mm; 35 pt is the size of the
 holder it fits, not its own thickness.
+
+## Your own profiles
+
+thicken loads profiles of your own from `~/.thicken/profiles` (or the folder
+`THICKEN_PROFILES` names; empty means none), beside its built-in ones, every
+time it runs, the MCP server included. Each is a `.ts` file (Node runs it
+directly) importing thicken's parts from `thicken/kit`, a built-in profile's
+from `thicken/profiles/<name>`, and thicken's own dependencies (sharp,
+glTF-Transform) as thicken has them.
+
+- `thicken profile new <name>` writes one from the template: it works as it
+  is, a box at the size you give, with every field commented and a TODO on
+  each to fill in. Named as a built-in profile, it's a copy of that one to
+  improve, used in its place (a note on stderr says so). `--from <profile>`
+  starts a new one from another.
+- `thicken profile check <name>` says what it still needs before
+  contributing: the checks thicken's CI makes of every profile, short of its
+  tests.
+- `thicken profile contribute <name>` offers it to thicken as a pull request,
+  through the GitHub CLI ([CONTRIBUTING.md](CONTRIBUTING.md)).
+
+A profile is code, and runs with your permissions: only add files to that
+folder that you wrote or trust. One that won't load is left out, said on
+stderr.
 
 ## From an AI agent
 

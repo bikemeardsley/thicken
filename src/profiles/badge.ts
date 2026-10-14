@@ -5,10 +5,7 @@
 import { Document } from '@gltf-transform/core';
 import earcut from 'earcut';
 import sharp from 'sharp';
-import { addPart, colorMaterial, emptyPart, pictureMaterial, toGlb, unlit } from '../glb.ts';
-import type { Picture } from '../image.ts';
-import { trace, type Point } from '../outline.ts';
-import type { Profile } from '../thicken.ts';
+import { addPart, colorMaterial, emptyPart, type Picture, pictureMaterial, type Point, type Profile, toGlb, trace, unlit } from '../kit.ts';
 
 export const badge: Profile = {
   name: 'badge',

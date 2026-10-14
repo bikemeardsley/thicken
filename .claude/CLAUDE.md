@@ -21,8 +21,12 @@ boxes, badges, lettering. **Start with [README.md](../README.md)**, then
   (no list to edit), each tested in `test/profiles/<name>.test.ts` and by
   `test/profiles.test.ts`. The README's table of profiles is generated:
   `npm run readme` after changing a profile's `about`, `input`, `makes` or
-  `reads`. Outside contributors add profiles only (CONTRIBUTING.md); CI fails
-  a fork's pull request that touches anything else.
+  `reads`. Profiles import thicken's parts from `src/kit.ts` (`../kit.ts`);
+  users' own, in `~/.thicken/profiles`, from `thicken/kit`, resolved by the
+  hook in src/thicken.ts. `thicken profile new|check|contribute`
+  (src/profile-tools.ts, templates/) makes, checks and offers them. Outside
+  contributors add or improve profiles only (CONTRIBUTING.md); CI fails a
+  fork's pull request that touches anything else.
 - **Agents:** `thicken mcp` (src/mcp.ts, stdio only) and the skill in
   `skills/thicken/SKILL.md`, copied to `plugin/skills/` (a test keeps them
   equal). The Claude plugin lives in `plugin/`.

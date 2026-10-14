@@ -8,8 +8,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { Document, type vec4 } from '@gltf-transform/core';
 import sharp from 'sharp';
-import { addPart, emptyPart, toGlb, type Part } from '../glb.ts';
-import type { Profile } from '../thicken.ts';
+import { addPart, emptyPart, type Part, type Profile, toGlb } from '../kit.ts';
 
 // opentype.js (MIT) reads the font: the three calls used here.
 interface Outline { toPathData(decimals: number): string; getBoundingBox(): { x1: number; y1: number; x2: number; y2: number } }

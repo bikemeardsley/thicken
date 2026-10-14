@@ -4,11 +4,7 @@
 // are sold as 55, 75, 100, 130 and 180 pt). The same plate sits inside a slab (src/profiles/slab.ts). With
 // vision, uncropped photos are cut to the card.
 import { Document } from '@gltf-transform/core';
-import { assignFaces, cut, pictureRecord, shots, sidesUnknown } from '../faces.ts';
-import { cardFoil, foilAsk, foilKind, PICTURE_BOX, regionIn, rounded } from '../foil.ts';
-import { addPart, colorMaterial, foiled, pictureMaterial, plate, toGlb } from '../glb.ts';
-import type { Faces, Profile } from '../thicken.ts';
-import { pooled, type Sight } from '../vision.ts';
+import { addPart, assignFaces, cardFoil, colorMaterial, cut, type Faces, foilAsk, foiled, foilKind, PICTURE_BOX, pictureMaterial, pictureRecord, plate, pooled, type Profile, regionIn, rounded, shots, sidesUnknown, type Sight, toGlb } from '../kit.ts';
 
 export const CARD_MM = [63.5, 88.9]; // a standard card, 2.5 × 3.5 in
 export const CARD_DEPTH_MM = 0.35; // a standard card's stock, about 14 pt (35 pt is the holder it fits, not its own thickness)
