@@ -29,10 +29,13 @@ export function problems(profile: Profile): string[] {
     if (!words(profile[key])) found.push(`${key} says it in a few words`);
     else if (/\bTODO\b/.test(profile[key])) found.push(`${key} still says TODO`);
   }
-  for (const [kind, entries] of Object.entries({ faces: profile.faces, reads: profile.reads ?? {}, asks: profile.asks ?? {} })) {
+  if (!Object.keys(profile.records ?? {}).length) found.push('records names the sidecar fields it writes, each in a few words');
+  for (const [kind, entries] of Object.entries({ records: profile.records ?? {}, faces: profile.faces, reads: profile.reads ?? {}, asks: profile.asks ?? {} })) {
     for (const [key, what] of Object.entries(entries)) {
+      const text = Array.isArray(what) ? what[0] : what;
       if (!/^[a-z][A-Za-z0-9]*$/.test(key)) found.push(`${kind} "${key}" is a plain JSON field name`);
-      if (!words(Array.isArray(what) ? what[0] : what)) found.push(`${kind} "${key}" says what it is`);
+      if (!words(text)) found.push(`${kind} "${key}" says what it is`);
+      else if (/\bTODO\b/.test(text)) found.push(`${kind} "${key}" still says TODO`);
     }
   }
   for (const face of profile.unsnapped ?? []) if (!(face in profile.faces)) found.push(`unsnapped "${face}" is one of its faces`);

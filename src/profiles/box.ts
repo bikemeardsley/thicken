@@ -15,12 +15,23 @@ export const box: Profile = {
   about: 'a box-shaped object (a game case, a phone, a deck of cards, packaging)',
   input: 'Front, and any of its back and sides; its size (`--size`), or the vision models\' estimate',
   makes: 'A softly rounded box with the photos on its faces',
+  records: {
+    barcode: 'its product barcode (UPC or EAN) and its kind, when a photo shows one',
+    measuredBy: 'where each of its sizes came from: measured, or the vision models\' estimate',
+  },
   faces: { front: 'front', back: 'back', left: 'left side', right: 'right side', top: 'top', bottom: 'bottom' },
   reads: {
     title: 'its name: the product, game, film or model', brand: 'the brand or maker', edition: 'any edition, version, platform or model number',
     rating: 'any age or content rating (ESRB "T", PEGI 12)', year: 'a year it gives',
   },
-  build: async (pictures, { options, sights, estimateMm }) => {
+  // A product barcode (UPC or EAN; not a book's 978/979) is kept as what it is; it never says, alone, that a photo is a
+  // box: packaging of every kind carries one.
+  read: (scanned) => {
+    const use = scanned.map(({ format, text }) => (/^(UPCA|UPCE|EAN8)$/.test(format) || (format === 'EAN13' && !/^97[89]/.test(text)) ? 'barcode' : undefined));
+    const at = use.indexOf('barcode');
+    return { recognized: false, use, ...(at >= 0 && { barcode: { text: scanned[at].text, format: scanned[at].format } }) };
+  },
+  build: async (pictures, { options, facts, sights, estimateMm }) => {
     const given = options.sizeMm ?? [];
     const size = [0, 1, 2].map((i) => given[i] ?? estimateMm?.[i] ?? 0);
     if (size.some((mm) => !(mm > 0))) throw new Error('a box needs its size: --size WxHxD in mm (or a vision roster to estimate it)');
@@ -47,6 +58,7 @@ export const box: Profile = {
     return {
       glb: await cuboid('box', size, sides, ROUNDED_MM),
       sidecar: {
+        ...(facts.barcode !== undefined && { barcode: facts.barcode }),
         widthMm: round(size[0]), heightMm: round(size[1]), depthMm: round(size[2]),
         measuredBy: Object.fromEntries(['width', 'height', 'depth'].map((key, i) => [key, given[i] !== undefined ? 'measured' : 'vision'])),
         faces, review, warnings, pictures: pictureRecord(all, roles),

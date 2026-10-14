@@ -1,7 +1,7 @@
 {
   "name": "thicken",
   "version": "0.1.0",
-  "description": "Photos in, 3D models out, at their real size: books, graded card slabs, raw cards, boxes, badges and lettering as GLB models, each with a JSON sidecar of what it is.",
+  "description": "Photos in; out comes the object: a GLB model at its real size and a JSON record of what it is, read off it and looked up. Profiles say how each kind of object is built and what it records: a few come with it, and you can add your own.",
   "license": "MIT",
   "author": "Michael Beardsley (https://github.com/bikemeardsley)",
   "repository": "github:bikemeardsley/thicken",

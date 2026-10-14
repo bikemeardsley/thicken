@@ -1,7 +1,7 @@
 {
   "name": "thicken",
   "version": "0.1.0",
-  "description": "thicken: photos in, 3D models out, at their real size. Books, graded card slabs, raw cards, boxes, badges and lettering as GLB models.",
+  "description": "thicken: photos in; out comes the object, its 3D model at real size and a JSON record of what it is.",
   "mcpServers": {
     "thicken": { "command": "npx", "args": ["-y", "thicken@0.1.0", "mcp"] }
   }

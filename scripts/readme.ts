@@ -12,6 +12,20 @@ export const profileTable = () => [
   '| Profile | What it is | From | Makes | With vision, reads |',
   '| --- | --- | --- | --- | --- |',
   ...PROFILES.map((p) => `| \`${p.name}\` | ${cell(p.about)} | ${cell(p.input)} | ${cell(p.makes)} | ${Object.keys(p.reads ?? {}).join(', ') || '–'} |`),
+  '',
+  'What each one records in its sidecar, beside what every model has (its size and where it came from, its faces and',
+  'pictures, its codes, what the vision models read and how sure, what\'s worth a second look: all in',
+  '[USAGE.md](USAGE.md#what-the-sidecar-records)):',
+  '',
+  ...PROFILES.flatMap((p) => [
+    `<details><summary><code>${p.name}</code>: ${Object.keys(p.records).join(', ')}</summary>`,
+    '',
+    '| Field | What it holds |',
+    '| --- | --- |',
+    ...Object.entries(p.records).map(([field, what]) => `| \`${field}\` | ${cell(what)} |`),
+    '',
+    '</details>',
+  ]),
 ].join('\n');
 
 /** The README with its table of profiles brought up to date. */

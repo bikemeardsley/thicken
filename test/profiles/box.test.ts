@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -23,4 +25,18 @@ test('box: anything box-shaped, at the size given, its sides plain until photogr
   });
   assert.deepEqual(sidecar.review, ['back (plain color)']);
   assertExtents(await read(glb), [0.07, 0.15, 0.008]);
+});
+
+test('box: its product barcode is kept as what it is, without saying alone that a photo is a box', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const { prepareZXingModule, writeBarcode } = await import('zxing-wasm/full');
+  prepareZXingModule({ overrides: { wasmBinary: readFileSync(createRequire(import.meta.url).resolve('zxing-wasm/full/zxing_full.wasm')) } });
+  const ean = Buffer.from(await (await writeBarcode('4006381333931', { format: 'EAN13', scale: 3 })).image!.arrayBuffer());
+  const front = path.join(folder, 'front.png');
+  await sharp({ create: { width: 600, height: 400, channels: 3, background: '#ffffff' } }).composite([{ input: ean, left: 40, top: 40 }]).png().toFile(front);
+  const { sidecar } = await thicken([front], { profile: 'box', sizeMm: [190, 135, 15] });
+  assert.deepEqual(sidecar.barcode, { text: '4006381333931', format: 'EAN13' });
+  assert.deepEqual(sidecar.codes, [{ picture: 0, format: 'EAN13', use: 'barcode', text: '4006381333931' }]);
+  await assert.rejects(thicken([front]), /can't tell what this is/, 'a barcode alone picks no profile');
 });

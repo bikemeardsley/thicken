@@ -11,10 +11,16 @@
   <a href="https://www.als.net/donate/"><img src="https://img.shields.io/badge/Donate-ALS_Research-blueviolet" alt="Donate to ALS research"></a>
 </p>
 
-Photos in, 3D models out, at their real size. thicken turns your photos of a
-book, a graded card, a raw card or anything box-shaped, a badge's artwork, or
-a few words, into a GLB model measured in millimeters, with a JSON sidecar
-that knows what it is: a book's catalog record, a slab's grade and cert.
+<h3 align="center">Photos in. Out comes the object: its 3D model, and the record of what it is.</h3>
+
+thicken turns photos of a real object into two files that belong together: a
+**GLB model** at the object's real size, in millimeters, and a **JSON record**
+of everything known about it, read off the object by vision models and looked
+up wherever its kind has a catalog. What thicken knows about a kind of object
+(how it's built, what to read off it, where to look it up) lives in a
+**profile**: a few come with it, and you can [add your own](#adding-a-profile)
+for any kind of object. Put the model in a web page or Blender; build a
+collection, an inventory or an app on the record.
 
 <p align="center">
   <img src=".github/show/giannis.webp" height="220" alt="A photo of a CGC-graded Giannis Antetokounmpo autograph card on a wooden table, beside the clear 3D slab thicken made from it, turning">
@@ -25,8 +31,7 @@ that knows what it is: a book's catalog record, a slab's grade and cert.
 </p>
 <p align="center"><sub>In each pair, a photo going in, and the GLB model coming out, turned all the way round. The logo above is a thicken model too: <code>thicken lettering thicken</code>.</sub></p>
 
-<details>
-<summary>And the Giannis slab's sidecar, the metadata beside its model (in part)</summary>
+**And beside each model, its record.** The Giannis slab's, in part:
 
 ```json
 {
@@ -51,9 +56,8 @@ that knows what it is: a book's catalog record, a slab's grade and cert.
 ```
 
 The grader and cert come from the label's QR code; the rest the vision models
-read off it. Every field is in [USAGE.md](USAGE.md#what-the-sidecar-records).
-
-</details>
+read off it. What each profile records is under [What it makes](#what-it-makes);
+every field, in [USAGE.md](USAGE.md#what-the-sidecar-records).
 
 ## Contents
 
@@ -120,8 +124,9 @@ the geometry from known sizes and maps your photos onto it.
 
 What thicken makes is more than a 3D shape. Each run writes a **thicken
 object**: the model (a GLB at the object's real size, in millimeters) and,
-beside it, its sidecar (JSON), which knows what the object is, in its
-profile's own terms:
+beside it, its record (the JSON sidecar), which knows what the object is, in
+its profile's own terms. For the profiles that come with thicken, for
+example:
 
 - **A book:** its ISBN, its catalog record (title, authors, publishers,
   dates, subjects, Dewey and Library of Congress classes, pages), and how sure
@@ -162,6 +167,81 @@ profiles, one file each in `src/profiles`. Anyone can add one
 | `lettering` | words made into puffy 3D bubble letters | Words, typed where pictures would go (`--width` mm across, `--depth` mm thick) | Puffy gold bubble letters, round in section like a balloon, in the Titan One font | – |
 | `slab` | a graded trading card sealed in a clear plastic holder with a label | Front, and its back | A clear plastic holder at its grader's size, with the card and the grade label inside it, each cut from the photos | grader, grade, gradeName, qualifier, subgrades, autoGrade, autoGradeName, autograph, signed, cert, name, team, year, maker, set, number, variant |
 | `box` | a box-shaped object (a game case, a phone, a deck of cards, packaging) | Front, and any of its back and sides; its size (`--size`), or the vision models' estimate | A softly rounded box with the photos on its faces | title, brand, edition, rating, year |
+
+What each one records in its sidecar, beside what every model has (its size and where it came from, its faces and
+pictures, its codes, what the vision models read and how sure, what's worth a second look: all in
+[USAGE.md](USAGE.md#what-the-sidecar-records)):
+
+<details><summary><code>badge</code>: edge, regions</summary>
+
+| Field | What it holds |
+| --- | --- |
+| `edge` | the color just inside its outline, used for its sides and back (#rrggbb) |
+| `regions` | how many separate shapes the artwork is (a medal and its ribbon are two) |
+
+</details>
+<details><summary><code>book</code>: isbn, catalog, match, pages, binding, bindingBy, measuredBy, depthEstimates, coverUrl, sticker, lookups</summary>
+
+| Field | What it holds |
+| --- | --- |
+| `isbn` | its ISBN: given, read off its barcode, or from a title match with one edition |
+| `catalog` | Open Library's record of the edition and its work: title, authors, publishers, dates, edition, format, series, languages, subjects, Dewey and LC classes, contents, every id, links, cover |
+| `match` | when found by the title read off it: what was read, how sure the match is, the work and its editions |
+| `pages` | its page count |
+| `binding` | hardcover or paperback |
+| `bindingBy` | how that was found: vision, catalog or assumed |
+| `measuredBy` | where each of its sizes came from: measured, openlibrary, loc, googlebooks, pages, photos, cover or trim |
+| `depthEstimates` | every thickness estimate made: from the photos and from the page count |
+| `coverUrl` | Open Library's cover, when it stands in for a front not photographed |
+| `sticker` | where a foil seal or sticker is on its front cover |
+| `lookups` | every catalog request: host, path, status and time |
+
+</details>
+<details><summary><code>card</code>: corners, cornersBy, foil, foilBy, pictureBox, pictureBoxBy, pt, measuredBy</summary>
+
+| Field | What it holds |
+| --- | --- |
+| `corners` | how its corners are cut: square, slight or round |
+| `cornersBy` | how that was found: vision or assumed |
+| `foil` | its foil: none, holo (the picture shines), reverse (all but the picture) or full |
+| `foilBy` | how that was found: vision or assumed |
+| `pictureBox` | where its picture box is, in fractions of the front, for holo and reverse foil |
+| `pictureBoxBy` | how that was found: vision or the standard layout |
+| `pt` | a thick card's thickness in points, when given |
+| `measuredBy` | where its size came from: standard or given; its thickness: standard, given or pt |
+
+</details>
+<details><summary><code>lettering</code>: text, font, fontLicense, color, measuredBy</summary>
+
+| Field | What it holds |
+| --- | --- |
+| `text` | the words, as lettered |
+| `font` | the font they were drawn in |
+| `fontLicense` | its license (OFL-1.1) |
+| `color` | their color |
+| `measuredBy` | where its width and depth came from: given, the default, or round in section |
+
+</details>
+<details><summary><code>slab</code>: grader, cert, verifyUrl, holder, inside, measuredBy</summary>
+
+| Field | What it holds |
+| --- | --- |
+| `grader` | who graded it: psa, bgs, cgc, sgc or tag, from its QR code or its label |
+| `cert` | its certification number |
+| `verifyUrl` | the grader's page for this cert, from its QR code |
+| `holder` | the holder it was built as (psa, cgc-tall…) |
+| `inside` | the card and the label inside: each one's size, middle and what placed it; the card's corners and foil; where the label's hologram is |
+| `measuredBy` | where its size came from: the holder table, or measured |
+
+</details>
+<details><summary><code>box</code>: barcode, measuredBy</summary>
+
+| Field | What it holds |
+| --- | --- |
+| `barcode` | its product barcode (UPC or EAN) and its kind, when a photo shows one |
+| `measuredBy` | where each of its sizes came from: measured, or the vision models' estimate |
+
+</details>
 <!-- profiles:end -->
 
 Name the profile, or leave it out and thicken picks one:
@@ -224,8 +304,10 @@ thicken profile check vinyl        # what thicken's CI will check
 thicken profile contribute vinyl   # forks, branches, checks and opens the pull request
 ```
 
-[CONTRIBUTING.md](CONTRIBUTING.md) has the rest. The table above is made from
-the profiles themselves.
+The template, [templates/profile.ts](templates/profile.ts), works as it is (a
+box at the size you give) and says on every field what goes there, the
+records it writes included. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest.
+The table above is made from the profiles themselves.
 
 ## Security
 

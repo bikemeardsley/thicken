@@ -25,6 +25,11 @@ export interface Profile {
   /** For the README's table of profiles: what it's made from, and what it makes. */
   input: string;
   makes: string;
+  /**
+   * The sidecar's fields this profile writes, beyond those every model has (its size, faces, pictures, codes,
+   * review, what was read): each in a few words. The README lists them, and agents are told them.
+   */
+  records: Record<string, string>;
   /** Its faces, each in a few words, for the vision models finding them in a photo. */
   faces: Record<string, string>;
   /** Anything more the vision models need to find its faces the right way up. */
