@@ -21,9 +21,9 @@ that knows what it is: a book's catalog record, a slab's grade and cert.
   <img src=".github/show/erving.webp" height="220" alt="A photo of a PSA-graded 1976 Topps Julius Erving in a tall holder, beside its 3D model, turning">
   <br>
   <img src=".github/show/psyduck.webp" height="220" alt="A photo of a reverse-holo Psyduck card, beside its 3D model, the foil shimmering as it turns">
-  <img src=".github/show/fahrenheit.webp" height="220" alt="A photo of the hardcover Fahrenheit-182, beside its 3D model with its gold award seal, turning">
+  <img src=".github/show/skipping.webp" height="220" alt="A photo of the hardcover Skipping Christmas, beside its 3D model, turning to show its back cover">
 </p>
-<p align="center"><sub>In each pair, a photo going in, and the GLB model coming out, turning. The logo above is a thicken model too: <code>thicken lettering thicken</code>.</sub></p>
+<p align="center"><sub>In each pair, a photo going in, and the GLB model coming out, turned all the way round. The logo above is a thicken model too: <code>thicken lettering thicken</code>.</sub></p>
 
 <details>
 <summary>And the Giannis slab's sidecar, the metadata beside its model (in part)</summary>
