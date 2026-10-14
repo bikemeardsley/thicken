@@ -17,8 +17,14 @@ const flat = await Promise.all(photos.map(async (photo) => {
   const { data, info } = await sharp(trimmed).resize({ height }).png().toBuffer({ resolveWithObject: true });
   return { data, width: info.width };
 }));
-const { pages = 1 } = await sharp(turning, { animated: true }).metadata();
-const frames = await Promise.all(Array.from({ length: pages }, (_, page) => sharp(turning, { page }).resize({ height }).png().toBuffer({ resolveWithObject: true })));
+// Every frame decoded at once (one tall strip, a page per frame), then cut apart: decoding page by page decodes all
+// the pages before each one again.
+const { data: strip, info } = await sharp(turning, { animated: true }).raw().toBuffer({ resolveWithObject: true });
+const pageHeight = info.pageHeight ?? info.height;
+const bytes = info.width * pageHeight * info.channels;
+const frames = await Promise.all(Array.from({ length: info.height / pageHeight }, (_, page) =>
+  sharp(strip.subarray(page * bytes, (page + 1) * bytes), { raw: { width: info.width, height: pageHeight, channels: info.channels } })
+    .resize({ height }).png().toBuffer({ resolveWithObject: true })));
 const left = flat.reduce((x, photo) => x + photo.width + GAP, 0);
 const width = left + frames[0].info.width;
 
