@@ -19,6 +19,14 @@ export const slab: Profile = {
   about: 'a graded trading card sealed in a clear plastic holder with a label',
   input: 'Front, and its back',
   makes: 'A clear plastic holder at its grader\'s size, with the card and the grade label inside it, each cut from the photos',
+  records: {
+    grader: 'who graded it: psa, bgs, cgc, sgc or tag, from its QR code or its label',
+    cert: 'its certification number',
+    verifyUrl: 'the grader\'s page for this cert, from its QR code',
+    holder: 'the holder it was built as (psa, cgc-tall…)',
+    inside: 'the card and the label inside: each one\'s size, middle and what placed it; the card\'s corners and foil; where the label\'s hologram is',
+    measuredBy: 'where its size came from: the holder table, or measured',
+  },
   faces: {
     front: 'the side showing the grade: the label that names the card and gives its grade, and the card\'s face',
     back: 'the reverse: the back of the label (a logo, hologram or QR code, no grade) and the back of the card',

@@ -1,6 +1,6 @@
 ---
 name: thicken
-description: Turns photos of a real object (a book, a graded trading-card slab, a raw trading card, anything box-shaped), a badge's cut-out artwork, a few words, or a book's ISBN into a 3D model (GLB) at the object's real size in millimeters, with a JSON sidecar of what it is (a book's catalog record, a slab's grade and cert, what is printed on it). Use when the user wants a 3D model, a GLB, or a three.js or Blender asset of a physical object they have photos of, a shelf of books or a collection of cards as models, or puffy 3D bubble lettering of a word.
+description: Turns photos of a real object into two files that belong together, a 3D model (GLB) at the object's real size in millimeters and a JSON record of what it is (read off the object and looked up), for any kind of object it has a profile for, such as a book, a graded trading-card slab, a raw trading card, anything box-shaped, a badge's cut-out artwork, or bubble lettering of a few words. Use when the user wants a 3D model, a GLB, or a three.js or Blender asset of a physical object they have photos of, a record or catalog of their things as models, or a profile of their own for a kind of object.
 ---
 
 # thicken

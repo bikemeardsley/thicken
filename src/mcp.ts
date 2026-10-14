@@ -75,12 +75,12 @@ export async function serve(): Promise<void> {
   }, async () => ({
     content: [{
       type: 'text',
-      text: JSON.stringify(PROFILES.map((p) => ({ name: p.name, about: p.about, from: p.input, makes: p.makes, reads: Object.keys(p.reads ?? {}) }))),
+      text: JSON.stringify(PROFILES.map((p) => ({ name: p.name, about: p.about, from: p.input, makes: p.makes, records: p.records, reads: Object.keys(p.reads ?? {}) }))),
     }],
   }));
   server.registerTool('thicken_make', {
     title: 'Make a 3D model with thicken',
-    description: 'Turns photos of one object (a book, a graded card slab, a raw trading card, anything box-shaped), a badge\'s cut-out artwork, a few words (lettering) or a book\'s ISBN into a GLB model at the object\'s real size, in millimeters, with a JSON sidecar of what it is: a book\'s catalog record, a slab\'s grade and cert, what is printed on it. Writes both files and returns their paths and the main facts. Photos need not be cropped when a vision roster is set up (THICKEN_VISION_URL, THICKEN_VISION_MODELS); without one, give straight-on photos cropped to the object, and name the profile. One object a call: for several, call once each.',
+    description: 'Turns photos of one real object (or artwork, or words, or a book\'s ISBN) into two files that belong together: a GLB model at the object\'s real size, in millimeters, and a JSON record of what it is, read off it and looked up (its profile\'s records: thicken_profiles lists each kind of object and what it records). Writes both files and returns their paths and the main facts. Photos need not be cropped when a vision roster is set up (THICKEN_VISION_URL, THICKEN_VISION_MODELS); without one, give straight-on photos cropped to the object, and name the profile. One object a call: for several, call once each.',
     inputSchema: makeInput,
   }, async (args) => ({ content: [{ type: 'text', text: await made(args) }] }));
   await server.connect(new StdioServerTransport());

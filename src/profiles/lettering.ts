@@ -32,6 +32,13 @@ export const lettering: Profile = {
   about: 'words made into puffy 3D bubble letters',
   input: 'Words, typed where pictures would go (`--width` mm across, `--depth` mm thick)',
   makes: 'Puffy gold bubble letters, round in section like a balloon, in the Titan One font',
+  records: {
+    text: 'the words, as lettered',
+    font: 'the font they were drawn in',
+    fontLicense: 'its license (OFL-1.1)',
+    color: 'their color',
+    measuredBy: 'where its width and depth came from: given, the default, or round in section',
+  },
   faces: {},
   words: true,
   build: async (_pictures, { options, words = [] }) => {

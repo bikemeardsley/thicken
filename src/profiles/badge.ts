@@ -12,6 +12,10 @@ export const badge: Profile = {
   about: 'cut-out digital artwork: a certification badge, logo or sticker design',
   input: 'Artwork with transparency around its shape (`--width`, `--depth` in mm)',
   makes: 'The artwork\'s own outline, extruded: the art on its face, its edge color on the sides and back',
+  records: {
+    edge: 'the color just inside its outline, used for its sides and back (#rrggbb)',
+    regions: 'how many separate shapes the artwork is (a medal and its ribbon are two)',
+  },
   faces: {}, // artwork, not a photo of an object: nothing for the vision models to find, only to read
   reads: {
     name: 'what it names: the certification, award, achievement, rank or title', issuer: 'who issued or awards it',

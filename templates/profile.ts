@@ -16,6 +16,10 @@ export const __CAMEL__: Profile = {
   // For the README's table: what it's made from, and what it makes.
   input: 'TODO: Front, and any of its back and sides; its size (`--size`)',
   makes: 'TODO: what it makes, at its real size',
+  // The sidecar's fields it writes, beyond those every model has: each in a few words. Add each one you write.
+  records: {
+    measuredBy: 'where each of its sizes came from: measured, or the vision models\' estimate',
+  },
   // Each face in a few words, for the vision models to find in a photo.
   faces: { front: 'front', back: 'back', left: 'left side', right: 'right side', top: 'top', bottom: 'bottom' },
   // What's printed on it worth reading: more is better, the apps reading the sidecar take what they want.

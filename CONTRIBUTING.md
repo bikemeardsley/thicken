@@ -40,7 +40,9 @@ every field and a TODO on each one to fill in.
 
 - **The fields:** `about` (what it is, in a few words: the vision models are
   told this when they choose a profile), `input` and `makes` (for the
-  README), `faces` (each in a few words, for the models to find), `reads`
+  README), `records` (each field it writes in the sidecar, in a few words:
+  the record is half of what thicken makes, so say what yours holds), `faces`
+  (each in a few words, for the models to find), `reads`
   (what's printed on it worth reading: more is better), `asks` (short
   questions with one-word answers). Optional: `note`, `unsnapped`, `generic`,
   and `read` (how its codes or pictures give it away without vision). Each is

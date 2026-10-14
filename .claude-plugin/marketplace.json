@@ -1,7 +1,7 @@
 {
   "name": "thicken",
   "owner": { "name": "Michael Beardsley" },
-  "description": "thicken: photos in, 3D models out, at their real size.",
+  "description": "thicken: photos in; out comes the object, its 3D model at real size and a JSON record of what it is.",
   "plugins": [
     {
       "name": "thicken",
