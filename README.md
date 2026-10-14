@@ -214,9 +214,17 @@ lookups: previews draw with model-viewer served from your own disk.
 
 ## Adding a profile
 
-A profile is one file in `src/profiles`, found by itself: what the object is,
-its faces, what to read off it, and how to build it. New ones are welcome:
-[CONTRIBUTING.md](CONTRIBUTING.md) says how, and the table above is made from
+A profile is one file, found by itself: what the object is, its faces, what
+to read off it, and how to build it. Make your own while you use thicken, or
+improve one of its own, and offer it back:
+
+```sh
+thicken profile new vinyl          # from the template, in ~/.thicken/profiles: used at once
+thicken profile check vinyl        # what thicken's CI will check
+thicken profile contribute vinyl   # forks, branches, checks and opens the pull request
+```
+
+[CONTRIBUTING.md](CONTRIBUTING.md) has the rest. The table above is made from
 the profiles themselves.
 
 ## Security

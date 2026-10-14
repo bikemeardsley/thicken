@@ -3,6 +3,7 @@
 // thicken batch [profile] <folder> [-o out-folder] [--preview] [--force] [options]
 // thicken preview <model.glb or folder>...
 // thicken mcp    (the MCP server on stdio, for AI agents: src/mcp.ts)
+// thicken profile new|check|contribute <name> [--from <profile>]   (a profile of your own: src/profile-tools.ts)
 // With no profile named, thicken picks one per model (see src/thicken.ts).
 // Writes each GLB and, beside it, a JSON sidecar of the same name.
 import { existsSync } from 'node:fs';
@@ -16,6 +17,7 @@ const USAGE = `usage: thicken [${PROFILES.map((p) => p.name).join('|')}] <pictur
        thicken batch [profile] <folder> [-o out-folder] [--preview] [--force]
        thicken preview <model.glb or folder>...
        thicken mcp    (the MCP server on stdio, for AI agents)
+       thicken profile new|check|contribute <name> [--from <profile>]   (a profile of your own, in ~/.thicken/profiles)
 Profiles (src/profiles), each from:
 ${PROFILES.map((p) => `  ${p.name.padEnd(8)} ${p.input.replace(/`/g, '')}`).join('\n')}
 Options: --size WxHxD (mm; any left out are looked up or estimated), --isbn 978... (a book),
@@ -54,10 +56,11 @@ const { positionals, values } = parseArgs({
     preview: { type: 'boolean' },
     force: { type: 'boolean' },
     help: { type: 'boolean', short: 'h' },
+    from: { type: 'string' },
   },
 });
-const command = ['batch', 'preview', 'mcp'].includes(positionals[0]) ? positionals.shift() : 'make';
-const profile = command !== 'preview' && PROFILES.some((p) => p.name === positionals[0]) ? positionals.shift() : undefined;
+const command = ['batch', 'preview', 'mcp', 'profile'].includes(positionals[0]) ? positionals.shift() : 'make';
+const profile = command !== 'preview' && command !== 'profile' && PROFILES.some((p) => p.name === positionals[0]) ? positionals.shift() : undefined;
 const nothingGiven = positionals.length === 0 && command !== 'mcp' && (command !== 'make' || !values.isbn);
 if (values.help || nothingGiven) {
   console.error(USAGE);
@@ -107,7 +110,9 @@ async function previewer() {
 }
 
 try {
-  if (command === 'mcp') {
+  if (command === 'profile') {
+    await (await import('./profile-tools.ts')).profileCommand(positionals, values.from);
+  } else if (command === 'mcp') {
     await (await import('./mcp.ts')).serve(); // stdio stays open: the server answers until the agent closes it
   } else if (command === 'make') {
     const { out, sidecar } = await build(positionals, values.out);

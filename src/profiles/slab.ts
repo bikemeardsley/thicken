@@ -5,12 +5,7 @@
 // (or use a scanner app), and the card and label go where a holder usually
 // has them.
 import { Document } from '@gltf-transform/core';
-import { assignFaces, cut, pictureRecord, shots, sidesUnknown } from '../faces.ts';
-import { cardFoil, foilAsk, foilKind, foilMap, PICTURE_BOX, regionIn, regionOf, rounded, type Region } from '../foil.ts';
-import { addPart, clearMaterial, colorMaterial, foiled, pictureMaterial, plate, ring, toGlb } from '../glb.ts';
-import { mapping, straighten, subjectBox, texture, type Picture } from '../image.ts';
-import type { Faces, Profile, Scanned } from '../thicken.ts';
-import { readOf, type Sight } from '../vision.ts';
+import { addPart, assignFaces, cardFoil, clearMaterial, colorMaterial, cut, type Faces, foilAsk, foiled, foilKind, foilMap, mapping, type Picture, PICTURE_BOX, pictureMaterial, pictureRecord, plate, type Profile, readOf, type Region, regionIn, regionOf, ring, rounded, type Scanned, shots, sidesUnknown, type Sight, straighten, subjectBox, texture, toGlb } from '../kit.ts';
 import { CARD_DEPTH_MM, CARD_MM, CARD_READS, CARDSTOCK, CORNERS_ASK, cornersOf, PT_MM } from './card.ts';
 
 // A grader's QR code points at its own verification page, which says whose holder this is.

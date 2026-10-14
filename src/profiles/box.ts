@@ -4,9 +4,7 @@
 // the vision models found them; without vision, one whole photo is the front.
 // A side not photographed is a plain color from the front's edge, fine as it
 // is; a missing back is for review.
-import { assignFaces, cut, pictureRecord, shots, sidesUnknown } from '../faces.ts';
-import { box as cuboid, type Face, type Side } from '../glb.ts';
-import type { Faces, Profile } from '../thicken.ts';
+import { assignFaces, box as cuboid, cut, type Face, type Faces, pictureRecord, type Profile, shots, type Side, sidesUnknown } from '../kit.ts';
 
 const ROUNDED_MM = 1;
 const FACES: Face[] = ['front', 'back', 'left', 'right', 'top', 'bottom'];

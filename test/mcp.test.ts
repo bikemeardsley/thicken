@@ -6,7 +6,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import './helpers.ts';
 
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
@@ -31,7 +31,7 @@ test('mcp: an agent lists the profiles and makes a model, over stdio, as `thicke
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   // Started where no .env is, with none of the developer's settings: lettering needs neither the web nor vision.
   const client = new Client({ name: 'test', version: '1' });
-  await client.connect(new StdioClientTransport({ command: process.execPath, args: [CLI, 'mcp'], cwd: folder }));
+  await client.connect(new StdioClientTransport({ command: process.execPath, args: [CLI, 'mcp'], cwd: folder, env: { ...getDefaultEnvironment(), THICKEN_PROFILES: '' } }));
   // The server first: Windows won't remove the folder a running process works in.
   t.after(async () => {
     await client.close();

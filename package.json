@@ -15,14 +15,18 @@
     ".": {
       "types": "./dist/thicken.d.ts",
       "default": "./dist/thicken.js"
+    },
+    "./kit": {
+      "types": "./dist/kit.d.ts",
+      "default": "./dist/kit.js"
     }
   },
-  "files": ["dist", "fonts"],
+  "files": ["dist", "fonts", "templates", "src/profiles"],
   "engines": {
     "node": ">=22.18"
   },
   "scripts": {
-    "test": "node --test test/*.test.ts test/profiles/*.test.ts",
+    "test": "node --env-file=test/test.env --test test/*.test.ts test/profiles/*.test.ts",
     "check": "tsc",
     "build": "tsc -p tsconfig.build.json",
     "prepack": "npm run build",

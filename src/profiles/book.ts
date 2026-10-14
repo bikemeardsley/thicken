@@ -10,12 +10,7 @@
 // count. With an ISBN the sidecar also gets Open Library's catalog record.
 import { Document, type Material } from '@gltf-transform/core';
 import sharp from 'sharp';
-import { assignFaces, cut, pictureRecord, shots, sidesUnknown } from '../faces.ts';
-import { foilMap, regionIn, rounded } from '../foil.ts';
-import { addPart, box, roundedBox, sideMaterial, toGlb, type Face, type Side } from '../glb.ts';
-import { load, texture, turned, type Picture } from '../image.ts';
-import type { Code, Faces, Profile } from '../thicken.ts';
-import { pooled, readOf, type Sight } from '../vision.ts';
+import { addPart, assignFaces, box, type Code, cut, type Face, type Faces, foilMap, load, type Picture, pictureRecord, pooled, type Profile, readOf, regionIn, rounded, roundedBox, shots, type Side, sideMaterial, sidesUnknown, type Sight, texture, toGlb, turned } from '../kit.ts';
 
 export const book: Profile = {
   name: 'book',
