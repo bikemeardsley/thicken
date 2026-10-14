@@ -1,7 +1,7 @@
 {
   "name": "thicken",
   "displayName": "thicken",
-  "description": "Photos in; out comes the object: a GLB model at its real size and a JSON record of what it is, read off it by vision models and looked up in public catalogs. Profiles say how each kind of object is built and what it records: a few come with thicken, and you can add your own.",
+  "description": "Photos in; out comes a 3D model (GLB) at the object's real size and its metadata as JSON. A profile for each kind of object; add your own.",
   "author": { "name": "Michael Beardsley" },
   "homepage": "https://github.com/bikemeardsley/thicken",
   "repository": "https://github.com/bikemeardsley/thicken",
