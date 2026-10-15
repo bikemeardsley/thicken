@@ -58,11 +58,18 @@ minus `userConfig` and `mcpServers` (the portal refuses both), the icon and
 characters or fewer, website, support, privacy (PRIVACY.md) and terms
 (TERMS.md) URLs, and an app icon. Keep the skill provider-neutral either way.
 
+**GitHub Copilot plugin directory: rejected, closed.** Decided 2026-10-15:
+too niche for their directory, and there is no way to resubmit. The
+self-hosted route in USAGE.md (`copilot plugin marketplace add
+bikemeardsley/thicken`) still works and stays; `plugin/plugin.json` and
+`plugin/mcp.json` stay in the release checklist for it. Don't try the
+directory again.
+
 ## Tools: when to use each
 
-- **Kitbash**, before writing any component or adding any dependency. The
-  README's table is the starting verdict; re-run kitbash if a part's shape
-  changes.
+- **`/git-for-me`** (replaced Kitbash), before writing any component or
+  adding any dependency. The README's table is the starting verdict; re-run
+  it if a part's shape changes.
 - **Model bench**, for adversarial review of geometry/UV and format
   decisions, and for listing tasks. Panel from `route.py`; verify before
   acting; record with `offload.py`; name every seat in chat (global
