@@ -45,6 +45,13 @@ the version is on npm, `npm install --package-lock-only --ignore-scripts` in
 `plugin/` for the plugin directory's launcher lock; a `vX.Y.Z` tag and GitHub
 release; and `mcp-publisher publish` for the MCP registry.
 
+**Codex / ChatGPT plugin directory.** Being submitted at platform.openai.com/plugins
+as a skills-only plugin: the portal refuses `userConfig` and local `npx` MCP
+servers, so the upload is `thicken-codex.zip` (gitignored, repo root) holding
+`.claude-plugin/plugin.json` minus `userConfig` and `mcpServers`, the icon, and
+`plugin/skills/`. Rebuild it after a release or a skill change, and keep the
+skill provider-neutral (no Claude-only wording). Badge only once it's approved.
+
 ## Tools: when to use each
 
 - **Kitbash**, before writing any component or adding any dependency. The

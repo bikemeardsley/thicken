@@ -13,4 +13,7 @@ out/
 
 # Diagrams made with archify, kept locally
 .archify/
+
+# Codex plugin upload (see .claude/CLAUDE.md)
+thicken-codex.zip
 .diagram-design
