@@ -516,6 +516,15 @@ Add the server under `mcpServers` in the client's MCP settings (Cursor:
 }
 ```
 
+### Antigravity CLI
+
+```sh
+agy plugin install https://github.com/bikemeardsley/thicken/tree/main/plugin
+```
+
+The plugin brings the skill and the MCP server. Coming from the Gemini CLI
+extension? `agy plugin import gemini` converts it.
+
 ### Gemini CLI
 
 ```sh

@@ -20,6 +20,8 @@ test('mcp: every manifest launches the version package.json says, and the plugin
   assert.deepEqual(JSON.parse(repo('mcp.json')).mcpServers.thicken.args, pinned.slice(1));
   // The same plugin as an Agent Plugin (GitHub Copilot and others): its manifest and MCP servers at its root.
   assert.deepEqual([JSON.parse(repo('plugin/plugin.json')).version, ...JSON.parse(repo('plugin/mcp.json')).mcpServers.thicken.args], [version, ...pinned.slice(1)]);
+  // Antigravity reads the same servers from mcp_config.json.
+  assert.deepEqual(JSON.parse(repo('plugin/mcp_config.json')), JSON.parse(repo('plugin/mcp.json')));
   const gemini = JSON.parse(repo('gemini-extension.json'));
   assert.deepEqual([gemini.version, ...gemini.mcpServers.thicken.args], [version, ...pinned.slice(1)]);
   const server = JSON.parse(repo('server.json'));
