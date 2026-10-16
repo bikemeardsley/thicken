@@ -69,10 +69,9 @@ directory again.
 
 - **`/git-for-me`** (replaced Kitbash), before writing any component or
   adding any dependency. The README's table is the starting verdict; re-run
-  it if a part's shape changes. **To do (2026-10-15):** run `/git-for-me`
-  over thicken's existing parts once; every verdict so far came from Kitbash,
-  and git-for-me searches GitLab and Codeberg too and checks licences and
-  upkeep live. Record what it changes, if anything, in the README's table.
+  it if a part's shape changes. All parts re-checked with it 2026-10-16
+  (GitHub, GitLab, Codeberg): every Kitbash verdict held; the MCP SDK row
+  was added to the table.
 - **Model bench**, for adversarial review of geometry/UV and format
   decisions, and for listing tasks. Panel from `route.py`; verify before
   acting; record with `offload.py`; name every seat in chat (global
