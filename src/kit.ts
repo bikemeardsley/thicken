@@ -5,6 +5,7 @@ export * from './faces.ts';
 export * from './foil.ts';
 export * from './glb.ts';
 export * from './image.ts';
+export { type Look, PATTERNS } from './patterns.ts';
 export { trace, type Point } from './outline.ts';
 export { pooled, readOf, type Answer, type Seen, type Sight } from './vision.ts';
 export type { Built, Code, Faces, Facts, Job, Options, Profile, Scanned } from './thicken.ts';

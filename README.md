@@ -198,7 +198,7 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `lookups` | every catalog request: host, path, status and time |
 
 </details>
-<details><summary><code>card</code>: corners, cornersBy, foil, foilBy, pictureBox, pictureBoxBy, pt, measuredBy</summary>
+<details><summary><code>card</code>: corners, cornersBy, foil, foilBy, foilLook, foilLookBy, pictureBox, pictureBoxBy, pt, measuredBy</summary>
 
 | Field | What it holds |
 | --- | --- |
@@ -206,6 +206,8 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `cornersBy` | how that was found: vision or assumed |
 | `foil` | its foil: none, holo (the picture shines), reverse (all but the picture) or full |
 | `foilBy` | how that was found: vision or assumed |
+| `foilLook` | its foil's pattern, when it shines (src/patterns.ts): "shards", "flow wave", "circles"… |
+| `foilLookBy` | how that was found: parallel (a word in the variant read off it), vision or assumed |
 | `pictureBox` | where its picture box is, in fractions of the front, for holo and reverse foil |
 | `pictureBoxBy` | how that was found: vision or the standard layout |
 | `pt` | a thick card's thickness in points, when given |
@@ -231,7 +233,7 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `cert` | its certification number |
 | `verifyUrl` | the grader's page for this cert, from its QR code |
 | `holder` | the holder it was built as (psa, cgc-tall…) |
-| `inside` | the card and the label inside: each one's size, middle and what placed it; the card's corners and foil; where the label's hologram is |
+| `inside` | the card and the label inside: each one's size, middle and what placed it; the card's corners, foil and its pattern; where the label's hologram is |
 | `measuredBy` | where its size came from: the holder table, or measured |
 
 </details>

@@ -85,6 +85,7 @@ test('card: holofoil as the models see it, a reverse holo shining everywhere but
   // Two answers naming the foil outweigh four from frames that missed it.
   const { glb, sidecar } = await thicken(files, { profile: 'card' });
   assert.deepEqual([sidecar.foil, sidecar.foilBy, sidecar.pictureBoxBy, sidecar.warnings], ['reverse', 'vision', 'vision', []]);
+  assert.deepEqual([sidecar.foilLook, sidecar.foilLookBy], ['shards', 'assumed'], 'no pattern named or seen: cracked ice');
   const found = sidecar.pictureBox as Record<string, number>;
   for (const [key, want] of Object.entries({ x0: 0.1, x1: 0.9, y0: 0.12, y1: 0.5 })) assert.ok(Math.abs(found[key] - want) < 0.01, `picture box ${key} ${found[key]}`);
 
@@ -98,6 +99,14 @@ test('card: holofoil as the models see it, a reverse holo shining everywhere but
   const pixel = (u: number, v: number) => [...data.subarray((Math.round(v * info.height) * info.width + Math.round(u * info.width)) * info.channels).subarray(0, 3)];
   assert.deepEqual(pixel(0.5, 0.3), [0, 102, 0], 'the picture box: print');
   assert.deepEqual(pixel(0.5, 0.75), [255, 77, 153], 'the rest: film, glossier, partly metal');
+  // The foil in pieces (cracked ice): each its own film thickness, and tilted where there's film, flat on the print.
+  const thick = await sharp(film.getIridescenceThicknessTexture()!.getImage()!).raw().toBuffer();
+  assert.ok(new Set(thick).size > 50, 'many pieces, each its own thickness');
+  const facets = await sharp(material('card-front').getNormalTexture()!.getImage()!).raw().toBuffer({ resolveWithObject: true });
+  const tilt = (u: number, v: number) => { const at = (Math.round(v * facets.info.height) * facets.info.width + Math.round(u * facets.info.width)) * 3; return [...facets.data.subarray(at, at + 3)]; };
+  assert.deepEqual(tilt(0.5, 0.3), [128, 128, 255], 'the print lies flat');
+  const pieces = [0.6, 0.7, 0.8, 0.9].map((v) => tilt(0.5, v));
+  assert.ok(pieces.every(([x, y, z]) => z > 230 && Math.hypot(x - 128, y - 128) < 34) && new Set(pieces.map(String)).size > 1, `the foil's pieces lean their own ways ${pieces}`);
 
   // One model alone seeing foil isn't enough: a plain card stays plain.
   flash = (model) => (model === 'a' ? 'holo' : 'none');

@@ -5,7 +5,7 @@
 // (or use a scanner app), and the card and label go where a holder usually
 // has them.
 import { Document } from '@gltf-transform/core';
-import { addPart, assignFaces, cardFoil, clearMaterial, colorMaterial, cut, type Faces, foilAsk, foiled, foilKind, foilMap, mapping, type Picture, PICTURE_BOX, pictureMaterial, pictureRecord, plate, type Profile, readOf, type Region, regionIn, regionOf, ring, rounded, type Scanned, shots, sidesUnknown, type Sight, straighten, subjectBox, texture, toGlb } from '../kit.ts';
+import { addPart, assignFaces, cardFoil, clearMaterial, colorMaterial, cut, type Faces, type Foil, foilAsk, patternAsk, foiled, foilKind, foilLook, foilMap, lookName, mapping, type Picture, PICTURE_BOX, pictureMaterial, pictureRecord, plate, type Profile, readOf, type Region, regionIn, regionOf, ring, rounded, type Scanned, shots, sidesUnknown, type Sight, straighten, subjectBox, texture, toGlb } from '../kit.ts';
 import { CARD_DEPTH_MM, CARD_MM, CARD_READS, CARDSTOCK, CORNERS_ASK, cornersOf, PT_MM } from './card.ts';
 
 // A grader's QR code points at its own verification page, which says whose holder this is.
@@ -24,7 +24,7 @@ export const slab: Profile = {
     cert: 'its certification number',
     verifyUrl: 'the grader\'s page for this cert, from its QR code',
     holder: 'the holder it was built as (psa, cgc-tall…)',
-    inside: 'the card and the label inside: each one\'s size, middle and what placed it; the card\'s corners and foil; where the label\'s hologram is',
+    inside: 'the card and the label inside: each one\'s size, middle and what placed it; the card\'s corners, foil and its pattern; where the label\'s hologram is',
     measuredBy: 'where its size came from: the holder table, or measured',
   },
   faces: {
@@ -50,7 +50,7 @@ export const slab: Profile = {
     signed: 'who signed it and when, if the label says ("G. ANTETOKOUNMPO, 8/2/25")',
     cert: 'the certification number', ...CARD_READS,
   },
-  asks: { corners: CORNERS_ASK, foil: foilAsk('the card\'s front, inside the holder') },
+  asks: { corners: CORNERS_ASK, foil: foilAsk('the card\'s front, inside the holder'), pattern: patternAsk('the card\'s front, inside the holder') },
   // None snapped onto edges: each runs beside lines nearer than the models' slip. The clear rim's highlights sit
   // inside the holder's outline (one snapped the outline 11 px in, so everything inside measured 3% big), the well's
   // edge beside the card's, the frames inside and around the label beside its border.
@@ -294,7 +294,8 @@ async function make(
   const box = artBox ?? (cardH > cardW ? PICTURE_BOX : undefined); // the standard box is a portrait card's
   const shines = foil === 'full' || ((foil === 'holo' || foil === 'reverse') && box !== undefined);
   if ((foil === 'holo' || foil === 'reverse') && !box) review.push(`the card's foil (the models say ${foil}, but found no picture box on this sideways card: left off)`);
-  const foils: Record<string, Uint8Array> = shines ? { 'card-front': await cardFoil(foil!, box ?? PICTURE_BOX, cardH / cardW) } : {};
+  const { look, lookBy } = foilLook(sights, 'front');
+  const foils: Record<string, Foil> = shines ? { 'card-front': await cardFoil(foil!, box ?? PICTURE_BOX, cardH / cardW, look) } : {};
   const labelAspect = (rects.label.y1 - rects.label.y0) / (rects.label.x1 - rects.label.x0);
   for (const [side, region] of Object.entries(holograms)) foils[`label-${side}`] = await foilMap([region], labelAspect);
 
@@ -353,7 +354,7 @@ async function make(
         return [part, {
           widthMm: round(r.x1 - r.x0), heightMm: round(r.y1 - r.y0), atMm: [round((r.x0 + r.x1) / 2), round((r.y0 + r.y1) / 2)], placedBy: placedBy[part],
           ...(part === 'card' && {
-            corners, cornersBy, foil: foil ?? 'none', foilBy: foil ? 'vision' : 'assumed',
+            corners, cornersBy, foil: foil ?? 'none', foilBy: foil ? 'vision' : 'assumed', ...(shines && { foilLook: lookName(look), foilLookBy: lookBy }),
             ...((foil === 'holo' || foil === 'reverse') && box && { pictureBox: rounded(box), pictureBoxBy: artBox ? 'vision' : 'layout' }),
           }),
           // Where the label's hologram is, on each side it was found, in fractions of that side's label picture.

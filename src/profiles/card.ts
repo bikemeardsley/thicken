@@ -4,7 +4,7 @@
 // are sold as 55, 75, 100, 130 and 180 pt). The same plate sits inside a slab (src/profiles/slab.ts). With
 // vision, uncropped photos are cut to the card.
 import { Document } from '@gltf-transform/core';
-import { addPart, assignFaces, cardFoil, colorMaterial, cut, type Faces, foilAsk, foiled, foilKind, PICTURE_BOX, pictureMaterial, pictureRecord, plate, pooled, type Profile, regionIn, rounded, shots, sidesUnknown, type Sight, toGlb } from '../kit.ts';
+import { addPart, assignFaces, cardFoil, colorMaterial, cut, type Faces, foilAsk, foiled, foilKind, foilLook, lookName, patternAsk, PICTURE_BOX, pictureMaterial, pictureRecord, plate, pooled, type Profile, regionIn, rounded, shots, sidesUnknown, type Sight, toGlb } from '../kit.ts';
 
 export const CARD_MM = [63.5, 88.9]; // a standard card, 2.5 × 3.5 in
 export const CARD_DEPTH_MM = 0.35; // a standard card's stock, about 14 pt (35 pt is the holder it fits, not its own thickness)
@@ -37,6 +37,8 @@ export const card: Profile = {
     cornersBy: 'how that was found: vision or assumed',
     foil: 'its foil: none, holo (the picture shines), reverse (all but the picture) or full',
     foilBy: 'how that was found: vision or assumed',
+    foilLook: 'its foil\'s pattern, when it shines (src/patterns.ts): "shards", "flow wave", "circles"…',
+    foilLookBy: 'how that was found: parallel (a word in the variant read off it), vision or assumed',
     pictureBox: 'where its picture box is, in fractions of the front, for holo and reverse foil',
     pictureBoxBy: 'how that was found: vision or the standard layout',
     pt: 'a thick card\'s thickness in points, when given',
@@ -45,7 +47,7 @@ export const card: Profile = {
   faces: { front: 'front', back: 'back', art: 'the picture box on the front: the artwork\'s panel, to the edge of its frame' },
   note: 'The picture box is part of the front: give its corners in the front\'s own order, top-left first.',
   reads: CARD_READS,
-  asks: { corners: CORNERS_ASK, foil: foilAsk('the front') },
+  asks: { corners: CORNERS_ASK, foil: foilAsk('the front'), pattern: patternAsk('the front') },
   unsnapped: ['art'],
   build: async (pictures, { options, sights }) => {
     const warnings: string[] = [];
@@ -80,8 +82,9 @@ export const card: Profile = {
     const box = found ?? (front.height > front.width ? PICTURE_BOX : undefined);
     const shines = foil === 'full' || ((foil === 'holo' || foil === 'reverse') && box !== undefined);
     if ((foil === 'holo' || foil === 'reverse') && !box) review.push(`foil (the models say ${foil}, but found no picture box on this landscape card: left off)`);
+    const { look, lookBy } = foilLook(sights, 'front');
     const face = pictureMaterial(doc, 'card-front', front.jpeg, 'image/jpeg', 0.4);
-    addPart(doc, mesh, pieces.front, shines ? foiled(doc, face, await cardFoil(foil!, box ?? PICTURE_BOX, front.height / front.width)) : face);
+    addPart(doc, mesh, pieces.front, shines ? foiled(doc, face, await cardFoil(foil!, box ?? PICTURE_BOX, front.height / front.width, look)) : face);
     if (!back) pieces.back.uv.length = 0;
     addPart(doc, mesh, pieces.back, back ? pictureMaterial(doc, 'card-back', back.jpeg, 'image/jpeg', 0.4) : colorMaterial(doc, 'card-back', CARDSTOCK, 0.8));
     addPart(doc, mesh, pieces.edge, colorMaterial(doc, 'card-edge', CARDSTOCK, 0.8));
@@ -90,7 +93,7 @@ export const card: Profile = {
       glb: await toGlb(doc, mesh),
       sidecar: {
         widthMm: width, heightMm: height, depthMm: round(depth), ...(options.pt && { pt: options.pt }), corners, cornersBy,
-        foil: foil ?? 'none', foilBy: foil ? 'vision' : 'assumed',
+        foil: foil ?? 'none', foilBy: foil ? 'vision' : 'assumed', ...(shines && { foilLook: lookName(look), foilLookBy: lookBy }),
         ...((foil === 'holo' || foil === 'reverse') && box && { pictureBox: rounded(box), pictureBoxBy: found ? 'vision' : 'layout' }),
         measuredBy: { size: given[0] !== undefined || given[1] !== undefined ? 'given' : 'standard', depth: options.pt ? 'pt' : given[2] !== undefined ? 'given' : 'standard' },
         faces: { front: 'photo', back: back ? 'photo' : 'color' } satisfies Faces, review, warnings, pictures: pictureRecord(all, roles),

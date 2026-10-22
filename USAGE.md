@@ -144,6 +144,16 @@ so the kind is asked instead. The metal and roughness were tuned on the same
 card: all metal buried the print in a dark mirror, and at 60% the text stays
 clear.
 
+The foil is drawn in its pattern, in pieces that each shift color and flash
+on their own as the card turns: one of eleven (`sweep`, `lines`, `cells`,
+`motifs`, `points`, `circles`, `shards`, `flow`, `radial`, `skin`, `maze`),
+which between them cover Pokémon holos and reverses, Topps refractors and
+Panini prizms ([docs/foil-patterns.md](docs/foil-patterns.md)). The pattern
+comes from the parallel's name read off the card ("Gold Wave Refractor" is
+`flow wave`; "Cracked Ice" is `shards`), else from the models, asked which
+pattern they see, else cracked ice. The sidecar records `foilLook` and
+`foilLookBy` (`parallel`, `vision` or `assumed`) beside `foil`.
+
 ## Vision (optional)
 
 With a vision roster, photos needn't be cropped: shoot the book on the
