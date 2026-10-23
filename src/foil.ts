@@ -27,15 +27,32 @@ export const PICTURE_BOX: Region = { x0: 0.08, x1: 0.92, y0: 0.1, y1: 0.47 };
 const [FOIL, PRINT] = ['rgb(255,77,153)', 'rgb(0,102,0)'];
 
 /**
- * A card's kind of foil, from the pictures showing `face` (the side it's on): a photo of the back alone shows none.
- * Foil flashes only at some angles, so a video's frames that miss it say none: two answers naming a kind are enough
- * (the kind named most), and one alone isn't, so no single model's slip makes a plain card shine.
+ * What the models say of something that shows only at some angles, from the pictures showing `face` (the side it's
+ * on), `kinds[0]` its absence: a video's frames that miss it say it isn't there, so two answers naming a kind are
+ * enough (the kind named most), and one alone isn't, so no single model's slip makes a plain card shine.
  */
-export function foilKind(sights: Sight[] | undefined, face: string): string | undefined {
+function seenOn(sights: Sight[] | undefined, face: string, key: string, kinds: string[]): string | undefined {
   const facing = sights?.filter(({ faces }) => faces.some((f) => f.face === face));
-  const said = (facing ?? []).flatMap(({ answers }) => answers.flatMap(({ asked }) => (asked?.foil && KINDS.includes(asked.foil) ? [asked.foil] : [])));
-  return said.filter((kind) => kind !== 'none').length >= 2 ? pooled(facing, 'foil', KINDS.slice(1)) : said.length ? 'none' : undefined;
+  const said = (facing ?? []).flatMap(({ answers }) => answers.flatMap(({ asked }) => (asked?.[key] && kinds.includes(asked[key]) ? [asked[key]] : [])));
+  return said.filter((kind) => kind !== kinds[0]).length >= 2 ? pooled(facing, key, kinds.slice(1)) : said.length ? kinds[0] : undefined;
 }
+/** A card's kind of foil, as the models see `face`: a photo of the back alone shows none. */
+export const foilKind = (sights: Sight[] | undefined, face: string) => seenOn(sights, face, 'foil', KINDS);
+
+// A foil border (Pokémon-ex, LV.X and Prime cards, Reptilian refractors): the card's face outside its printed border's
+// inner edge, the `frame` the models find; where they don't, a standard card's, 3 mm in from each side.
+export const borderAsk = (front: string) => `does the printed border around ${front} shine like foil (silver, holo or glittering, flashing at some angles): "foil", or is it plain ink: "plain"?`;
+export const FRAME: Region = { x0: 0.047, x1: 0.953, y0: 0.034, y1: 0.966 };
+export const FRAME_FACE = 'the inside edge of the card\'s printed border: where the border stops and the card\'s design inside it begins';
+/** Whether a card's border is foil, as the models see `face`. */
+export const borderFoil = (sights: Sight[] | undefined, face: string) => seenOn(sights, face, 'border', ['plain', 'foil']);
+
+// Emboss: a textured card's raised ridges (full arts, special illustration rares, gold and rainbow rares), a relief
+// apart from the foil (the same emboss can carry different foil). The ridges follow the art's own lines, so the
+// relief is taken from the photo: its edges become ridges in the normal map.
+export const textureAsk = (front: string) => `is the surface of ${front} "textured" (raised ridges, fingerprint-like lines or etching that catch the light) or "smooth"?`;
+/** Whether a card's front is textured, as the models see `face`. */
+export const textureOf = (sights: Sight[] | undefined, face: string) => seenOn(sights, face, 'texture', ['smooth', 'textured']);
 
 /** Where four corners sit within four others, in fractions of the outer: each edge the mean of the two corners nearest it, kept within. */
 export function regionOf(inner: number[][], outer: number[][]): Region {
@@ -62,26 +79,31 @@ export function regionIn(sights: Sight[] | undefined, region: string, within: st
  * A face's foil (src/glb.ts foiled), `aspect` its height over width: foil inside the regions, print elsewhere;
  * `inverted`, the other way round (a reverse holo); drawn in `look` (src/patterns.ts), plain unless told.
  */
-export async function foilMap(regions: Region[], aspect: number, inverted = false, look = PLAIN): Promise<Foil> {
+export async function foilMap(regions: Region[], aspect: number, inverted = false, look = PLAIN, { frame, relief }: Extras = {}): Promise<Foil> {
   const [w, h] = [512, Math.round(512 * aspect)];
   const [ground, inside] = inverted ? [FOIL, PRINT] : [PRINT, FOIL];
   const shapes = regions.map(({ x0, x1, y0, y1, round }) => (round
     ? `<ellipse cx="${((x0 + x1) / 2) * w}" cy="${((y0 + y1) / 2) * h}" rx="${((x1 - x0) / 2) * w}" ry="${((y1 - y0) / 2) * h}" fill="${inside}"/>`
     : `<rect x="${x0 * w}" y="${y0 * h}" width="${(x1 - x0) * w}" height="${(y1 - y0) * h}" fill="${inside}"/>`)).join('');
-  const map = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${ground}"/>${shapes}</svg>`)).removeAlpha().raw().toBuffer();
-  return patterned(look, w, h, map);
+  // A foil border: the whole face but its frame.
+  const border = frame ? `<path fill-rule="evenodd" fill="${FOIL}" d="M0 0H${w}V${h}H0Z M${frame.x0 * w} ${frame.y0 * h}H${frame.x1 * w}V${frame.y1 * h}H${frame.x0 * w}Z"/>` : '';
+  const map = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${ground}"/>${shapes}${border}</svg>`)).removeAlpha().raw().toBuffer();
+  const heights = relief && await sharp(relief).resize(w, h, { fit: 'fill' }).greyscale().blur(1).raw().toBuffer();
+  return patterned(look, w, h, map, heights);
 }
+/** More on a face than its foil's regions: a foil border inside `frame`, and an emboss raised from the `relief` picture's edges. */
+export interface Extras { frame?: Region; relief?: Uint8Array }
 
-/** A card front's foil map: the picture box (holo), all but it (reverse) or the whole front (full), in `look`. */
-export const cardFoil = (kind: string, box: Region, aspect: number, look?: Look) =>
-  foilMap([kind === 'full' ? { x0: 0, x1: 1, y0: 0, y1: 1 } : box], aspect, kind === 'reverse', look);
+/** A card front's foil map: the picture box (holo), all but it (reverse), the whole front (full) or none, in `look`, with a border or emboss. */
+export const cardFoil = (kind: string, box: Region, aspect: number, look?: Look, extras?: Extras) =>
+  foilMap(kind === 'full' ? [{ x0: 0, x1: 1, y0: 0, y1: 1 }] : kind === 'holo' || kind === 'reverse' ? [box] : [], aspect, kind === 'reverse', look, extras);
 
 /** The question for a card's foil pattern (src/patterns.ts), `front` naming its front. */
 export const patternAsk = (front: string) => `if ${front} has foil, which pattern is in its shine: ${Object.entries(PATTERNS).map(([name, { about }]) => `"${name}" (${about})`).join('; ')}? Say "none" if it has no foil.`;
 
 /**
  * A card's foil look and what decided it: its parallel's name (the models' read `variant`, as "Gold Wave Refractor"),
- * when a word in it names a look; else the pattern the models saw on `face`; else cracked ice. Two words that make
+ * when a word in it names a look; else the pattern the models saw on `face`; else plain. Two words that make
  * one ("X-Fractor", "Poké Ball", "Ray Wave") count as one, and of several, the last that isn't a plain sweep wins: a
  * name ends in its pattern, after the product or box ("Mosaic Genesis", "Choice Tiger", "Cosmic Chrome Nucleus").
  */

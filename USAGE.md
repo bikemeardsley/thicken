@@ -157,6 +157,14 @@ video of the front tilting under a light, whose frames show the models the
 foil as it flashes. The sidecar records `foilLook` and `foilLookBy`
 (`parallel`, `vision` or `assumed`) beside `foil`.
 
+Two more things the models are asked of a card's front. Whether its printed
+border is foil (Pokémon-ex, LV.X and Prime borders): if so, the border
+shines too, outside the border's inside edge they find, or a standard 3 mm
+border where they don't (`border`, `frame`). And whether its surface is
+textured (full arts, special illustration and gold rares): if so, the
+photo's own lines are raised as ridges in the model, foil or not
+(`texture`).
+
 ## Vision (optional)
 
 With a vision roster, photos needn't be cropped: shoot the book on the

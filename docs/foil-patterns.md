@@ -111,6 +111,10 @@ Mike said to go ahead without answering (2026-10-22); the defaults taken are not
 3. **The default when nothing names the pattern.** *Decided by Mike, 2026-10-22:* `plain`, foil as it was before
    patterns (one flat sheet of film), since less foil is better than wrong foil, and the review asks for a video of
    the front tilting so the models can see the pattern.
-4. **`figure` and `border` coverage** (Shining Pokémon, ex/LV.X borders, Reptilian borders) need the figure's or
-   border's outline from the vision models. (Default: later.)
-5. **Emboss** (full-art ridges). (Default: its own round.)
+4. **`figure` and `border` coverage.** *Border built 2026-10-22:* the models are asked whether the printed border is
+   foil and find its inside edge (the `frame` face; a standard card's 3 mm border where they don't), and the border
+   shines in the card's look, alongside any holo, reverse or full foil. *Figure still open:* a Shining Pokémon's or a
+   BREAK card's figure needs its outline, which four corners can't give; it wants a segmentation step.
+5. **Emboss.** *Built 2026-10-22:* the models are asked whether the front is textured; if so, the photo's own edges
+   become ridges in the normal map, over foil and print alike, with or without foil. `RIDGE` in src/patterns.ts sets
+   their height, a guess until it's tuned on a real textured full art.

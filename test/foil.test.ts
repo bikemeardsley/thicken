@@ -28,6 +28,19 @@ test('foil plain: one flat sheet of film, as foil was before patterns', async ()
   assert.ok((await raw(facets)).every((c, k) => c === [128, 128, 255][k % 3]), 'flat');
 });
 
+test('foil border and emboss: a ring of foil outside the frame; a ridge where the picture has an edge', async () => {
+  const at = (data: Buffer, u: number, v: number) => { const k = (Math.round(v * 511) * 512 + Math.round(u * 511)) * 3; return [...data.subarray(k, k + 3)]; };
+  const { map } = await foilMap([], 1, false, undefined, { frame: { x0: 0.1, x1: 0.9, y0: 0.1, y1: 0.9 } });
+  const film = await raw(map);
+  assert.deepEqual([at(film, 0.05, 0.5)[0], at(film, 0.5, 0.05)[0], at(film, 0.5, 0.5)[0]], [255, 255, 0], 'the border shines, the inside doesn\'t');
+  // A picture dark on its left half, light on its right: one edge, down the middle.
+  const relief = await sharp({ create: { width: 200, height: 200, channels: 3, background: '#000' } })
+    .composite([{ input: Buffer.from('<svg width="200" height="200"><rect x="100" width="100" height="200" fill="#fff"/></svg>') }]).jpeg().toBuffer();
+  const tilts = await raw((await foilMap([], 1, false, undefined, { relief })).facets);
+  assert.deepEqual(at(tilts, 0.25, 0.5), [128, 128, 255], 'flat away from the edge');
+  assert.ok(at(tilts, 0.5, 0.5)[0] < 100, `the edge stands as a ridge, leaning away from the light side ${at(tilts, 0.5, 0.5)}`);
+});
+
 test('foil look: a parallel\'s name first, its maker where makers differ, then what the models saw, then plain', () => {
   const sight = (asked: Record<string, string>, read: Record<string, string> = {}): Sight =>
     ({ faces: [{ face: 'front', corners: [], asSeen: [], by: ['a'], agreed: true }], answers: [{ model: 'a', ms: 0, asked, read }], disputed: [] });

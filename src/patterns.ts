@@ -237,15 +237,21 @@ export function spot(look: Look, u: number, v: number, aspect: number): Spot {
 }
 
 const TILT = 0.25; // the most a piece leans from flat, as a normal's sideways part: higher, the flashes spread wider
+// How steep an emboss's ridges are: a normal's lean per step of the relief's brightness across two pixels (0–1).
+// ponytail: a guess; tune on a real textured full art.
+const RIDGE = 1.5;
 
 /**
  * A w × h face's foil drawn in `look`, `map` its foil map as raw RGB (red the film): each spot's film thickness (a
  * gray PNG), each piece's tilt where there's film (a normal map), and the map again, its film taken off between the
- * pieces on a mirror base.
+ * pieces on a mirror base. With `heights` (raw gray, w × h), the face is embossed too: its bright-dark edges stand
+ * as ridges over the whole face, foil or print, on top of the pieces' tilts.
  */
-export async function patterned(look: Look, w: number, h: number, map: Buffer): Promise<{ map: Uint8Array; thickness: Uint8Array; facets: Uint8Array }> {
+export async function patterned(look: Look, w: number, h: number, map: Buffer, heights?: Buffer): Promise<{ map: Uint8Array; thickness: Uint8Array; facets: Uint8Array; film: boolean }> {
   const [thickness, facets] = [Buffer.alloc(w * h), Buffer.alloc(w * h * 3)];
+  let shines = false;
   const mirror = (look.base ?? PATTERNS[look.pattern]?.look.base) === 'mirror';
+  const height = (x: number, y: number) => heights![Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))] / 255;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const p = y * w + x;
@@ -253,10 +259,15 @@ export async function patterned(look: Look, w: number, h: number, map: Buffer): 
       const s = spot(look, x / w, y / w, h / w);
       thickness[p] = Math.round(255 * (s.on ? (s.t ?? hash(s.a, s.b, 2)) : 0.5));
       if (film && !s.on && mirror) map[p * 3] = 0;
-      const [tx, ty] = film && s.on && !s.flat ? [TILT * (2 * hash(s.a, s.b, 3) - 1), TILT * (2 * hash(s.a, s.b, 4) - 1)] : [0, 0];
+      shines ||= film;
+      let [tx, ty] = film && s.on && !s.flat ? [TILT * (2 * hash(s.a, s.b, 3) - 1), TILT * (2 * hash(s.a, s.b, 4) - 1)] : [0, 0];
+      // A normal leans away from the way its surface rises; glTF's normal maps have +Y up the picture, its rows down.
+      if (heights) [tx, ty] = [tx - RIDGE * (height(x + 1, y) - height(x - 1, y)), ty + RIDGE * (height(x, y + 1) - height(x, y - 1))];
+      const lean = Math.hypot(tx, ty);
+      if (lean > 0.7) [tx, ty] = [(tx * 0.7) / lean, (ty * 0.7) / lean]; // never past 45°
       facets.set([tx, ty, Math.sqrt(1 - tx * tx - ty * ty)].map((c) => Math.round(127.5 + 127.5 * c)), p * 3);
     }
   }
   const png = (data: Buffer, channels: 1 | 3) => sharp(data, { raw: { width: w, height: h, channels } }).png().toBuffer();
-  return { map: await png(map, 3), thickness: await png(thickness, 1), facets: await png(facets, 3) };
+  return { map: await png(map, 3), thickness: await png(thickness, 1), facets: await png(facets, 3), film: shines };
 }

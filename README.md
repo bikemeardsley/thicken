@@ -198,7 +198,7 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `lookups` | every catalog request: host, path, status and time |
 
 </details>
-<details><summary><code>card</code>: corners, cornersBy, foil, foilBy, foilLook, foilLookBy, pictureBox, pictureBoxBy, pt, measuredBy</summary>
+<details><summary><code>card</code>: corners, cornersBy, foil, foilBy, foilLook, foilLookBy, pictureBox, pictureBoxBy, border, borderBy, frame, frameBy, texture, textureBy, pt, measuredBy</summary>
 
 | Field | What it holds |
 | --- | --- |
@@ -210,6 +210,12 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `foilLookBy` | how that was found: parallel (a word in the variant read off it), vision or assumed |
 | `pictureBox` | where its picture box is, in fractions of the front, for holo and reverse foil |
 | `pictureBoxBy` | how that was found: vision or the standard layout |
+| `border` | its printed border: foil (it shines, as on Pokémon-ex and LV.X cards) or plain |
+| `borderBy` | how that was found: vision or assumed |
+| `frame` | inside its foil border, in fractions of the front |
+| `frameBy` | how that was found: vision or the standard layout |
+| `texture` | its front's surface: textured (raised ridges, embossed in the model from the photo's own lines) or smooth |
+| `textureBy` | how that was found: vision or assumed |
 | `pt` | a thick card's thickness in points, when given |
 | `measuredBy` | where its size came from: standard or given; its thickness: standard, given or pt |
 
@@ -233,7 +239,7 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `cert` | its certification number |
 | `verifyUrl` | the grader's page for this cert, from its QR code |
 | `holder` | the holder it was built as (psa, cgc-tall…) |
-| `inside` | the card and the label inside: each one's size, middle and what placed it; the card's corners, foil and its pattern; where the label's hologram is |
+| `inside` | the card and the label inside: each one's size, middle and what placed it; the card's corners, foil and its pattern, border and texture; where the label's hologram is |
 | `measuredBy` | where its size came from: the holder table, or measured |
 
 </details>

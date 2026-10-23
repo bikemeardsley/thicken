@@ -5,7 +5,7 @@
 // (or use a scanner app), and the card and label go where a holder usually
 // has them.
 import { Document } from '@gltf-transform/core';
-import { addPart, assignFaces, cardFoil, clearMaterial, colorMaterial, cut, type Faces, type Foil, foilAsk, patternAsk, UNSEEN_PATTERN, foiled, foilKind, foilLook, foilMap, lookName, mapping, type Picture, PICTURE_BOX, pictureMaterial, pictureRecord, plate, type Profile, readOf, type Region, regionIn, regionOf, ring, rounded, type Scanned, shots, sidesUnknown, type Sight, straighten, subjectBox, texture, toGlb } from '../kit.ts';
+import { addPart, assignFaces, cardFoil, clearMaterial, colorMaterial, cut, borderAsk, borderFoil, type Faces, type Foil, foilAsk, FRAME, FRAME_FACE, patternAsk, textureAsk, textureOf, UNSEEN_PATTERN, foiled, foilKind, foilLook, foilMap, lookName, mapping, type Picture, PICTURE_BOX, pictureMaterial, pictureRecord, plate, type Profile, readOf, type Region, regionIn, regionOf, ring, rounded, type Scanned, shots, sidesUnknown, type Sight, straighten, subjectBox, texture, toGlb } from '../kit.ts';
 import { CARD_DEPTH_MM, CARD_MM, CARD_READS, CARDSTOCK, CORNERS_ASK, cornersOf, PT_MM } from './card.ts';
 
 // A grader's QR code points at its own verification page, which says whose holder this is.
@@ -24,7 +24,7 @@ export const slab: Profile = {
     cert: 'its certification number',
     verifyUrl: 'the grader\'s page for this cert, from its QR code',
     holder: 'the holder it was built as (psa, cgc-tall…)',
-    inside: 'the card and the label inside: each one\'s size, middle and what placed it; the card\'s corners, foil and its pattern; where the label\'s hologram is',
+    inside: 'the card and the label inside: each one\'s size, middle and what placed it; the card\'s corners, foil and its pattern, border and texture; where the label\'s hologram is',
     measuredBy: 'where its size came from: the holder table, or measured',
   },
   faces: {
@@ -34,6 +34,7 @@ export const slab: Profile = {
     label: 'the grade label insert inside the holder, front or back, to its outer edges: its whole colored border included, none of the clear plastic around it',
     art: 'the picture box on the card\'s front: the artwork\'s panel, to the edge of its frame',
     hologram: 'a shiny holographic security sticker or strip on the label, if there is one',
+    frame: FRAME_FACE,
   },
   note: 'The card, the label, the card\'s picture box and the label\'s hologram are inside the holder, on whichever side is shown: give their corners in the holder\'s own order (top-left as it stands with its label at the top), even when the card is printed sideways.',
   // The label's words: the card's grade (a number and its words: 9, MINT), an autograph's own grade when the label
@@ -50,11 +51,14 @@ export const slab: Profile = {
     signed: 'who signed it and when, if the label says ("G. ANTETOKOUNMPO, 8/2/25")',
     cert: 'the certification number', ...CARD_READS,
   },
-  asks: { corners: CORNERS_ASK, foil: foilAsk('the card\'s front, inside the holder'), pattern: patternAsk('the card\'s front, inside the holder') },
+  asks: {
+    corners: CORNERS_ASK, foil: foilAsk('the card\'s front, inside the holder'), pattern: patternAsk('the card\'s front, inside the holder'),
+    border: borderAsk('the card\'s front, inside the holder'), texture: textureAsk('the card\'s front, inside the holder'),
+  },
   // None snapped onto edges: each runs beside lines nearer than the models' slip. The clear rim's highlights sit
   // inside the holder's outline (one snapped the outline 11 px in, so everything inside measured 3% big), the well's
   // edge beside the card's, the frames inside and around the label beside its border.
-  unsnapped: ['front', 'back', 'card', 'label', 'art', 'hologram'],
+  unsnapped: ['front', 'back', 'card', 'label', 'art', 'hologram', 'frame'],
   read: (scanned, [picture]) => {
     const { use, grader, cert, certFrom, verifyUrl } = readLabel(scanned);
     // A grader's QR code says it's a slab; a cert barcode alone only on a photo shaped like a holder.
@@ -289,14 +293,22 @@ async function make(
 
   // The card's foil, as the models see it through the front (src/foil.ts), its picture box placed within the card.
   const foil = foilKind(sights, 'front');
-  const artBox = regionIn(sights?.filter(({ faces }) => faces.some(({ face }) => face === 'front')), 'art', 'card');
+  const fronts = sights?.filter(({ faces }) => faces.some(({ face }) => face === 'front'));
+  const artBox = regionIn(fronts, 'art', 'card');
   const [cardW, cardH] = [rects.card.x1 - rects.card.x0, rects.card.y1 - rects.card.y0];
   const box = artBox ?? (cardH > cardW ? PICTURE_BOX : undefined); // the standard box is a portrait card's
-  const shines = foil === 'full' || ((foil === 'holo' || foil === 'reverse') && box !== undefined);
+  const boxed = foil === 'full' || ((foil === 'holo' || foil === 'reverse') && box !== undefined);
   if ((foil === 'holo' || foil === 'reverse') && !box) review.push(`the card's foil (the models say ${foil}, but found no picture box on this sideways card: left off)`);
+  // A foil border and an emboss, as on a raw card (src/profiles/card.ts).
+  const border = borderFoil(sights, 'front');
+  const frameFound = regionIn(fronts, 'frame', 'card');
+  const frame = border === 'foil' ? frameFound ?? FRAME : undefined;
+  const surface = textureOf(sights, 'front');
+  const relief = surface === 'textured' ? pictured.front?.card : undefined;
+  const shines = boxed || Boolean(frame);
   const { look, lookBy } = foilLook(sights, 'front');
   if (shines && lookBy === 'assumed') review.push(`the card's ${UNSEEN_PATTERN}`);
-  const foils: Record<string, Foil> = shines ? { 'card-front': await cardFoil(foil!, box ?? PICTURE_BOX, cardH / cardW, look) } : {};
+  const foils: Record<string, Foil> = shines || relief ? { 'card-front': await cardFoil(boxed ? foil! : 'none', box ?? PICTURE_BOX, cardH / cardW, look, { frame, relief }) } : {};
   const labelAspect = (rects.label.y1 - rects.label.y0) / (rects.label.x1 - rects.label.x0);
   for (const [side, region] of Object.entries(holograms)) foils[`label-${side}`] = await foilMap([region], labelAspect);
 
@@ -357,6 +369,8 @@ async function make(
           ...(part === 'card' && {
             corners, cornersBy, foil: foil ?? 'none', foilBy: foil ? 'vision' : 'assumed', ...(shines && { foilLook: lookName(look), foilLookBy: lookBy }),
             ...((foil === 'holo' || foil === 'reverse') && box && { pictureBox: rounded(box), pictureBoxBy: artBox ? 'vision' : 'layout' }),
+            border: border ?? 'plain', borderBy: border ? 'vision' : 'assumed', ...(frame && { frame: rounded(frame), frameBy: frameFound ? 'vision' : 'layout' }),
+            texture: surface ?? 'smooth', textureBy: surface ? 'vision' : 'assumed',
           }),
           // Where the label's hologram is, on each side it was found, in fractions of that side's label picture.
           ...(part === 'label' && Object.keys(holograms).length && { hologram: Object.fromEntries(Object.entries(holograms).map(([side, region]) => [side, rounded(region)])) }),
