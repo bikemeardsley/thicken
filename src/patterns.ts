@@ -81,6 +81,8 @@ export const WORDS: Record<string, Look> = {
   ...words('blossom', { pattern: 'skin', kind: 'blossom', size: 0.08 }),
   ...words('mojo choice', { pattern: 'maze', size: 0.05 }),
 };
+/** Foil as it was drawn before patterns: one sheet of film, flat, the same thickness everywhere. Less foil is better than wrong foil, so it's what's drawn when no one names or sees the pattern. */
+export const PLAIN: Look = { pattern: 'plain' };
 /** Topps' RayWave radiates; Panini's waves. */
 export const TOPPS_RAYWAVE: Look = { pattern: 'radial', kind: 'rays', density: 64 };
 
@@ -143,6 +145,7 @@ export function spot(look: Look, u: number, v: number, aspect: number): Spot {
   const [cu, cv] = [u - 0.5, v - aspect / 2];
   const turn = fract(Math.atan2(cv, cu) / (2 * Math.PI));
   switch (look.pattern) {
+    case 'plain': return { a: 0, b: 0, on: true, t: 1, flat: true };
     case 'sweep': return { a: 0, b: 0, on: true, t: tri(rot(u, v, angle)[0] * 1.2), flat: true };
     case 'lines': {
       const [along, across] = rot(u, v, angle);

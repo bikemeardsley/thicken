@@ -71,6 +71,7 @@ test('card: holofoil as the models see it, a reverse holo shining everywhere but
   }
   const seen = (corners: number[][]) => corners.map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]);
   let flash = (model: string) => 'reverse'; // what each model says of the front where the foil caught the light
+  let pattern: string | undefined = 'shards'; // and the foil's pattern there
   const fetch = catalog({}, {
     vision: async ({ model, photo }) => {
       const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
@@ -78,14 +79,14 @@ test('card: holofoil as the models see it, a reverse holo shining everywhere but
       // On the back, the models see no foil: that says nothing of the front, so it isn't counted.
       if (data[middle + 1] <= data[middle + 2]) return { faces: [{ face: 'back', corners: seen(quad) }], corners: 'round', foil: 'none' };
       if (data[corner + 2] > 200) return { faces: [{ face: 'front', corners: seen(quad) }], corners: 'round', foil: 'none' };
-      return { faces: [{ face: 'front', corners: seen(quad) }, { face: 'art', corners: seen(box) }], corners: 'round', foil: flash(model) };
+      return { faces: [{ face: 'front', corners: seen(quad) }, { face: 'art', corners: seen(box) }], corners: 'round', foil: flash(model), ...(pattern && { pattern }) };
     },
   });
   t.after(() => fetch.mock.restore());
   // Two answers naming the foil outweigh four from frames that missed it.
   const { glb, sidecar } = await thicken(files, { profile: 'card' });
   assert.deepEqual([sidecar.foil, sidecar.foilBy, sidecar.pictureBoxBy, sidecar.warnings], ['reverse', 'vision', 'vision', []]);
-  assert.deepEqual([sidecar.foilLook, sidecar.foilLookBy], ['shards', 'assumed'], 'no pattern named or seen: cracked ice');
+  assert.deepEqual([sidecar.foilLook, sidecar.foilLookBy, sidecar.review], ['shards', 'vision', []], 'the pattern the models saw: cracked ice');
   const found = sidecar.pictureBox as Record<string, number>;
   for (const [key, want] of Object.entries({ x0: 0.1, x1: 0.9, y0: 0.12, y1: 0.5 })) assert.ok(Math.abs(found[key] - want) < 0.01, `picture box ${key} ${found[key]}`);
 
@@ -107,6 +108,12 @@ test('card: holofoil as the models see it, a reverse holo shining everywhere but
   assert.deepEqual(tilt(0.5, 0.3), [128, 128, 255], 'the print lies flat');
   const pieces = [0.6, 0.7, 0.8, 0.9].map((v) => tilt(0.5, v));
   assert.ok(pieces.every(([x, y, z]) => z > 230 && Math.hypot(x - 128, y - 128) < 34) && new Set(pieces.map(String)).size > 1, `the foil's pieces lean their own ways ${pieces}`);
+
+  // The foil, its pattern unseen: drawn plain, and a video asked for.
+  pattern = undefined;
+  const unseen = (await thicken(files, { profile: 'card' })).sidecar;
+  assert.deepEqual([unseen.foil, unseen.foilLook, unseen.foilLookBy], ['reverse', 'plain', 'assumed']);
+  assert.ok((unseen.review as string[]).some((note) => note.includes('video')), 'a video asked for');
 
   // One model alone seeing foil isn't enough: a plain card stays plain.
   flash = (model) => (model === 'a' ? 'holo' : 'none');

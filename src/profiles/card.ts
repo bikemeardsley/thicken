@@ -4,7 +4,7 @@
 // are sold as 55, 75, 100, 130 and 180 pt). The same plate sits inside a slab (src/profiles/slab.ts). With
 // vision, uncropped photos are cut to the card.
 import { Document } from '@gltf-transform/core';
-import { addPart, assignFaces, cardFoil, colorMaterial, cut, type Faces, foilAsk, foiled, foilKind, foilLook, lookName, patternAsk, PICTURE_BOX, pictureMaterial, pictureRecord, plate, pooled, type Profile, regionIn, rounded, shots, sidesUnknown, type Sight, toGlb } from '../kit.ts';
+import { addPart, assignFaces, cardFoil, colorMaterial, cut, type Faces, foilAsk, foiled, foilKind, foilLook, lookName, patternAsk, PICTURE_BOX, UNSEEN_PATTERN, pictureMaterial, pictureRecord, plate, pooled, type Profile, regionIn, rounded, shots, sidesUnknown, type Sight, toGlb } from '../kit.ts';
 
 export const CARD_MM = [63.5, 88.9]; // a standard card, 2.5 × 3.5 in
 export const CARD_DEPTH_MM = 0.35; // a standard card's stock, about 14 pt (35 pt is the holder it fits, not its own thickness)
@@ -83,6 +83,7 @@ export const card: Profile = {
     const shines = foil === 'full' || ((foil === 'holo' || foil === 'reverse') && box !== undefined);
     if ((foil === 'holo' || foil === 'reverse') && !box) review.push(`foil (the models say ${foil}, but found no picture box on this landscape card: left off)`);
     const { look, lookBy } = foilLook(sights, 'front');
+    if (shines && lookBy === 'assumed') review.push(UNSEEN_PATTERN);
     const face = pictureMaterial(doc, 'card-front', front.jpeg, 'image/jpeg', 0.4);
     addPart(doc, mesh, pieces.front, shines ? foiled(doc, face, await cardFoil(foil!, box ?? PICTURE_BOX, front.height / front.width, look)) : face);
     if (!back) pieces.back.uv.length = 0;

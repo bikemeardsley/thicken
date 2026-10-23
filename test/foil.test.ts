@@ -22,7 +22,13 @@ test('foil patterns: every look draws pieces of their own, flat ones a smooth fi
   }
 });
 
-test('foil look: a parallel\'s name first, its maker where makers differ, then what the models saw, then cracked ice', () => {
+test('foil plain: one flat sheet of film, as foil was before patterns', async () => {
+  const { thickness, facets } = await foilMap([{ x0: 0, x1: 1, y0: 0, y1: 1 }], 0.5);
+  assert.deepEqual(new Set(await raw(thickness)), new Set([255]), 'one thickness, the top of the range');
+  assert.ok((await raw(facets)).every((c, k) => c === [128, 128, 255][k % 3]), 'flat');
+});
+
+test('foil look: a parallel\'s name first, its maker where makers differ, then what the models saw, then plain', () => {
   const sight = (asked: Record<string, string>, read: Record<string, string> = {}): Sight =>
     ({ faces: [{ face: 'front', corners: [], asSeen: [], by: ['a'], agreed: true }], answers: [{ model: 'a', ms: 0, asked, read }], disputed: [] });
   const of = (asked: Record<string, string>, read?: Record<string, string>) => {
@@ -42,6 +48,6 @@ test('foil look: a parallel\'s name first, its maker where makers differ, then w
   assert.equal(of({}, { variant: 'Choice Tiger' }), 'skin tiger by parallel', 'the last pattern word, not the box');
   assert.equal(of({}, { variant: 'Red Stars' }), 'points star by parallel', 'a plural');
   assert.equal(of({ pattern: 'circles' }, { variant: '12/99' }), 'circles by vision', 'no pattern in the name: the models');
-  assert.equal(of({ pattern: 'none' }), 'shards by assumed');
-  assert.equal(of({}, {}), 'shards by assumed');
+  assert.equal(of({ pattern: 'none' }), 'plain by assumed', 'less foil is better than wrong foil');
+  assert.equal(of({}, {}), 'plain by assumed');
 });

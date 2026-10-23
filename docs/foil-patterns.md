@@ -1,7 +1,7 @@
 # Foil patterns: the catalog to build from
 
 *Written 2026-10-22. **Built** the same day in `src/patterns.ts` (the eleven patterns, the parallel-name words) and
-`src/foil.ts` (`foilLook`: the parallel's name, then the models' `pattern` answer, then cracked ice), with three
+`src/foil.ts` (`foilLook`: the parallel's name, then the models' `pattern` answer, then plain), with three
 changes from the draft below: a tint isn't drawn (the printing carries it, and metal reflects in its printed color),
 the base is `rainbow` or `mirror` only, and lightning is `lines` drawn zigzag. Not built: `border` and `figure`
 coverage, `emboss`, and the unconfirmed shapes (question 1). Sources and the full per-pattern notes:
@@ -71,8 +71,7 @@ can't be drawn as a film), neon and invisible ink, Finest peel-off protector, St
    below; a pattern word picks the pattern, a color word the tint. "Gold Wave Refractor" → `flow` wave, tint gold.
 2. **Otherwise the vision models are asked** which of the eleven patterns, the tint and the base, with the same "two
    answers must agree" rule `foilKind` uses now.
-3. **Otherwise** today's default for the kind: `shards` for holo, reverse and full. (Open: should the default be
-   `sweep`, the commonest real foil? See question 3.)
+3. **Otherwise** `plain`, one flat sheet of film, and the review asks for a video of the front tilting (question 3).
 
 ### Parallel-name words → preset
 
@@ -109,8 +108,9 @@ Mike said to go ahead without answering (2026-10-22); the defaults taken are not
    or do you have some of these on hand to photograph?
 2. **Shock / Flash (lightning bolts)** fits none of the eleven well. Add a twelfth (`bolts`), or draw it as `lines`?
    (Default: `lines`, zigzag.)
-3. **The default when nothing names the pattern:** `shards` or `sweep` (the commonest real foil: refractors, Silver
-   Prizm, Sheen, Mirage)? (Default: `shards`, as before.)
+3. **The default when nothing names the pattern.** *Decided by Mike, 2026-10-22:* `plain`, foil as it was before
+   patterns (one flat sheet of film), since less foil is better than wrong foil, and the review asks for a video of
+   the front tilting so the models can see the pattern.
 4. **`figure` and `border` coverage** (Shining Pokémon, ex/LV.X borders, Reptilian borders) need the figure's or
    border's outline from the vision models. (Default: later.)
 5. **Emboss** (full-art ridges). (Default: its own round.)

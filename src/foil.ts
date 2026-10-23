@@ -10,7 +10,7 @@
 import sharp from 'sharp';
 import type { Foil } from './glb.ts';
 import { mapping } from './image.ts';
-import { type Look, patterned, PATTERNS, TOPPS_RAYWAVE, WORDS } from './patterns.ts';
+import { type Look, patterned, PATTERNS, PLAIN, TOPPS_RAYWAVE, WORDS } from './patterns.ts';
 import { pooled, readOf, type Sight } from './vision.ts';
 
 /** Part of a face, in fractions of it (x across, y down); a round one (a seal) is the circle in its box. */
@@ -60,9 +60,9 @@ export function regionIn(sights: Sight[] | undefined, region: string, within: st
 
 /**
  * A face's foil (src/glb.ts foiled), `aspect` its height over width: foil inside the regions, print elsewhere;
- * `inverted`, the other way round (a reverse holo); drawn in `look` (src/patterns.ts), cracked ice unless told.
+ * `inverted`, the other way round (a reverse holo); drawn in `look` (src/patterns.ts), plain unless told.
  */
-export async function foilMap(regions: Region[], aspect: number, inverted = false, look = PATTERNS.shards.look): Promise<Foil> {
+export async function foilMap(regions: Region[], aspect: number, inverted = false, look = PLAIN): Promise<Foil> {
   const [w, h] = [512, Math.round(512 * aspect)];
   const [ground, inside] = inverted ? [FOIL, PRINT] : [PRINT, FOIL];
   const shapes = regions.map(({ x0, x1, y0, y1, round }) => (round
@@ -100,8 +100,11 @@ export function foilLook(sights: Sight[] | undefined, face: string): { look: Loo
   const look = named.findLast((l) => l.pattern !== 'sweep') ?? named[0];
   if (look) return { look, lookBy: 'parallel' };
   const seen = pooled(sights?.filter(({ faces }) => faces.some((f) => f.face === face)), 'pattern', Object.keys(PATTERNS));
-  return seen ? { look: PATTERNS[seen].look, lookBy: 'vision' } : { look: PATTERNS.shards.look, lookBy: 'assumed' };
+  return seen ? { look: PATTERNS[seen].look, lookBy: 'vision' } : { look: PLAIN, lookBy: 'assumed' };
 }
+
+/** What to say when a card shines but no one named or saw its pattern. */
+export const UNSEEN_PATTERN = 'the foil\'s pattern (no parallel named it and the models didn\'t see it: drawn plain). A short video of the front tilting under a light shows the models the foil as it flashes';
 
 /** A look for the sidecar: its pattern, and its kind if it has one ("flow wave"). */
 export const lookName = ({ pattern, kind }: Look) => [pattern, kind].filter(Boolean).join(' ');

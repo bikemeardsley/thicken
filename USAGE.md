@@ -151,8 +151,11 @@ which between them cover Pokémon holos and reverses, Topps refractors and
 Panini prizms ([docs/foil-patterns.md](docs/foil-patterns.md)). The pattern
 comes from the parallel's name read off the card ("Gold Wave Refractor" is
 `flow wave`; "Cracked Ice" is `shards`), else from the models, asked which
-pattern they see, else cracked ice. The sidecar records `foilLook` and
-`foilLookBy` (`parallel`, `vision` or `assumed`) beside `foil`.
+pattern they see. When neither says, it's drawn `plain`, one flat sheet of
+film (less foil is better than wrong foil), and the review asks for a short
+video of the front tilting under a light, whose frames show the models the
+foil as it flashes. The sidecar records `foilLook` and `foilLookBy`
+(`parallel`, `vision` or `assumed`) beside `foil`.
 
 ## Vision (optional)
 
