@@ -41,10 +41,10 @@ and `plugin/mcp.json` (the Agent Plugin, for Copilot), `plugin/mcp_config.json`
 (the same servers, for Antigravity), `mcp.json`,
 `gemini-extension.json` and `plugin/package.json` (test/mcp.test.ts fails
 until they agree). Merge to main, then publish a `vX.Y.Z` GitHub release on
-it: `.github/workflows/release.yml` tests and publishes to npm (Trusted
-Publishing, no token). Once the version is on npm,
-`npm install --package-lock-only --ignore-scripts` in `plugin/` for the plugin
-directory's launcher lock, and `mcp-publisher publish` for the MCP registry.
+it: `.github/workflows/release.yml` tests, publishes to npm (Trusted
+Publishing, no token) and then to the MCP Registry. Once the version is on
+npm, `npm install --package-lock-only --ignore-scripts` in `plugin/` for the
+plugin directory's launcher lock.
 
 **Codex / ChatGPT plugin directory: likely a dead end, for a while or for
 good.** Tried 2026-10-15. The portal (platform.openai.com/plugins) answered

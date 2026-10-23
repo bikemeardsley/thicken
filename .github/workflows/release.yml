@@ -1,4 +1,4 @@
-# Publishing a GitHub release publishes thicken to npm. No token is stored anywhere: npm trusts this workflow by
+# Publishing a GitHub release publishes thicken to npm, then server.json to the MCP Registry. No token is stored anywhere: npm trusts this workflow by
 # name (Trusted Publishing, OIDC), set up once on npmjs.com > thicken > Settings > Trusted publisher:
 # GitHub Actions, bikemeardsley / thicken, workflow release.yml, environment release.
 #
@@ -51,3 +51,23 @@ jobs:
       - run: npm ci                       # prepack builds with tsc
       - run: npm install -g npm@^11.5.1   # trusted publishing needs 11.5.1 or later
       - run: npm publish                  # provenance is attached automatically
+
+  # server.json to the MCP Registry, once the version it names is on npm. The registry trusts the same OIDC token
+  # for io.github.bikemeardsley/*, so nothing to set up there.
+  registry:
+    needs: npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Install mcp-publisher 1.8.1
+        run: |
+          curl -fsSL -o mcp-publisher.tar.gz https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz
+          echo "a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+      - run: ./mcp-publisher login github-oidc
+      - run: ./mcp-publisher publish
