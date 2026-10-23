@@ -108,9 +108,10 @@ export const patternAsk = (front: string) => `if ${front} has foil, which patter
  * name ends in its pattern, after the product or box ("Mosaic Genesis", "Choice Tiger", "Cosmic Chrome Nucleus").
  */
 export function foilLook(sights: Sight[] | undefined, face: string): { look: Look; lookBy: string } {
-  const { read } = readOf(sights);
+  const { read, readBy } = readOf(sights);
   const plain = (s: unknown) => String(s ?? '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
-  const tokens = plain(read.variant).split(/[^a-z0-9]+/).filter(Boolean);
+  // Only a name two models read alike: one model alone read a plain Psyduck as "Ultra Rare Gold FOIL FEAT." (2026-10-22).
+  const tokens = readBy.variant === 'agreed' ? plain(read.variant).split(/[^a-z0-9]+/).filter(Boolean) : [];
   const lookOf = (word: string) => (word === 'raywave' && /topps|bowman/.test(plain(read.maker)) ? TOPPS_RAYWAVE : WORDS[word] ?? WORDS[word.replace(/s$/, '')]);
   const named: Look[] = [];
   for (let k = 0; k < tokens.length; k++) {
@@ -125,8 +126,14 @@ export function foilLook(sights: Sight[] | undefined, face: string): { look: Loo
   return seen ? { look: PATTERNS[seen].look, lookBy: 'vision' } : { look: PLAIN, lookBy: 'assumed' };
 }
 
-/** What to say when a card shines but no one named or saw its pattern. */
-export const UNSEEN_PATTERN = 'the foil\'s pattern (no parallel named it and the models didn\'t see it: drawn plain). A short video of the front tilting under a light shows the models the foil as it flashes';
+/**
+ * What to say when a card shines but no one named or saw its pattern, `filmed` when a video was given. A video
+ * already outweighs photos (src/image.ts keeps six frames, each answered like a photo), so it needs no precedence
+ * of its own: what helps is a video, or a slower one.
+ */
+export const unseenPattern = (filmed: boolean) => `the foil's pattern (no parallel named it and the models didn't see it${filmed ? ' in the photos or the video\'s frames' : ''}: drawn plain). ${filmed
+  ? 'A slower video, tilting the front through the light of one bright lamp, gives them more frames that catch it'
+  : 'A short video of the front tilting under a light shows the models the foil as it flashes'}`;
 
 /** A look for the sidecar: its pattern, and its kind if it has one ("flow wave"). */
 export const lookName = ({ pattern, kind }: Look) => [pattern, kind].filter(Boolean).join(' ');

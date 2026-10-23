@@ -42,8 +42,9 @@ test('foil border and emboss: a ring of foil outside the frame; a ridge where th
 });
 
 test('foil look: a parallel\'s name first, its maker where makers differ, then what the models saw, then plain', () => {
+  // Two models answering alike: a name read once isn't trusted (the last case below).
   const sight = (asked: Record<string, string>, read: Record<string, string> = {}): Sight =>
-    ({ faces: [{ face: 'front', corners: [], asSeen: [], by: ['a'], agreed: true }], answers: [{ model: 'a', ms: 0, asked, read }], disputed: [] });
+    ({ faces: [{ face: 'front', corners: [], asSeen: [], by: ['a', 'b'], agreed: true }], answers: ['a', 'b'].map((model) => ({ model, ms: 0, asked, read })), disputed: [] });
   const of = (asked: Record<string, string>, read?: Record<string, string>) => {
     const { look, lookBy } = foilLook([sight(asked, read)], 'front');
     return `${lookName(look)} by ${lookBy}`;
@@ -63,4 +64,6 @@ test('foil look: a parallel\'s name first, its maker where makers differ, then w
   assert.equal(of({ pattern: 'circles' }, { variant: '12/99' }), 'circles by vision', 'no pattern in the name: the models');
   assert.equal(of({ pattern: 'none' }), 'plain by assumed', 'less foil is better than wrong foil');
   assert.equal(of({}, {}), 'plain by assumed');
+  const once: Sight = { faces: [], answers: [{ model: 'a', ms: 0, read: { variant: 'Ultra Rare Gold FOIL FEAT.' } }, { model: 'b', ms: 0 }], disputed: [] };
+  assert.equal(lookName(foilLook([once], 'front').look), 'plain', 'a name one model alone read decides nothing');
 });

@@ -222,7 +222,7 @@ test('batch: every model is made, and one that fails is reported without stoppin
   // Two photos of a slab, and no vision roster to say which is the front: stopped, not guessed.
   assert.match(first.stderr, /slab: failed: nothing in the photos says which one shows the front/);
   assert.match(first.stdout, /2 made, 0 already up to date, 2 failed/);
-  assert.match(first.stdout, /to review[^\n]*\n {2}lone-slab: back \(plain color\)$/m, 'the front-only slab is listed');
+  assert.match(first.stdout, /to review[^\n]*\n {2}lone-slab: back \(plain color\); no vision models were asked/m, 'the front-only slab is listed');
   assert.deepEqual((await readdir(path.join(folder, 'thicken'))).sort(), ['badge.glb', 'badge.json', 'lone-slab.glb', 'lone-slab.json']);
 
   // Run again: made from exactly these pictures, so left alone, until a picture changes,

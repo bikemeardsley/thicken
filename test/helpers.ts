@@ -33,14 +33,27 @@ export async function slabPhoto(file: string, rects: [number[], string][]) {
 
 /**
  * Stand-in catalogs: Open Library knows one edition (and maybe its cover and catalog record), Google Books is out of
- * quota. With `vision`, also a stand-in vision endpoint at http://vision.test/api, answering for each model and photo.
+ * quota. With `vision`, also a stand-in vision endpoint at http://vision.test/api, answering for each model and photo;
+ * with `bench` too, a stand-in model bench at http://bench.test, its bench/vision collection's seats those models.
  */
-export function catalog(edition: object, { cover, data, search, records, loc, vision }: {
+export function catalog(edition: object, { cover, data, search, records, loc, vision, bench }: {
   cover?: Uint8Array; data?: object; search?: object; records?: object; loc?: string;
   vision?: (request: { model: string; prompt: string; photo: Buffer; authorization: string | null }) => Promise<object | undefined>;
+  bench?: string[];
 } = {}) {
   return mock.method(globalThis, 'fetch', async (url: string | URL, init?: RequestInit) => {
     const href = String(url);
+    if (bench && href === 'http://bench.test/v1/models') return Response.json({ data: [{ id: 'bench/core', tags: ['general'] }, { id: 'bench/vision', tags: ['vision'] }, { id: 'bench/vision:merged', tags: ['vision'] }] });
+    if (bench && href === 'http://bench.test/bench/verdict') return Response.json({ ok: true });
+    if (bench && vision && href === 'http://bench.test/v1/chat/completions') {
+      const { model, messages } = JSON.parse(String(init!.body));
+      const photo = Buffer.from(messages[0].content[1].image_url.url.split(',')[1], 'base64');
+      const seats = await Promise.all(bench.map(async (alias, k) => {
+        const answer = await vision({ model: alias, prompt: messages[0].content[0].text, photo, authorization: null });
+        return { call: `p1.${alias}`, seat: k < 3 ? 'member' : 'explorer', alias, status: answer ? 'ok' : 'error', seconds: 1, answer: answer ? JSON.stringify(answer) : '', error: answer ? '' : 'no answer' };
+      }));
+      return Response.json({ choices: [{ message: { content: '(every seat, under its own heading)' } }], bench: { collection: model, seats } });
+    }
     if (vision && href === 'http://vision.test/api/chat/completions') {
       const { model, messages } = JSON.parse(String(init!.body));
       const photo = Buffer.from(messages[0].content[1].image_url.url.split(',')[1], 'base64');

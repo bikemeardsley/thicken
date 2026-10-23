@@ -53,6 +53,39 @@ test('card: a raw trading card in uncropped photos, a thin plate with rounded co
   assert.deepEqual([thick.sidecar.depthMm, thick.sidecar.pt, (thick.sidecar.measuredBy as { depth: string }).depth], [3.3, 130, 'pt']);
 });
 
+test('card: with a model bench on this machine, its vision collection answers every photo, and each seat is judged', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  process.env.THICKEN_BENCH_URL = 'http://bench.test';
+  t.after(() => { process.env.THICKEN_BENCH_URL = 'off'; });
+  const quad = [[300, 330], [681, 330], [681, 863.4], [300, 863.4]];
+  const files = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
+  for (const [file, fill] of [[files[0], '#2e7d32'], [files[1], '#1d4f9e']]) {
+    const svg = `<svg width="900" height="1200"><polygon points="${quad.map((p) => p.join(',')).join(' ')}" fill="${fill}"/></svg>`;
+    await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } }).composite([{ input: Buffer.from(svg) }]).png().toFile(file);
+  }
+  const seen = quad.map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]);
+  // Seats a and b answer; c, an explorer, fails. No roster is set: the bench is all there is.
+  const fetch = catalog({}, {
+    bench: ['a', 'b', 'c'],
+    vision: async ({ model, photo }) => {
+      if (model === 'c') return undefined;
+      const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
+      const middle = (500 * info.width + 500) * info.channels;
+      return { faces: [{ face: data[middle + 1] > data[middle + 2] ? 'front' : 'back', corners: seen }], corners: 'square' };
+    },
+  });
+  t.after(() => fetch.mock.restore());
+  const { sidecar } = await thicken(files, { profile: 'card' });
+  const vision = sidecar.vision as { models: string[]; photos: { answers: { model: string; error?: string }[] }[] };
+  assert.deepEqual([vision.models, sidecar.corners, sidecar.cornersBy, sidecar.faces], [['bench/vision'], 'square', 'vision', { front: 'photo', back: 'photo' }]);
+  assert.deepEqual(vision.photos[0].answers.map(({ model, error }) => [model, Boolean(error)]), [['a', false], ['b', false], ['c', true]]);
+  // Each photo's seats judged: a and b agreed on its face; c failed.
+  await new Promise((resolve) => setImmediate(resolve));
+  const verdicts = fetch.mock.calls.filter((call) => String(call.arguments[0]).endsWith('/bench/verdict')).map((call) => JSON.parse(String(call.arguments[1]!.body)));
+  assert.deepEqual(verdicts.map(({ call, useful }) => `${call} ${useful}`).sort(), ['p1.a true', 'p1.a true', 'p1.b true', 'p1.b true', 'p1.c false', 'p1.c false']);
+});
+
 test('card: holofoil as the models see it, a reverse holo shining everywhere but its picture box, as film-coated metal', async (t) => {
   Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
   t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });

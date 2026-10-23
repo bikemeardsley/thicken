@@ -15,7 +15,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { codes, load, VIDEO, type Picture } from './image.ts';
-import { identify, lookAll, readOf, visionOn, visionRecord, type Sight } from './vision.ts';
+import { findBench, identify, lookAll, readOf, visionOn, visionRecord, type Sight } from './vision.ts';
 
 /** A kind of object Thicken knows. */
 export interface Profile {
@@ -158,8 +158,12 @@ export const stillToShoot = (faces: Faces = {}) =>
 
 export const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string;
 
+/** The review's note on a model made without vision models. */
+export const NO_VISION = 'no vision models were asked (set THICKEN_VISION_URL, THICKEN_VISION_KEY and THICKEN_VISION_MODELS, or run Benchwarmers with a vision collection; see the README): photos were used as cropped, nothing printed was read, and sides, corners and foil were taken as the defaults';
+
 export async function thicken(inputs: string[], options: Options = {}): Promise<{ glb: Uint8Array; sidecar: Sidecar }> {
   const started = performance.now();
+  await findBench();
   const { sizeMm = [] } = options;
   if (sizeMm.some((mm) => mm !== undefined && !(mm > 0))) throw new Error('sizes must be positive millimeters, e.g. 152x229x25');
   const named = PROFILES.find((p) => p.name === (options.profile ?? (options.isbn ? 'book' : undefined)));
@@ -206,6 +210,8 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
       // A frame no model answered for is just left out (src/faces.ts): one of a handful, nothing to review.
       ...(sight.answers.some((a) => !a.error) || pictures[i].source.time !== undefined ? [] : [`${named_(i)} (no vision model answered, so it was used whole: run again, or crop it)`]),
     ])),
+    // Made without vision, every time: what the models would have added (artwork has nothing for them to find).
+    ...(visionOn() || !Object.keys(profile.faces).length ? [] : [NO_VISION]),
   ];
   const printed = readOf(sights);
   return {
