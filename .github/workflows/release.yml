@@ -1,0 +1,53 @@
+# Publishing a GitHub release publishes thicken to npm. No token is stored anywhere: npm trusts this workflow by
+# name (Trusted Publishing, OIDC), set up once on npmjs.com > thicken > Settings > Trusted publisher:
+# GitHub Actions, bikemeardsley / thicken, workflow release.yml, environment release.
+#
+# The release's tag must be v<version> on a commit in main; test/mcp.test.ts checks every other file names the same
+# version. Anything else stops before publishing. A publish that failed: "Re-run failed jobs" on that run.
+name: release
+on:
+  release:
+    types: [published]
+permissions:
+  contents: read
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: The tag is v + package.json's version; the commit is in main
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          test "$GITHUB_REF_NAME" = "v$version" || { echo "tag $GITHUB_REF_NAME is not v$version (package.json)"; exit 1; }
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "$GITHUB_SHA is not in main"; exit 1; }
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+
+  npm:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: read
+      id-token: write  # the OIDC token npm trusts in place of a stored one
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm ci                       # prepack builds with tsc
+      - run: npm install -g npm@^11.5.1   # trusted publishing needs 11.5.1 or later
+      - run: npm publish                  # provenance is attached automatically
