@@ -116,14 +116,23 @@ Answer with JSON only, no prose:
 {"object":"${kinds[0]?.name}","sizeMm":[width,height,depth]}`;
 
 /**
- * A short question's answer about the object itself (a card's corners, a book's binding): one fact, so every
- * model's answer on every picture counts, the one given most winning (on a tie, the first given: the primary's on
- * the first picture). Undefined when no one gave one of `values`.
+ * A short question's answer about the object itself (a card's corners, a book's binding, a slab label's finish):
+ * one fact, so every model's answer on every picture counts, each model once a picture (a collection asked twice
+ * seats its members twice; a model that answered two ways there has no vote). The one given most wins; a tie, or
+ * no one giving one of `values`, is undefined, never the first given.
  */
 export function pooled(sights: Sight[] | undefined, key: string, values: string[]): string | undefined {
-  const said = (sights ?? []).flatMap(({ answers }) => answers.flatMap(({ asked }) => (asked?.[key] && values.includes(asked[key]) ? [asked[key]] : [])));
+  const said = (sights ?? []).flatMap(({ answers }) => votesOn(answers, key).filter((value) => values.includes(value)));
   const count = (value: string) => said.filter((answer) => answer === value).length;
-  return said.reduce<string | undefined>((best, value) => (best === undefined || count(value) > count(best) ? value : best), undefined);
+  const [top, next] = [...new Set(said)].sort((a, b) => count(b) - count(a));
+  return top !== undefined && (next === undefined || count(top) > count(next)) ? top : undefined;
+}
+/** Each model's answer to a short question about one picture, once: none from a model that answered it two ways. */
+export function votesOn(answers: Answer[], key: string): string[] {
+  return [...new Set(answers.map(({ model }) => model))].flatMap((model) => {
+    const given = [...new Set(answers.filter((a) => a.model === model && a.asked?.[key]).map((a) => a.asked![key]))];
+    return given.length === 1 ? given : [];
+  });
 }
 
 /** Every picture looked at for a kind of object's faces, four at a time. */
@@ -154,11 +163,12 @@ export async function look(picture: Picture, kind: Kind): Promise<Sight> {
   // A seat agreed when one of its faces lies within AGREE of a face two seats settled, not only when it was one of the two.
   judge(answers, ({ faces }) => settled.faces.some((s) => s.agreed && Boolean(faces?.some((f) => f.face === s.face && distance(f.corners, s.corners) < AGREE))), `${kind.name} faces`);
   const back =<T extends { corners: number[][] }>(faces: T[]) => faces.map((f) => ({ ...f, corners: f.corners.map(toPicture) }));
-  // Each question's answer: the one most models gave, the higher seat's on a tie.
+  // Each question's answer: the one most models gave, each once; a tie is no answer, never the higher seat's.
   const asked = Object.fromEntries(keys.flatMap((key) => {
-    const said = answers.flatMap((a) => (a.asked?.[key] ? [a.asked[key]] : []));
+    const said = votesOn(answers, key);
     const count = (value: string) => said.filter((s) => s === value).length;
-    return said.length ? [[key, said.reduce((best, value) => (count(value) > count(best) ? value : best))]] : [];
+    const [top, next] = [...new Set(said)].sort((a, b) => count(b) - count(a));
+    return top !== undefined && (next === undefined || count(top) > count(next)) ? [[key, top]] : [];
   }));
   // Snapped onto the real edges, but for faces among lines nearer than the models' slip (a slab's label: its border,
   // the frame inside it and the ridge around it), where the nearest strong edge is often the wrong one.

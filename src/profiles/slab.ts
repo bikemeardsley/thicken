@@ -6,7 +6,7 @@
 // has them.
 import { Document } from '@gltf-transform/core';
 import sharp from 'sharp';
-import { addPart, assignFaces, cardFoil, clearMaterial, colorMaterial, cut, borderAsk, borderFoil, type Faces, type Foil, foilAsk, FRAME, FRAME_FACE, patternAsk, textureAsk, textureOf, unseenPattern, foiled, foilKind, foilLook, foilMap, lookName, mapping, type Picture, PICTURE_BOX, pictureMaterial, pictureRecord, plate, type Profile, readOf, type Region, regionIn, regionOf, ring, rounded, type Scanned, shots, sidesUnknown, type Sight, straighten, subjectBox, texture, toGlb } from '../kit.ts';
+import { addPart, assignFaces, cardFoil, clearMaterial, colorMaterial, cut, borderAsk, borderFoil, type Faces, type Foil, foilAsk, FRAME, FRAME_FACE, labelFinishAsk, labelFinishOf, patternAsk, textureAsk, textureOf, unseenPattern, foiled, foilKind, foilLook, foilMap, lookName, mapping, type Picture, PICTURE_BOX, pictureMaterial, pictureRecord, plate, type Profile, readOf, type Region, regionIn, regionOf, ring, rounded, type Scanned, shots, sidesUnknown, type Sight, straighten, subjectBox, texture, toGlb } from '../kit.ts';
 import { CARD_DEPTH_MM, CARD_MM, CARD_READS, CARDSTOCK, CORNERS_ASK, cornersOf, PT_MM } from './card.ts';
 
 // A grader's QR code points at its own verification page, which says whose holder this is.
@@ -71,6 +71,7 @@ export const slab: Profile = {
   asks: {
     corners: CORNERS_ASK, foil: foilAsk('the card\'s front, inside the holder'), pattern: patternAsk('the card\'s front, inside the holder'),
     border: borderAsk('the card\'s front, inside the holder'), texture: textureAsk('the card\'s front, inside the holder'),
+    labelFinish: labelFinishAsk,
   },
   // None snapped onto edges: each runs beside lines nearer than the models' slip. The clear rim's highlights sit
   // inside the holder's outline (one snapped the outline 11 px in, so everything inside measured 3% big), the well's
@@ -156,9 +157,7 @@ const GAP_MM = 0.5; // the least space kept between the label and the card
 const CENTERED_MM = 2; // holders center the card and the label across: a middle this near the holder's is the holder's
 const WALL_MM = 1; // the least plastic kept around anything inside
 const LABEL_EDGE = '#f4f4f2';
-// Labels printed on metallic foil, front and back: BGS's, gold, silver or black by grade. PSA's and SGC's are paper.
-// ponytail: CGC's and TAG's taken as paper; look at one of each and add them here if they shine.
-const FOIL_LABELS = new Set(['bgs']);
+// A label printed on metallic foil (BGS's gold, silver and black ones, as the models see it): mostly metal, a little rough.
 const FOIL_LABEL = { metallic: 0.8, roughness: 0.3 };
 const LOGO_DEPTH_MM = 0.05; // a print on the insert
 // The logo's strokes: brighter than this share of the brightest in its box, and colorless (silver or white print).
@@ -362,7 +361,9 @@ async function make(
   const cardDepth = Math.min(pt ? pt * PT_MM : CARD_DEPTH_MM, size[2] - 2 * WALL_MM); // a thick card, by its points, as fits
   const { radiusMm, corners, cornersBy } = cornersOf(sights);
   const plates = { card: { depth: cardDepth, corner: radiusMm, edge: CARDSTOCK }, label: { depth: LABEL_DEPTH_MM, corner: 0, edge: LABEL_EDGE } };
-  const foilLabel = FOIL_LABELS.has(holder.split('-')[0]);
+  // The label's finish as the models see it, not by grader: paper unless two of them say foil.
+  const finish = labelFinishOf(sights);
+  const foilLabel = finish === 'foil';
   for (const part of ['card', 'label'] as const) {
     const r = rects[part];
     const { depth, corner, edge: color } = plates[part];
@@ -406,7 +407,7 @@ async function make(
             texture: surface ?? 'smooth', textureBy: surface ? 'vision' : 'assumed',
           }),
           // Its finish, by grader; and where its hologram is, on each side it was found, in fractions of that side's label picture.
-          ...(part === 'label' && { finish: foilLabel ? 'foil' : 'paper', finishBy: 'grader' }),
+          ...(part === 'label' && { finish: finish ?? 'paper', finishBy: finish ? 'vision' : 'assumed' }),
           ...(part === 'label' && Object.keys(holograms).length && { hologram: Object.fromEntries(Object.entries(holograms).map(([side, region]) => [side, rounded(region)])) }),
         }];
       })),

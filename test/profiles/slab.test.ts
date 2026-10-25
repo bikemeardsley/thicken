@@ -133,7 +133,7 @@ test('slab: the card and label are placed from the sides whose outline two model
   assert.deepEqual([inside.card.widthMm, inside.card.heightMm, inside.card.atMm[0]], [63.5, 88.9, 0]);
 });
 
-test('slab: a BGS label is foil, and the grader\'s logo on the clear insert is cut from the photos, the table behind it left out', async (t) => {
+test('slab: a label the models see as foil shines, and the grader\'s logo on the clear insert is cut from the photos, the table behind it left out', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
   Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
@@ -145,13 +145,14 @@ test('slab: a BGS label is foil, and the grader\'s logo on the clear insert is c
   const mirrored = ([x0, y0, x1, y1]: number[]) => [83 - x1, y0, 83 - x0, y1];
   await slabPhoto(front, [[slab, '#6b5a4a'], [label, '#c9a640'], [mark, '#ffffff'], [card, '#2e7d32']]);
   await slabPhoto(back, [[slab, '#6b5a4a'], [mirrored(label), '#c9a640'], [mirrored(mark), '#ffffff'], [card, '#1d4f9e']]);
+  let finish = (model: string) => 'foil'; // what each model says the label is printed on
   const fetch = catalog({}, {
-    vision: async ({ photo }) => {
+    vision: async ({ model, photo }) => {
       const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
       const middle = (500 * info.width + 500) * info.channels;
       const green = data[middle + 1] > data[middle + 2];
       const side = (rect: number[]) => letterboxed(green ? rect : mirrored(rect));
-      return { faces: [{ face: green ? 'front' : 'back', corners: letterboxed(slab) }, { face: 'card', corners: letterboxed(card) }, { face: 'label', corners: side(label) }, { face: 'logo', corners: side(logo) }] };
+      return { faces: [{ face: green ? 'front' : 'back', corners: letterboxed(slab) }, { face: 'card', corners: letterboxed(card) }, { face: 'label', corners: side(label) }, { face: 'logo', corners: side(logo) }], labelFinish: finish(model) };
     },
   });
   t.after(() => fetch.mock.restore());
@@ -168,9 +169,10 @@ test('slab: a BGS label is foil, and the grader\'s logo on the clear insert is c
     // The white mark (2/11 to 9/11 across, 2/18 to 16/18 down) kept; the brown plastic around it see-through.
     assert.deepEqual([alpha(0.5, 0.5), alpha(0.08, 0.5), alpha(0.5, 0.05)], [255, 0, 0], side);
   }
-  // A PSA label is paper.
-  const psa = await thicken([front, back], { profile: 'slab', holder: 'psa' });
-  assert.equal((psa.sidecar.inside as Record<string, Record<string, unknown>>).label.finish, 'paper');
+  // The finish is the label's, as seen, not its grader's: one model alone saying foil doesn't make a label shine.
+  finish = (model) => (model === 'a' ? 'foil' : 'paper');
+  const paper = await thicken([front, back], { profile: 'slab', holder: 'bgs' });
+  assert.deepEqual(pick((paper.sidecar.inside as Record<string, Record<string, unknown>>).label, ['finish', 'finishBy']), { finish: 'paper', finishBy: 'vision' });
 });
 
 test('slab: a tall holder is told by its label, the same size on every holder but spanning much less of a tall one', async (t) => {

@@ -11,7 +11,7 @@ import sharp from 'sharp';
 import type { Foil } from './glb.ts';
 import { mapping } from './image.ts';
 import { type Look, patterned, PATTERNS, PLAIN, TOPPS_RAYWAVE, WORDS } from './patterns.ts';
-import { pooled, readOf, type Sight } from './vision.ts';
+import { pooled, readOf, type Sight, votesOn } from './vision.ts';
 
 /** Part of a face, in fractions of it (x across, y down); a round one (a seal) is the circle in its box. */
 export interface Region { x0: number; x1: number; y0: number; y1: number; round?: boolean }
@@ -33,7 +33,7 @@ const [FOIL, PRINT] = ['rgb(255,77,153)', 'rgb(0,102,0)'];
  */
 function seenOn(sights: Sight[] | undefined, face: string, key: string, kinds: string[]): string | undefined {
   const facing = sights?.filter(({ faces }) => faces.some((f) => f.face === face));
-  const said = (facing ?? []).flatMap(({ answers }) => answers.flatMap(({ asked }) => (asked?.[key] && kinds.includes(asked[key]) ? [asked[key]] : [])));
+  const said = (facing ?? []).flatMap(({ answers }) => votesOn(answers, key).filter((kind) => kinds.includes(kind)));
   return said.filter((kind) => kind !== kinds[0]).length >= 2 ? pooled(facing, key, kinds.slice(1)) : said.length ? kinds[0] : undefined;
 }
 /** A card's kind of foil, as the models see `face`: a photo of the back alone shows none. */
@@ -53,6 +53,19 @@ export const borderFoil = (sights: Sight[] | undefined, face: string) => seenOn(
 export const textureAsk = (front: string) => `is the surface of ${front} "textured" (raised ridges, fingerprint-like lines or etching that catch the light) or "smooth"?`;
 /** Whether a card's front is textured, as the models see `face`. */
 export const textureOf = (sights: Sight[] | undefined, face: string) => seenOn(sights, face, 'texture', ['smooth', 'textured']);
+/** A graded slab's label, asked as it is: printed on metallic foil, or on paper. */
+export const labelFinishAsk = 'the grade label insert itself (not the card): is it printed on "foil", a metallic sheet that shines like metal (gold, silver or black chrome, mirroring the light), or on "paper" (matte)? Judge the label you see, not what its grader usually uses.';
+/**
+ * Whether a slab's label is foil, as the models see it on any side showing it: two models saying so, more than say
+ * paper. One model saying it of both sides is still one model.
+ */
+export function labelFinishOf(sights: Sight[] | undefined): string | undefined {
+  const facing = sights?.filter(({ faces }) => faces.some(({ face }) => face === 'label')) ?? [];
+  const saying = (kind: string) => new Set(facing.flatMap(({ answers }) => [...new Set(answers.map(({ model }) => model))]
+    .filter((model) => votesOn(answers.filter((a) => a.model === model), 'labelFinish')[0] === kind))).size;
+  const [foil, paper] = [saying('foil'), saying('paper')];
+  return foil >= 2 && foil > paper ? 'foil' : foil || paper ? 'paper' : undefined;
+}
 
 /** Where four corners sit within four others, in fractions of the outer: each edge the mean of the two corners nearest it, kept within. */
 export function regionOf(inner: number[][], outer: number[][]): Region {
