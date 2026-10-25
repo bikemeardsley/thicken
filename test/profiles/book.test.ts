@@ -276,9 +276,9 @@ test('book: page edges as a photo shows them (a sprayed edge glimpsed past the c
   assert.ok(near([1, 3, 5].map((k) => parseInt(edges.color.slice(k, k + 2), 16)), '#b0202a'), edges.color);
   // No sliver: the color two models gave; none, cream.
   [sliver, pageColor] = [false, '#2050a0'];
-  assert.deepEqual(pick((await thicken([photo], { profile: 'book', sizeMm: [140, 210, 25] })).sidecar.pageEdges as object, ['color', 'by']), { color: '#2050a0', by: 'vision' });
+  assert.deepEqual(pick((await thicken([photo], { profile: 'book', sizeMm: [140, 210, 25] })).sidecar.pageEdges as Record<string, unknown>, ['color', 'by']), { color: '#2050a0', by: 'vision' });
   pageColor = 'none';
-  assert.deepEqual(pick((await thicken([photo], { profile: 'book', sizeMm: [140, 210, 25] })).sidecar.pageEdges as object, ['color', 'by']), { color: '#efe6d2', by: 'assumed' });
+  assert.deepEqual(pick((await thicken([photo], { profile: 'book', sizeMm: [140, 210, 25] })).sidecar.pageEdges as Record<string, unknown>, ['color', 'by']), { color: '#efe6d2', by: 'assumed' });
 });
 
 test('book: with no barcode, the title and authors the models read find it, with how sure the match is', async (t) => {
