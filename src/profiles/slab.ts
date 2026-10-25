@@ -5,6 +5,7 @@
 // (or use a scanner app), and the card and label go where a holder usually
 // has them.
 import { Document } from '@gltf-transform/core';
+import sharp from 'sharp';
 import { addPart, assignFaces, cardFoil, clearMaterial, colorMaterial, cut, borderAsk, borderFoil, type Faces, type Foil, foilAsk, FRAME, FRAME_FACE, patternAsk, textureAsk, textureOf, unseenPattern, foiled, foilKind, foilLook, foilMap, lookName, mapping, type Picture, PICTURE_BOX, pictureMaterial, pictureRecord, plate, type Profile, readOf, type Region, regionIn, regionOf, ring, rounded, type Scanned, shots, sidesUnknown, type Sight, straighten, subjectBox, texture, toGlb } from '../kit.ts';
 import { CARD_DEPTH_MM, CARD_MM, CARD_READS, CARDSTOCK, CORNERS_ASK, cornersOf, PT_MM } from './card.ts';
 
@@ -39,7 +40,7 @@ export const slab: Profile = {
     cert: 'its certification number',
     verifyUrl: 'the grader\'s page for this cert, from its QR code',
     holder: 'the holder it was built as (psa, cgc-tall…)',
-    inside: 'the card and the label inside: each one\'s size, middle and what placed it; the card\'s corners, foil and its pattern, border and texture; where the label\'s hologram is',
+    inside: 'the card and the label inside: each one\'s size, middle and what placed it; the card\'s corners, foil and its pattern, border and texture; the label\'s finish (foil or paper) and where its hologram is; and the grader\'s logo on the insert, where it was found',
     measuredBy: 'where its size came from: the holder table, or measured',
   },
   faces: {
@@ -49,6 +50,7 @@ export const slab: Profile = {
     label: 'the grade label insert inside the holder, front or back, to its outer edges: its whole colored border included, none of the clear plastic around it',
     art: 'the picture box on the card\'s front: the artwork\'s panel, to the edge of its frame',
     hologram: 'a shiny holographic security sticker or strip on the label, if there is one',
+    logo: 'the grader\'s logo printed on the clear plastic insert beside the label, not on the label itself (Beckett\'s "B" in its laurel), if there is one: just around it',
     frame: FRAME_FACE,
   },
   note: 'The card, the label, the card\'s picture box and the label\'s hologram are inside the holder, on whichever side is shown: give their corners in the holder\'s own order (top-left as it stands with its label at the top), even when the card is printed sideways.',
@@ -73,7 +75,7 @@ export const slab: Profile = {
   // None snapped onto edges: each runs beside lines nearer than the models' slip. The clear rim's highlights sit
   // inside the holder's outline (one snapped the outline 11 px in, so everything inside measured 3% big), the well's
   // edge beside the card's, the frames inside and around the label beside its border.
-  unsnapped: ['front', 'back', 'card', 'label', 'art', 'hologram', 'frame'],
+  unsnapped: ['front', 'back', 'card', 'label', 'art', 'hologram', 'frame', 'logo'],
   // A holder's shape: an outline far off every holder's isn't the slab (a near-square box round a slab and the
   // table beside it, 2026-10-25). The front shows the grade; the back never does.
   shapes: { front: HOLDER_SHAPES, back: HOLDER_SHAPES },
@@ -154,6 +156,15 @@ const GAP_MM = 0.5; // the least space kept between the label and the card
 const CENTERED_MM = 2; // holders center the card and the label across: a middle this near the holder's is the holder's
 const WALL_MM = 1; // the least plastic kept around anything inside
 const LABEL_EDGE = '#f4f4f2';
+// Labels printed on metallic foil, front and back: BGS's, gold, silver or black by grade. PSA's and SGC's are paper.
+// ponytail: CGC's and TAG's taken as paper; look at one of each and add them here if they shine.
+const FOIL_LABELS = new Set(['bgs']);
+const FOIL_LABEL = { metallic: 0.8, roughness: 0.3 };
+const LOGO_DEPTH_MM = 0.05; // a print on the insert
+// The logo's strokes: brighter than this share of the brightest in its box, and colorless (silver or white print).
+const LOGO_BRIGHT = 0.8;
+const LOGO_COLORLESS = 40; // most a stroke's red, green and blue differ, of 255
+const LOGO_MARGIN = 0.04; // of the box, all round
 
 type Inside = 'card' | 'label';
 /** A rectangle in the holder, in mm from its middle, y up, as seen from the front. */
@@ -273,6 +284,10 @@ async function make(
     const r = rects[part];
     rects[part] = { x0: Math.max(r.x0, -w / 2 + WALL_MM), x1: Math.min(r.x1, w / 2 - WALL_MM), y0: Math.max(r.y0, -h / 2 + WALL_MM), y1: Math.min(r.y1, h / 2 - WALL_MM) };
   }
+  // The grader's logo on the clear insert (a BGS insert's Beckett "B"), where the models found it. It's printed once
+  // and seen through the plastic from behind, so it's one rectangle for both sides, each pictured from its own photo.
+  const logos = placing.filter(({ found }) => found.has('logo')).map(({ found, toHolder }) => rectOf(found.get('logo')!.map(toHolder)));
+  const logo = logos.length ? { x0: mean(logos.map((r) => r.x0)), x1: mean(logos.map((r) => r.x1)), y0: mean(logos.map((r) => r.y0)), y1: mean(logos.map((r) => r.y1)) } : undefined;
   const missed = (['card', 'label'] as const).filter((part) => placedBy[part] === 'layout');
   if (missed.length && sights) review.push(`${missed.join(' and ')} (the vision models didn't find ${missed.length > 1 ? 'them' : 'it'}: placed where a ${holder} holder usually has ${missed.length > 1 ? 'them' : 'it'})`);
   else if (missed.length) warnings.push(`the card and label are placed where a ${holder} holder usually has them: with a vision roster they're found in the photos`);
@@ -283,15 +298,16 @@ async function make(
   // A hologram the models found on the label, on either side, is placed within that side's label picture.
   const pictured: Partial<Record<'front' | 'back', Record<Inside, Buffer>>> = {};
   const holograms: Partial<Record<'front' | 'back', Region>> = {};
+  const logoPictures: Partial<Record<'front' | 'back', Buffer>> = {};
   for (const { side, picture, mirror, found, toPhoto } of sides) {
-    const at = (part: Inside) => {
-      const r = rects[part];
+    const quad = (r: Rect) => {
       const [left, right] = mirror > 0 ? [r.x0, r.x1] : [r.x1, r.x0];
-      const placed = [[left, r.y1], [right, r.y1], [right, r.y0], [left, r.y0]].map(toPhoto);
-      return part === 'card' ? found.get(part) ?? placed : placed;
+      return [[left, r.y1], [right, r.y1], [right, r.y0], [left, r.y0]].map(toPhoto);
     };
+    const at = (part: Inside) => (part === 'card' ? found.get(part) ?? quad(rects[part]) : quad(rects[part]));
     const of = async (part: Inside) => (await texture(straighten(pictures[picture], at(part)))).jpeg;
     pictured[side] = { card: await of('card'), label: await of('label') };
+    if (logo) logoPictures[side] = await decal(pictures[picture], quad(logo));
     const hologram = found.get('hologram');
     if (hologram) holograms[side] = regionOf(hologram, at('label'));
   }
@@ -346,6 +362,7 @@ async function make(
   const cardDepth = Math.min(pt ? pt * PT_MM : CARD_DEPTH_MM, size[2] - 2 * WALL_MM); // a thick card, by its points, as fits
   const { radiusMm, corners, cornersBy } = cornersOf(sights);
   const plates = { card: { depth: cardDepth, corner: radiusMm, edge: CARDSTOCK }, label: { depth: LABEL_DEPTH_MM, corner: 0, edge: LABEL_EDGE } };
+  const foilLabel = FOIL_LABELS.has(holder.split('-')[0]);
   for (const part of ['card', 'label'] as const) {
     const r = rects[part];
     const { depth, corner, edge: color } = plates[part];
@@ -354,10 +371,21 @@ async function make(
       const jpeg = pictured[side]?.[part];
       if (!jpeg) piece.uv.length = 0;
       const material = jpeg ? pictureMaterial(doc, `${part}-${side}`, jpeg, 'image/jpeg', 0.5) : colorMaterial(doc, `${part}-${side}`, color, 0.8);
+      if (part === 'label' && foilLabel) material.setMetallicFactor(FOIL_LABEL.metallic).setRoughnessFactor(FOIL_LABEL.roughness);
       const map = jpeg && foils[`${part}-${side}`];
       addPart(doc, mesh, piece, map ? foiled(doc, material, map) : material);
     }
     addPart(doc, mesh, edge, colorMaterial(doc, `${part}-edge`, color, 0.8));
+  }
+  // The logo, a print on the insert: only its strokes show, the plastic around them as clear as the rest.
+  if (logo) {
+    const { front, back } = plate([logo.x1 - logo.x0, logo.y1 - logo.y0, LOGO_DEPTH_MM], 0, [(logo.x0 + logo.x1) / 2, (logo.y0 + logo.y1) / 2]);
+    for (const [side, piece] of [['front', front], ['back', back]] as const) {
+      const png = logoPictures[side];
+      if (!png) continue;
+      // Print, not metal: as metal it mirrors the room, and read dark gray where the photo shows it bright.
+      addPart(doc, mesh, piece, pictureMaterial(doc, `logo-${side}`, png, 'image/png', 0.4).setAlphaMode('MASK').setAlphaCutoff(0.5));
+    }
   }
   const round = (mm: number) => Math.round(mm * 10) / 10;
   return {
@@ -367,7 +395,7 @@ async function make(
       widthMm: w, heightMm: h, depthMm: size[2], measuredBy: sizeMm.length ? 'measured' : 'table',
       faces: { front: 'photo', back: pictured.back ? 'photo' : 'color' } satisfies Faces,
       // The card and label inside: their size, where their middles are (mm from the holder's middle, y up), and what placed them.
-      inside: Object.fromEntries((['card', 'label'] as const).map((part) => {
+      inside: { ...Object.fromEntries((['card', 'label'] as const).map((part) => {
         const r = rects[part];
         return [part, {
           widthMm: round(r.x1 - r.x0), heightMm: round(r.y1 - r.y0), atMm: [round((r.x0 + r.x1) / 2), round((r.y0 + r.y1) / 2)], placedBy: placedBy[part],
@@ -377,15 +405,44 @@ async function make(
             border: border ?? 'plain', borderBy: border ? 'vision' : 'assumed', ...(frame && { frame: rounded(frame), frameBy: frameFound ? 'vision' : 'layout' }),
             texture: surface ?? 'smooth', textureBy: surface ? 'vision' : 'assumed',
           }),
-          // Where the label's hologram is, on each side it was found, in fractions of that side's label picture.
+          // Its finish, by grader; and where its hologram is, on each side it was found, in fractions of that side's label picture.
+          ...(part === 'label' && { finish: foilLabel ? 'foil' : 'paper', finishBy: 'grader' }),
           ...(part === 'label' && Object.keys(holograms).length && { hologram: Object.fromEntries(Object.entries(holograms).map(([side, region]) => [side, rounded(region)])) }),
         }];
       })),
+      // The grader's logo on the insert: its size, its middle, and the sides it was pictured from.
+      ...(logo && { logo: { widthMm: round(logo.x1 - logo.x0), heightMm: round(logo.y1 - logo.y0), atMm: [round((logo.x0 + logo.x1) / 2), round((logo.y0 + logo.y1) / 2)], placedBy: 'vision', sides: Object.keys(logoPictures) } }) },
       review, warnings, pictures: pictureRecord(all, roles),
     },
   };
 }
 
 const mean = (values: number[]) => values.reduce((sum, v) => sum + v, 0) / values.length;
+
+/**
+ * A logo printed on clear plastic, cut from a photo: its bright, colorless strokes kept, and everything behind it (the
+ * table, seen through the plastic) made see-through, as a PNG. A median filter takes out the table's own bright
+ * specks. ponytail: a brightness cut from the brightest strokes in the box; a logo printed dark, or a white table
+ * behind it, would need another cue (the models saying its color).
+ */
+async function decal(picture: Picture, quad: number[][]): Promise<Buffer> {
+  const { data, width, height } = straighten(picture, quad);
+  const light = (i: number) => (data[i * 4] + data[i * 4 + 1] + data[i * 4 + 2]) / 3;
+  const lights = Array.from({ length: width * height }, (_, i) => light(i)).sort((a, b) => a - b);
+  const cut = LOGO_BRIGHT * lights[Math.floor(0.98 * (lights.length - 1))];
+  const mask = Buffer.alloc(width * height);
+  // A thin margin is left out: the holder's own edges, bright and colorless too, run there when the box is loose.
+  const [mx, my] = [Math.round(LOGO_MARGIN * width), Math.round(LOGO_MARGIN * height)];
+  for (let i = 0; i < width * height; i++) {
+    const [x, y] = [i % width, Math.floor(i / width)];
+    const rgb = [data[i * 4], data[i * 4 + 1], data[i * 4 + 2]];
+    const inside = x >= mx && x < width - mx && y >= my && y < height - my;
+    mask[i] = inside && light(i) > cut && Math.max(...rgb) - Math.min(...rgb) < LOGO_COLORLESS ? 255 : 0;
+  }
+  const strokes = await sharp(mask, { raw: { width, height, channels: 1 } }).median(3).extractChannel(0).raw().toBuffer();
+  const rgba = Buffer.from(data);
+  for (let i = 0; i < width * height; i++) rgba[i * 4 + 3] = strokes[i];
+  return sharp(rgba, { raw: { width, height, channels: 4 } }).png().toBuffer();
+}
 /** A quad's width: the mean of its top and bottom sides. */
 const widthOf = ([tl, tr, br, bl]: number[][]) => (Math.hypot(tr[0] - tl[0], tr[1] - tl[1]) + Math.hypot(br[0] - bl[0], br[1] - bl[1])) / 2;

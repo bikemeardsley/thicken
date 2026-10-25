@@ -133,6 +133,46 @@ test('slab: the card and label are placed from the sides whose outline two model
   assert.deepEqual([inside.card.widthMm, inside.card.heightMm, inside.card.atMm[0]], [63.5, 88.9, 0]);
 });
 
+test('slab: a BGS label is foil, and the grader\'s logo on the clear insert is cut from the photos, the table behind it left out', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  // A BGS slab, the counter showing brown through its clear plastic, and a white logo printed on the insert left of
+  // the label (seen from behind on the right, as it's the same print).
+  const [slab, label, card, logo, mark] = [[0, 0, 83, 131], [17, 4.5, 79, 26], [9.75, 33, 73.25, 121.9], [4, 6, 15, 24], [6, 8, 13, 22]];
+  const [front, back] = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
+  const mirrored = ([x0, y0, x1, y1]: number[]) => [83 - x1, y0, 83 - x0, y1];
+  await slabPhoto(front, [[slab, '#6b5a4a'], [label, '#c9a640'], [mark, '#ffffff'], [card, '#2e7d32']]);
+  await slabPhoto(back, [[slab, '#6b5a4a'], [mirrored(label), '#c9a640'], [mirrored(mark), '#ffffff'], [card, '#1d4f9e']]);
+  const fetch = catalog({}, {
+    vision: async ({ photo }) => {
+      const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
+      const middle = (500 * info.width + 500) * info.channels;
+      const green = data[middle + 1] > data[middle + 2];
+      const side = (rect: number[]) => letterboxed(green ? rect : mirrored(rect));
+      return { faces: [{ face: green ? 'front' : 'back', corners: letterboxed(slab) }, { face: 'card', corners: letterboxed(card) }, { face: 'label', corners: side(label) }, { face: 'logo', corners: side(logo) }] };
+    },
+  });
+  t.after(() => fetch.mock.restore());
+  const { glb, sidecar } = await thicken([front, back], { profile: 'slab', holder: 'bgs' });
+  const inside = sidecar.inside as Record<string, Record<string, unknown>>;
+  assert.deepEqual([inside.label.finish, inside.logo.widthMm, inside.logo.heightMm, inside.logo.atMm, inside.logo.sides], ['foil', 11, 18, [-32, 50.5], ['front', 'back']]);
+  const materials = Object.fromEntries((await read(glb)).getRoot().listMaterials().map((m) => [m.getName(), m]));
+  assert.deepEqual([materials['label-front'].getMetallicFactor(), materials['label-back'].getMetallicFactor()], [0.8, 0.8]);
+  for (const side of ['front', 'back']) {
+    const material = materials[`logo-${side}`];
+    assert.equal(material.getAlphaMode(), 'MASK');
+    const { data, info } = await sharp(material.getBaseColorTexture()!.getImage()!).raw().toBuffer({ resolveWithObject: true });
+    const alpha = (x: number, y: number) => data[(Math.round(y * info.height) * info.width + Math.round(x * info.width)) * info.channels + 3];
+    // The white mark (2/11 to 9/11 across, 2/18 to 16/18 down) kept; the brown plastic around it see-through.
+    assert.deepEqual([alpha(0.5, 0.5), alpha(0.08, 0.5), alpha(0.5, 0.05)], [255, 0, 0], side);
+  }
+  // A PSA label is paper.
+  const psa = await thicken([front, back], { profile: 'slab', holder: 'psa' });
+  assert.equal((psa.sidecar.inside as Record<string, Record<string, unknown>>).label.finish, 'paper');
+});
+
 test('slab: a tall holder is told by its label, the same size on every holder but spanning much less of a tall one', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));

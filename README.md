@@ -239,7 +239,7 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `cert` | its certification number |
 | `verifyUrl` | the grader's page for this cert, from its QR code |
 | `holder` | the holder it was built as (psa, cgc-tall…) |
-| `inside` | the card and the label inside: each one's size, middle and what placed it; the card's corners, foil and its pattern, border and texture; where the label's hologram is |
+| `inside` | the card and the label inside: each one's size, middle and what placed it; the card's corners, foil and its pattern, border and texture; the label's finish (foil or paper) and where its hologram is; and the grader's logo on the insert, where it was found |
 | `measuredBy` | where its size came from: the holder table, or measured |
 
 </details>
