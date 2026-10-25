@@ -294,11 +294,10 @@ marked for review, so one photo of the back is enough to start a book.
 With `THICKEN_VISION_URL` set, the photos
 themselves (re-encoded, so without their EXIF) go to that host. A LAN server
 you control still forwards each photo to the model's provider; a hosted
-endpoint sees every photo. With [Benchwarmers](USAGE.md#benchwarmers-a-model-bench)
-running on the same machine with a vision collection, the photos go to its
-gateway, which forwards each to the providers of every seat it picks; each
-run first asks `127.0.0.1:8122` whether it's there (`THICKEN_BENCH_URL=off`
-stops that). The only other calls out are a book's catalog
+endpoint sees every photo. With `THICKEN_BENCH_URL` naming a
+[Benchwarmers](USAGE.md#benchwarmers-a-model-bench) gateway with a vision
+collection, the photos go to that gateway, which forwards each to the
+providers of every seat it picks. The only other calls out are a book's catalog
 lookups (Open Library, the Library of Congress, Google Books), which send its
 ISBN, or the title and author the models read off it; never a photo.
 

@@ -10,11 +10,10 @@
 //
 // Benchwarmers (github.com/WendellResearch-AI/benchwarmers), a model bench
 // whose gateway asks a collection of models at once and learns from verdicts
-// which to trust, is asked first when it runs on this machine with a vision
-// collection: every seat answers each photo, thicken settles their answers as
-// it settles its own roster's, and tells the bench how each seat did. The
-// roster stands in when the gateway is down or no seat answers.
-// THICKEN_BENCH_URL points at a gateway elsewhere; "off" stops the look.
+// which to trust, is asked first when THICKEN_BENCH_URL names its gateway and
+// it has a vision collection: every seat answers each photo, thicken settles
+// their answers as it settles its own roster's, and tells the bench how each
+// seat did. The roster stands in when the gateway is down or no seat answers.
 import sharp from 'sharp';
 import { snap, type Picture } from './image.ts';
 import { keep, trainingOn } from './training.ts';
@@ -58,11 +57,11 @@ let bench: { url: string; collection: string } | undefined; // while it answers
 let found: typeof bench; // as found, for the record
 const looked = new Map<string, Promise<typeof bench>>();
 /**
- * Whether a bench gateway with a vision collection answers (`bench/vision`, or one tagged "vision"): asked once per
- * process and gateway, quickly (nothing here, the usual case, costs a refused connection), then tried afresh each run.
+ * Whether the bench gateway THICKEN_BENCH_URL names has a vision collection (`bench/vision`, or one tagged "vision"):
+ * asked once per process and gateway, quickly. Without THICKEN_BENCH_URL, nothing is asked.
  */
 export async function findBench(): Promise<void> {
-  const url = (process.env.THICKEN_BENCH_URL ?? 'http://127.0.0.1:8122').replace(/\/$/, '');
+  const url = (process.env.THICKEN_BENCH_URL ?? '').replace(/\/$/, '');
   if (!looked.has(url)) looked.set(url, lookFor(url));
   bench = found = await looked.get(url);
 }

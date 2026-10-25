@@ -1,9 +1,9 @@
 # Vision through a panel gateway, or a roster of your own: a note to pick up
 
 *Written 2026-10-21 from the Estate Sale sessions, for thicken. **Built 2026-10-22** (src/vision.ts `findBench`,
-`panel`, `judge`), with two changes from this note, at Mike's choice: the bench is found by itself, not named in
-`THICKEN_VISION_MODELS` (each run asks the gateway, now at `127.0.0.1:8122`, for `bench/vision` or a collection tagged
-`vision`; the roster stands in when it's down or no seat answers), and a run without any vision says so in its review.
+`panel`, `judge`), with two changes from this note, at Mike's choice: the bench has its own setting, not
+`THICKEN_VISION_MODELS` (`THICKEN_BENCH_URL`, opt-in, ours `127.0.0.1:8122`: each run asks it for `bench/vision` or a
+collection tagged `vision`; the roster stands in when it's down or no seat answers), and a run without any vision says so in its review.
 Since this note, the gateway forwards `image_url` parts to seats that can see, and `bench/vision` exists (members
 gemini-3.8-flash, gemma-4-31b-it, qwen3.8-27b). User docs: USAGE.md, "Benchwarmers (a model bench)".*
 

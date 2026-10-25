@@ -57,7 +57,7 @@ test('card: with a model bench on this machine, its vision collection answers ev
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
   process.env.THICKEN_BENCH_URL = 'http://bench.test';
-  t.after(() => { process.env.THICKEN_BENCH_URL = 'off'; });
+  t.after(() => { process.env.THICKEN_BENCH_URL = ''; });
   const quad = [[300, 330], [681, 330], [681, 863.4], [300, 863.4]];
   const files = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
   for (const [file, fill] of [[files[0], '#2e7d32'], [files[1], '#1d4f9e']]) {

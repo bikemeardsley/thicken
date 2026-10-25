@@ -212,11 +212,11 @@ THICKEN_VISION_MODELS=gemini-3.8-flash-high,gpt-6-luna,gpt-5.6-terra,gemini-3.1-
 
 ### Benchwarmers (a model bench)
 
-When [Benchwarmers](https://github.com/WendellResearch-AI/benchwarmers) runs
-on the same machine with a vision collection (`bench/vision`, or one tagged
-`vision`), thicken uses it first, with nothing to set: each run asks its
-gateway at `http://127.0.0.1:8122` once, quickly, and a refused connection
-(no bench, the usual case) costs nothing.
+With `THICKEN_BENCH_URL` set to a
+[Benchwarmers](https://github.com/WendellResearch-AI/benchwarmers) gateway
+(`http://127.0.0.1:8122` when it runs on the same machine) that has a vision
+collection (`bench/vision`, or one tagged `vision`), thicken uses it first.
+Without it, no bench is asked.
 
 - Each photo goes to the collection: its members and the explorer seats the
   bench adds, all at once. Every seat's answer is settled as a roster's are,
@@ -228,7 +228,6 @@ gateway at `http://127.0.0.1:8122` once, quickly, and a refused connection
   it's left for you to judge in the bench's dashboard.
 - The `THICKEN_VISION_*` roster stands in when the gateway is down or no
   seat answers a photo.
-- `THICKEN_BENCH_URL` points at a gateway elsewhere; `off` stops the look.
 - The gateway waits for its slowest seat, up to 7 minutes a photo, and a
   collection's rate limits are its slowest member's: a long video can hit
   them.

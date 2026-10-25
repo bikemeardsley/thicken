@@ -159,7 +159,7 @@ export const stillToShoot = (faces: Faces = {}) =>
 export const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string;
 
 /** The review's note on a model made without vision models. */
-export const NO_VISION = 'no vision models were asked (set THICKEN_VISION_URL, THICKEN_VISION_KEY and THICKEN_VISION_MODELS, or run Benchwarmers with a vision collection; see the README): photos were used as cropped, nothing printed was read, and sides, corners and foil were taken as the defaults';
+export const NO_VISION = 'no vision models were asked (set THICKEN_VISION_URL, THICKEN_VISION_KEY and THICKEN_VISION_MODELS, or THICKEN_BENCH_URL for a Benchwarmers gateway with a vision collection; see the README): photos were used as cropped, nothing printed was read, and sides, corners and foil were taken as the defaults';
 
 export async function thicken(inputs: string[], options: Options = {}): Promise<{ glb: Uint8Array; sidecar: Sidecar }> {
   const started = performance.now();
