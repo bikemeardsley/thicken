@@ -348,7 +348,9 @@ lists the rest, a batch ends with the list, and the preview caption shows
 it: a stand-in front, a plain spine or back, a face the vision models
 disagreed on that nothing settled (left out: if it's there, give its
 `--corners`; for the object's outline, a photo cropped to it and `--cropped`
-do too), a face only one model answered for,
+do too), a slab's label whose corners ran well onto what's behind it (a
+label's edges are pulled in off the table seen through the plastic, a few
+pixels at most), a face only one model answered for,
 and a photo no vision model answered for (used whole). Add the photos (in a subfolder named after the
 item), run again, and only that model is remade, with its review cleared.
 

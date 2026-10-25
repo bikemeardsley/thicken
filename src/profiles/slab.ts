@@ -6,7 +6,7 @@
 // has them.
 import { Document } from '@gltf-transform/core';
 import sharp from 'sharp';
-import { addPart, assignFaces, cardFoil, clearMaterial, colorMaterial, cut, borderAsk, borderFoil, type Faces, type Foil, foilAsk, FRAME, FRAME_FACE, labelFinishAsk, labelFinishOf, patternAsk, textureAsk, textureOf, unseenPattern, foiled, foilKind, foilLook, foilMap, lookName, mapping, type Picture, PICTURE_BOX, pictureMaterial, pictureRecord, plate, type Profile, readOf, type Region, regionIn, regionOf, ring, rounded, type Scanned, shots, sidesUnknown, type Sight, straighten, subjectBox, texture, toGlb } from '../kit.ts';
+import { addPart, assignFaces, backgroundOf, cardFoil, clearMaterial, colorMaterial, cut, borderAsk, borderFoil, grown, inQuad, tighten, type Faces, type Foil, foilAsk, FRAME, FRAME_FACE, labelFinishAsk, labelFinishOf, patternAsk, textureAsk, textureOf, unseenPattern, foiled, foilKind, foilLook, foilMap, lookName, mapping, type Picture, PICTURE_BOX, pictureMaterial, pictureRecord, plate, type Profile, readOf, type Region, regionIn, regionOf, ring, rounded, type Scanned, shots, sidesUnknown, type Sight, straighten, subjectBox, texture, toGlb } from '../kit.ts';
 import { CARD_DEPTH_MM, CARD_MM, CARD_READS, CARDSTOCK, CORNERS_ASK, cornersOf, PT_MM } from './card.ts';
 
 // A grader's QR code points at its own verification page, which says whose holder this is.
@@ -161,9 +161,16 @@ const LABEL_EDGE = '#f4f4f2';
 const FOIL_LABEL = { metallic: 0.8, roughness: 0.3 };
 const LOGO_DEPTH_MM = 0.05; // a print on the insert
 // The logo's strokes: brighter than this share of the brightest in its box, and colorless (silver or white print).
-const LOGO_BRIGHT = 0.8;
+const LOGO_BRIGHT = 0.85; // clearly a stroke
+const LOGO_DIM = 0.65; // a stroke, if it touches one clearly and is neutral: its red, green and blue within
+const LOGO_NEUTRAL = 18;
+const LOGO_SPECK = 0.0015; // of the box: a piece smaller than this is a speck of table, not a letter
 const LOGO_COLORLESS = 40; // most a stroke's red, green and blue differ, of 255
 const LOGO_MARGIN = 0.04; // of the box, all round
+// Learning what's behind the slab: a part's quad grown this much is kept out of it, and the window is the slab's
+// outline shrunk this much, which leaves out its rim (bright clear plastic, neither table nor part).
+const BACKGROUND_CLEAR = 1.06;
+const WINDOW = 0.92;
 
 type Inside = 'card' | 'label';
 /** A rectangle in the holder, in mm from its middle, y up, as seen from the front. */
@@ -251,9 +258,23 @@ async function make(
     const quad = corners ?? [[0, 0], [width, 0], [width, height], [0, height]];
     const mirror = side === 'back' ? -1 : 1;
     const holderQuad = [[-w / 2, h / 2], [w / 2, h / 2], [w / 2, -h / 2], [-w / 2, -h / 2]].map(([x, y]) => [mirror * x, y]);
-    const found = corners ? inner[picture] ?? new Map<string, number[][]>() : new Map<string, number[][]>();
+    const found = corners ? new Map(inner[picture] ?? []) : new Map<string, number[][]>();
     const agreed = Boolean(sights?.[picture]?.faces.some(({ face, agreed }) => (face === 'front' || face === 'back') && agreed));
-    return [{ side, picture, mirror, found, agreed, toPhoto: mapping(holderQuad, quad), toHolder: mapping(quad, holderQuad) }];
+    // What's behind the slab, from this photo (src/background.ts): beyond the slab, and through its clear window,
+    // away from its rim and from the parts placed inside. Then the label's and card's corners are pulled in off it.
+    const parts = (['label', 'card', 'logo'] as const).flatMap((part) => (found.has(part) ? [grown(found.get(part)!, BACKGROUND_CLEAR)] : []));
+    const background = found.has('label') || found.has('card')
+      ? backgroundOf(pictures[picture], (point) => !inQuad(point, grown(quad, 1.02)) || (inQuad(point, grown(quad, WINDOW)) && !parts.some((q) => inQuad(point, q))))
+      : undefined;
+    // ponytail: the label only. A card's art (dark photos, textured foil) looks too much like granite to this model of
+    // the background, which cut 9% off 497's card; the card's size is the standard one's anyway (standardCard).
+    if (background && found.has('label')) {
+      const { corners: tight, off } = tighten(pictures[picture], found.get('label')!, background);
+      found.set('label', tight);
+      // An edge that would have to move further than a loose corner does: said, never shipped quietly.
+      if (off.length) review.push(`the label in the ${side} photo (its ${off.join(' and ')} edge${off.length > 1 ? 's' : ''} looked like what's behind the slab well inside the corners given: check them)`);
+    }
+    return [{ side, picture, mirror, found, agreed, background, toPhoto: mapping(holderQuad, quad), toHolder: mapping(quad, holderQuad) }];
   });
   const unused = roles.filter((role) => role === 'unused').length;
   if (unused) warnings.push(`${unused} picture(s) not used: none looked like another shot of a face`);
@@ -291,19 +312,21 @@ async function make(
   if (missed.length && sights) review.push(`${missed.join(' and ')} (the vision models didn't find ${missed.length > 1 ? 'them' : 'it'}: placed where a ${holder} holder usually has ${missed.length > 1 ? 'them' : 'it'})`);
   else if (missed.length) warnings.push(`the card and label are placed where a ${holder} holder usually has them: with a vision roster they're found in the photos`);
 
-  // Each side's card and label pictures. The card's from where the models put it on that side (a card can sit a
-  // little askew in its well); the label's, one insert printed both sides, from the one rectangle placed for it, so
-  // front and back match each other and their plate.
+  // Each side's card and label pictures, from where they are in that side's photo (a card can sit a little askew in
+  // its well, and the average of both sides' labels crops one side's print where the two differ), else from the
+  // rectangle placed for them.
   // A hologram the models found on the label, on either side, is placed within that side's label picture.
   const pictured: Partial<Record<'front' | 'back', Record<Inside, Buffer>>> = {};
   const holograms: Partial<Record<'front' | 'back', Region>> = {};
   const logoPictures: Partial<Record<'front' | 'back', Buffer>> = {};
-  for (const { side, picture, mirror, found, toPhoto } of sides) {
+  for (const { side, picture, mirror, found, background, toPhoto } of sides) {
     const quad = (r: Rect) => {
       const [left, right] = mirror > 0 ? [r.x0, r.x1] : [r.x1, r.x0];
       return [[left, r.y1], [right, r.y1], [right, r.y0], [left, r.y0]].map(toPhoto);
     };
-    const at = (part: Inside) => (part === 'card' ? found.get(part) ?? quad(rects[part]) : quad(rects[part]));
+    // Each side's card and label from where they are in its own photo (the label's corners pulled in off the
+    // background); the rectangles placed for them only where a side didn't find them.
+    const at = (part: Inside) => found.get(part) ?? quad(rects[part]);
     const of = async (part: Inside) => (await texture(straighten(pictures[picture], at(part)))).jpeg;
     pictured[side] = { card: await of('card'), label: await of('label') };
     if (logo) logoPictures[side] = await decal(pictures[picture], quad(logo));
@@ -430,19 +453,52 @@ async function decal(picture: Picture, quad: number[][]): Promise<Buffer> {
   const { data, width, height } = straighten(picture, quad);
   const light = (i: number) => (data[i * 4] + data[i * 4 + 1] + data[i * 4 + 2]) / 3;
   const lights = Array.from({ length: width * height }, (_, i) => light(i)).sort((a, b) => a - b);
-  const cut = LOGO_BRIGHT * lights[Math.floor(0.98 * (lights.length - 1))];
-  const mask = Buffer.alloc(width * height);
+  const brightest = lights[Math.floor(0.98 * (lights.length - 1))];
   // A thin margin is left out: the holder's own edges, bright and colorless too, run there when the box is loose.
   const [mx, my] = [Math.round(LOGO_MARGIN * width), Math.round(LOGO_MARGIN * height)];
-  for (let i = 0; i < width * height; i++) {
+  // Grown only into neutral silver: a granite's pale patches are a little warm, and silver isn't.
+  const silver = (i: number, share: number, colorless = LOGO_COLORLESS) => {
     const [x, y] = [i % width, Math.floor(i / width)];
     const rgb = [data[i * 4], data[i * 4 + 1], data[i * 4 + 2]];
-    const inside = x >= mx && x < width - mx && y >= my && y < height - my;
-    mask[i] = inside && light(i) > cut && Math.max(...rgb) - Math.min(...rgb) < LOGO_COLORLESS ? 255 : 0;
+    return x >= mx && x < width - mx && y >= my && y < height - my && light(i) > share * brightest && Math.max(...rgb) - Math.min(...rgb) < colorless;
+  };
+  // Strokes: the clearly bright, grown into the dimmer silver touching them (a laurel's thin leaves, the letters'
+  // edges), which a single cut either loses or matches in the table's specks too.
+  const kept = new Uint8Array(width * height);
+  const queue: number[] = [];
+  for (let i = 0; i < width * height; i++) if (silver(i, LOGO_BRIGHT)) { kept[i] = 1; queue.push(i); }
+  while (queue.length) {
+    const i = queue.pop()!;
+    const [x, y] = [i % width, Math.floor(i / width)];
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const [nx, ny] = [x + dx, y + dy];
+        const j = ny * width + nx;
+        if (nx >= 0 && ny >= 0 && nx < width && ny < height && !kept[j] && silver(j, LOGO_DIM, LOGO_NEUTRAL)) { kept[j] = 1; queue.push(j); }
+      }
+    }
   }
-  const strokes = await sharp(mask, { raw: { width, height, channels: 1 } }).median(3).extractChannel(0).raw().toBuffer();
+  // Specks of table that passed: pieces too small to be part of a letter.
+  const least = LOGO_SPECK * width * height;
+  const seen = new Uint8Array(width * height);
+  for (let i = 0; i < width * height; i++) {
+    if (!kept[i] || seen[i]) continue;
+    const piece = [i];
+    seen[i] = 1;
+    for (let k = 0; k < piece.length; k++) {
+      const [x, y] = [piece[k] % width, Math.floor(piece[k] / width)];
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const [nx, ny] = [x + dx, y + dy];
+          const j = ny * width + nx;
+          if (nx >= 0 && ny >= 0 && nx < width && ny < height && kept[j] && !seen[j]) { seen[j] = 1; piece.push(j); }
+        }
+      }
+    }
+    if (piece.length < least) for (const j of piece) kept[j] = 0;
+  }
   const rgba = Buffer.from(data);
-  for (let i = 0; i < width * height; i++) rgba[i * 4 + 3] = strokes[i];
+  for (let i = 0; i < width * height; i++) rgba[i * 4 + 3] = kept[i] ? 255 : 0;
   return sharp(rgba, { raw: { width, height, channels: 4 } }).png().toBuffer();
 }
 /** A quad's width: the mean of its top and bottom sides. */

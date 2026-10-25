@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import sharp from 'sharp';
+import { backgroundOf, grown, inQuad, tighten } from '../src/background.ts';
 import { edgesOf } from '../src/edges.ts';
 import { assignFaces, cut, type Shot } from '../src/faces.ts';
 import { codes, load, snap } from '../src/image.ts';
@@ -254,6 +255,25 @@ test('edges: a card\'s outline on a busy table, found by its edges alone, and no
   assert.ok(found && found.every((p, k) => Math.hypot(p[0] - truth[k][0], p[1] - truth[k][1]) < 0.01 * Math.hypot(900, 1200)), JSON.stringify(found));
   const [bare] = await load(await table().png().toBuffer());
   assert.equal((await edgesOf(bare)).outline(shapes), undefined);
+});
+
+test('background: a label\'s corners that run onto the speckled table behind it are pulled in to its edge, and no further', async () => {
+  // A gold label with dark print on speckled granite; its given corners run 9 px past its bottom and 6 px past its right.
+  let seed = 7;
+  const granite = Buffer.alloc(600 * 300 * 3);
+  for (let i = 0; i < granite.length; i += 3) {
+    const v = 60 + ((seed = (seed * 48271) % 2147483647) % 140);
+    granite.set([v, v * 0.85, v * 0.7], i);
+  }
+  const svg = '<svg width="600" height="300"><rect x="100" y="60" width="400" height="120" fill="#c9a640"/>'
+    + '<text x="120" y="110" font-size="30" font-family="sans-serif" fill="#111">2024 TOPPS NOW</text><text x="420" y="160" font-size="40" fill="#111">10</text></svg>';
+  const [picture] = await load(await sharp(granite, { raw: { width: 600, height: 300, channels: 3 } }).composite([{ input: Buffer.from(svg) }]).png().toBuffer());
+  const given = [[100, 60], [506, 60], [506, 189], [100, 189]];
+  const background = backgroundOf(picture, (point) => !inQuad(point, grown(given, 1.06)));
+  const { corners, off } = tighten(picture, given, background);
+  const truth = [[100, 60], [500, 60], [500, 180], [100, 180]];
+  assert.ok(corners.every((p, k) => Math.hypot(p[0] - truth[k][0], p[1] - truth[k][1]) <= 2.5), JSON.stringify(corners));
+  assert.deepEqual(off, []);
 });
 
 test('a face two models agreed on is kept over a sharper one only one placed, and a file name naming a face places it', () => {
