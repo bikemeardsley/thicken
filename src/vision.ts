@@ -345,8 +345,12 @@ const apartAnyway = (a: number[][], b: number[][]) => Math.min(...orders(b).map(
  * the only model that answered placed stands on its word, which the review says.
  */
 export function settle(answers: Answer[], evidence: Evidence = {}): { faces: Seen[]; disputed: string[] } {
-  // One answer a model: a collection asked again seats its members again.
-  const usable = answers.filter((a, i) => a.faces && answers.findIndex((b) => b.faces && b.model === a.model) === i);
+  // Every answer counts, but a model only once in agreeing: a collection asked again seats its members again.
+  const usable = answers.filter((a) => a.faces);
+  type Placing = { model: string; corners: number[][] };
+  const models = (list: { model: string }[]) => [...new Set(list.map(({ model }) => model))];
+  /** A model's own answers for a face, as one: averaged if they agree with each other, none if they don't. */
+  const consistent = (list: Placing[]) => (list.every(({ corners }) => distance(corners, list[0].corners) < AGREE) ? mean(list.map(({ corners }) => corners)) : undefined);
   const names = [...new Set(usable.flatMap((a) => a.faces!.map((f) => f.face)))];
   const { bounds, shapes = {}, shows = {}, outline, outlined = [], support } = evidence;
   const offShape = (face: string, corners: number[][]) => (shapes[face]?.length ? Math.min(...shapes[face].map((s) => Math.abs(shapeOf(corners) / s - 1))) : 0);
@@ -358,52 +362,58 @@ export function settle(answers: Answer[], evidence: Evidence = {}): { faces: See
   const disputed: string[] = [];
   const singles: { face: string; model: string; corners: number[][] }[] = [];
   for (const name of names) {
-    const all = usable.flatMap((a) => a.faces!.filter((f) => f.face === name).slice(0, 1).map((f) => ({ model: a.model, corners: f.corners })));
+    const all: Placing[] = usable.flatMap((a) => a.faces!.filter((f) => f.face === name).slice(0, 1).map((f) => ({ model: a.model, corners: f.corners })));
     const fits = all.filter(({ corners }) => possible(name, corners));
     // A face as the camera saw it winds clockwise in its own reading order (y down). One wound the other way is its
     // mirror image, which no photo shows (two models agreeing on one put a spine's lettering backward): it says
     // where the face is, but not which way up.
     const each = fits.filter(({ corners }) => clockwise(corners));
     const edges = outline && outlined.includes(name) ? outline : undefined;
-    const named = all.length > 1 || usable.length === 1; // by more than one model, or by the only one that answered
-    if (!named) {
-      if (each.length) singles.push({ face: name, ...each[0] });
+    const lone = models(usable).length === 1; // only one model answered at all
+    if (models(all).length === 1 && !lone) { // named by one model while others answered without it
+      const corners = each.length ? consistent(each) : undefined;
+      if (corners) singles.push({ face: name, model: each[0].model, corners });
       continue;
     }
     const place = (corners: number[][], by: string[], agreed: boolean) => faces.push({ face: name, corners, asSeen: corners, by, agreed });
 
-    // The same place and turn: the closest two, and every answer as close to them.
-    let pair: number[][] | undefined;
-    let closest = AGREE;
-    for (let i = 0; i < each.length; i++) {
-      for (let j = i + 1; j < each.length; j++) {
-        const apart = distance(each[i].corners, each[j].corners);
-        if (apart < closest) [pair, closest] = [mean([each[i].corners, each[j].corners]), apart];
-      }
-    }
-    if (pair) {
-      const agreeing = each.filter(({ corners }) => distance(corners, pair) < AGREE);
-      place(mean(agreeing.map(({ corners }) => corners)), agreeing.map(({ model }) => model), true);
+    // The same place and turn: each answer's group of those that agree with it. The group most models are in
+    // stands, all of them averaged; two such groups in different places are a dispute, for the evidence below.
+    const groups = each.map(({ corners }) => each.filter((other) => distance(other.corners, corners) < AGREE));
+    const most = Math.max(0, ...groups.map((group) => models(group).length));
+    const biggest = groups.filter((group) => models(group).length === most);
+    const middle = most >= 2 ? mean(biggest[0].map(({ corners }) => corners)) : undefined;
+    if (middle && biggest.every((group) => distance(mean(group.map(({ corners }) => corners)), middle) < AGREE)) {
+      const agreeing = [...new Set(biggest.flat())];
+      place(mean(agreeing.map(({ corners }) => corners)), models(agreeing), true);
       continue;
     }
 
     // The same place, whichever way up: who else puts it there, the edges seat included. A place another answer
-    // turns differently has its turn in dispute.
-    const backers = ({ model, corners }: { model: string; corners: number[][] }) => [
-      ...fits.filter((other) => other.model !== model && apartAnyway(other.corners, corners) < AGREE).map((other) => other.model),
+    // gives a different turn has its turn in dispute.
+    const backers = ({ model, corners }: Placing) => [
+      ...models(fits.filter((other) => other.model !== model && apartAnyway(other.corners, corners) < AGREE)),
       ...(edges && apartAnyway(edges, corners) < AGREE ? ['edges'] : []),
     ];
-    const turnedAlike = (c: { model: string; corners: number[][] }) => !each.some((other) => other !== c && apartAnyway(other.corners, c.corners) < AGREE);
-    if (usable.length === 1) {
-      if (each.length) place(each[0].corners, [each[0].model, ...backers(each[0])], backers(each[0]).length > 0);
-      else disputed.push(name); // only a mirror image, or one that can't be right: more models are asked
+    const turnedAlike = (c: Placing) => !each.some((other) => apartAnyway(other.corners, c.corners) < AGREE && distance(other.corners, c.corners) >= AGREE);
+    if (lone) {
+      const corners = each.length ? consistent(each) : undefined;
+      if (corners) place(corners, [each[0].model, ...backers(each[0])], backers(each[0]).length > 0);
+      else disputed.push(name); // only a mirror image, one that can't be right, or two that differ: more are asked
       continue;
     }
-    const backed = each.filter(turnedAlike).map((c) => ({ ...c, by: backers(c) })).filter(({ by }) => by.length)
+    // Each place a group of answers gives, averaged, and who puts it there; the place most do stands, then the one
+    // clearly nearer its shape and edges. A place and one within AGREE of it are the same place, not rivals.
+    const places = groups.map((group) => {
+      const corners = mean(group.map(({ corners: c }) => c));
+      const own = models(group);
+      return { corners, by: [...own, ...backers({ model: own[0], corners }).filter((m) => !own.includes(m))] };
+    }).filter(({ corners, by }) => by.length >= 2 && turnedAlike({ model: '', corners }))
       .sort((x, y) => y.by.length - x.by.length || fit(name, y.corners) - fit(name, x.corners));
-    const [top, next] = backed;
+    const [top] = places;
+    const next = top && places.find(({ corners }) => distance(corners, top.corners) >= AGREE);
     if (top && (!next || top.by.length > next.by.length || fit(name, top.corners) - fit(name, next.corners) >= CLEARLY)) {
-      place(top.corners, [top.model, ...top.by], true);
+      place(top.corners, top.by, true);
       continue;
     }
 
@@ -411,7 +421,7 @@ export function settle(answers: Answer[], evidence: Evidence = {}): { faces: See
     const near = edges ? each.filter(({ corners }) => apartAnyway(edges, corners) < 2 * AGREE) : [];
     const turns = near.map(({ corners }) => [0, 1, 2, 3].reduce((best, k) => (distance(corners, turn(edges!, k)) < distance(corners, turn(edges!, best)) ? k : best), 0));
     if (near.length && turns.every((k) => k === turns[0])) {
-      place(turn(edges!, turns[0]), [...near.map(({ model }) => model), 'edges'], true);
+      place(turn(edges!, turns[0]), [...models(near), 'edges'], true);
       continue;
     }
     disputed.push(name);

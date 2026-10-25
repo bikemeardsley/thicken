@@ -212,6 +212,14 @@ test('vision: a dispute goes by evidence, never by which seat was listed first, 
   const reading = { ...answer('a', 'front', [[10, 8], [676, 8], [676, 998], [10, 998]]), read: { grade: '9.5' } };
   assert.deepEqual(settle([reading, nemotron, answer('c', 'back', [[10, 8], [676, 8], [676, 998], [10, 998]])], evidence).faces.map(({ face, by }) => [face, by]),
     [['front', ['a', 'nemotron']]]);
+  // Order decides nothing (the bench's review, 2026-10-25): two pairs agreeing on two places is a dispute either way
+  // round, and a model asked twice counts once, however its answers are ordered.
+  const at = (model: string, x: number) => ({ model, ms: 1, faces: [{ face: 'side', corners: [[x, 100], [x + 100, 100], [x + 100, 300], [x, 300]] }] });
+  const pairs = [at('m1', 100), at('m2', 100), at('m3', 600), at('m4', 600)];
+  assert.deepEqual([settle(pairs), settle(pairs.toReversed())], [{ faces: [], disputed: ['side'] }, { faces: [], disputed: ['side'] }]);
+  const twice = [at('m1', 100), at('m1', 600), at('m2', 600)];
+  assert.deepEqual(settle(twice).faces.map(({ corners, by }) => [corners[0], by]), [[[600, 100], ['m1', 'm2']]]);
+  assert.deepEqual(settle(twice.toReversed()).faces.map(({ corners, by }) => [corners[0], by.toSorted()]), [[[600, 100], ['m1', 'm2']]]);
   // A front named by a model that read no grade loses to the back; with nothing read to tell them apart, neither stands.
   const back = answer('c', 'back', [[10, 8], [676, 8], [676, 998], [10, 998]]);
   assert.deepEqual(settle([nemotron, back], evidence).faces.map(({ face, by }) => [face, by]), [['back', ['c', 'nemotron']]]);

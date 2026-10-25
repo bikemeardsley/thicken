@@ -231,7 +231,7 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
   const unsure = [
     ...(identity?.disputed ? [`what this is (the vision models disagree; made as a ${profile.name}: name the profile if that's wrong)`] : []),
     ...(sights ?? []).flatMap((sight, i) => (!worth(i) ? [] : [
-      ...sight.disputed.map((face) => `${face} in ${named_(i)} (the vision models disagree where it is or which way up, and nothing settled it, so it was left out: crop the photo to it and use --cropped, or give its --corners)`),
+      ...sight.disputed.map((face) => `${face} in ${named_(i)} (the vision models disagree where it is or which way up, and nothing settled it, so it was left out: if it's there, give its --corners)`),
       ...sight.faces.filter(({ face, agreed }) => !agreed && !sight.disputed.includes(face))
         .map(({ face, by }) => `${face} in ${named_(i)} (only ${by[0]} answered, so no second model checked it: check it)`),
       // A frame no model answered for is just left out (src/faces.ts): one of a handful, nothing to review.
