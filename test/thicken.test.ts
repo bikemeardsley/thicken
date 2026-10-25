@@ -12,7 +12,7 @@ import { assignFaces, cut, type Shot } from '../src/faces.ts';
 import { codes, level, load, snap } from '../src/image.ts';
 import { startPreview } from '../src/preview.ts';
 import { batchItems, thicken, VERSION } from '../src/thicken.ts';
-import { readOf, settle } from '../src/vision.ts';
+import { decide, findBench, readOf, settle } from '../src/vision.ts';
 import { fixture, hasFfmpeg, letterboxed, catalog, colorOf, near, read } from './helpers.ts';
 
 test('video: its sharpest frames, upright, join the photos for the vision models, and a photo still beats a frame', { skip: !hasFfmpeg && 'ffmpeg isn\'t installed' }, async (t) => {
@@ -190,6 +190,20 @@ test('vision: what\'s read counts each model once a photo, and a value one model
   // Two models each way is a tie: no value, whichever came first.
   const split = sight([{ model: 'a', read: { year: '1999' } }, { model: 'b', read: { year: '2000' } }, { model: 'c', read: { year: '2000' } }, { model: 'd', read: { year: '1999' } }]);
   assert.deepEqual([readOf([split]), readOf([{ ...split, answers: split.answers.toReversed() }])].map(({ read }) => read), [{}, {}]);
+});
+
+test('vision: a tie goes to the models with the clearly better record on the bench, and is otherwise no answer', async (t) => {
+  process.env.THICKEN_BENCH_URL = 'http://bench.test';
+  t.after(() => { process.env.THICKEN_BENCH_URL = ''; });
+  // As Benchwarmers' GET /bench/record counts them: a's useful nine times in ten, b once, c and d never judged.
+  const fetch = catalog({}, { bench: ['a', 'b'], record: { a: { useful: 9, judged: 10 }, b: { useful: 1, judged: 10 } } });
+  t.after(() => fetch.mock.restore());
+  await findBench();
+  assert.equal(decide([{ value: 'square', model: 'a' }, { value: 'round', model: 'b' }]), 'square');
+  assert.equal(decide([{ value: 'square', model: 'b' }, { value: 'round', model: 'a' }]), 'round', 'the record, not the order');
+  assert.equal(decide([{ value: 'square', model: 'c' }, { value: 'round', model: 'd' }]), undefined, 'no record: no answer');
+  // More models outvote any record.
+  assert.equal(decide([{ value: 'square', model: 'b' }, { value: 'square', model: 'c' }, { value: 'round', model: 'a' }]), 'square');
 });
 
 test('vision: two models naming different objects, with no third to ask, is no answer: the primary\'s isn\'t taken', async (t) => {

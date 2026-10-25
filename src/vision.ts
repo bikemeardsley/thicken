@@ -62,7 +62,8 @@ export const visionOn = () => Boolean(bench || rosterOn());
 const roster = () => process.env.THICKEN_VISION_MODELS!.split(',').map((m) => m.trim()).filter(Boolean);
 
 const BENCH_TIMEOUT_MS = 450_000; // the gateway waits up to 420 s for its slowest seat
-let bench: { url: string; collection: string } | undefined; // while it answers
+// While it answers; with each seat's record there (GET /bench/record), as its share of useful verdicts.
+let bench: { url: string; collection: string; trust?: Record<string, number> } | undefined;
 let found: typeof bench; // as found, for the record
 const looked = new Map<string, Promise<typeof bench>>();
 /**
@@ -80,10 +81,40 @@ async function lookFor(url: string): Promise<typeof bench> {
     const { data } = await (await fetch(`${url}/v1/models`, { signal: AbortSignal.timeout(2000) })).json() as { data?: { id: string; tags?: string[] }[] };
     const collections = (data ?? []).filter(({ id }) => id.startsWith('bench/') && !id.includes(':'));
     const vision = collections.find(({ id }) => id === 'bench/vision') ?? collections.find(({ tags }) => tags?.includes('vision'));
-    return vision && { url, collection: vision.id };
+    if (!vision) return undefined;
+    // Each seat's record on thicken's questions, smoothed so a seat with few verdicts sits near even. A gateway
+    // without the route (before Benchwarmers had it) gives none, and ties stay undecided.
+    const record = await fetch(`${url}/bench/record?collection=${encodeURIComponent(vision.id)}&task=thicken`, { signal: AbortSignal.timeout(2000) })
+      .then((r) => (r.ok ? r.json() as Promise<{ aliases?: Record<string, { useful: number; judged: number }> }> : undefined), () => undefined);
+    const trust = record?.aliases && Object.fromEntries(Object.entries(record.aliases).map(([alias, { useful, judged }]) => [alias, (useful + 1) / (judged + 2)]));
+    return { url, collection: vision.id, ...(trust && { trust }) };
   } catch {
     return undefined; // no bench on this machine
   }
+}
+
+/** A model's record on the bench, 0 to 1: its share of useful verdicts, smoothed; even (0.5) for one with none. */
+const trustOf = (model: string) => found?.trust?.[model] ?? 0.5;
+const TRUSTED_BY = 0.25; // how much higher one side's models' records must sum to break a tie
+
+/**
+ * The value most models gave, each model counted once (a collection asked twice seats its members twice). A tie
+ * goes to the side whose models have the clearly better record on the bench, and is otherwise no value: never the
+ * first given, never the first seat's.
+ */
+export function decide<T>(votes: { value: T; model: string }[], same: (a: T, b: T) => boolean = Object.is): T | undefined {
+  const sides: { value: T; models: Set<string> }[] = [];
+  for (const { value, model } of votes) {
+    const side = sides.find((s) => same(s.value, value));
+    if (side) side.models.add(model);
+    else sides.push({ value, models: new Set([model]) });
+  }
+  const most = Math.max(0, ...sides.map(({ models }) => models.size));
+  const tied = sides.filter(({ models }) => models.size === most);
+  if (tied.length === 1) return tied[0].value;
+  const record = (s: { models: Set<string> }) => [...s.models].reduce((sum, model) => sum + trustOf(model), 0);
+  const [best, next] = tied.sort((a, b) => record(b) - record(a));
+  return best && next && record(best) - record(next) >= TRUSTED_BY ? best.value : undefined;
 }
 
 /** The question about one picture: where its faces are, if it has any to find (artwork doesn't), and what's on it. */
@@ -122,16 +153,13 @@ Answer with JSON only, no prose:
  * no one giving one of `values`, is undefined, never the first given.
  */
 export function pooled(sights: Sight[] | undefined, key: string, values: string[]): string | undefined {
-  const said = (sights ?? []).flatMap(({ answers }) => votesOn(answers, key).filter((value) => values.includes(value)));
-  const count = (value: string) => said.filter((answer) => answer === value).length;
-  const [top, next] = [...new Set(said)].sort((a, b) => count(b) - count(a));
-  return top !== undefined && (next === undefined || count(top) > count(next)) ? top : undefined;
+  return decide((sights ?? []).flatMap(({ answers }) => votesOn(answers, key).filter(({ value }) => values.includes(value))));
 }
 /** Each model's answer to a short question about one picture, once: none from a model that answered it two ways. */
-export function votesOn(answers: Answer[], key: string): string[] {
+export function votesOn(answers: Answer[], key: string): { value: string; model: string }[] {
   return [...new Set(answers.map(({ model }) => model))].flatMap((model) => {
     const given = [...new Set(answers.filter((a) => a.model === model && a.asked?.[key]).map((a) => a.asked![key]))];
-    return given.length === 1 ? given : [];
+    return given.length === 1 ? [{ value: given[0], model }] : [];
   });
 }
 
@@ -163,12 +191,10 @@ export async function look(picture: Picture, kind: Kind): Promise<Sight> {
   // A seat agreed when one of its faces lies within AGREE of a face two seats settled, not only when it was one of the two.
   judge(answers, ({ faces }) => settled.faces.some((s) => s.agreed && Boolean(faces?.some((f) => f.face === s.face && distance(f.corners, s.corners) < AGREE))), `${kind.name} faces`);
   const back =<T extends { corners: number[][] }>(faces: T[]) => faces.map((f) => ({ ...f, corners: f.corners.map(toPicture) }));
-  // Each question's answer: the one most models gave, each once; a tie is no answer, never the higher seat's.
+  // Each question's answer: the one most models gave, each once (decide: a tie to the better record, else none).
   const asked = Object.fromEntries(keys.flatMap((key) => {
-    const said = votesOn(answers, key);
-    const count = (value: string) => said.filter((s) => s === value).length;
-    const [top, next] = [...new Set(said)].sort((a, b) => count(b) - count(a));
-    return top !== undefined && (next === undefined || count(top) > count(next)) ? [[key, top]] : [];
+    const answer = decide(votesOn(answers, key));
+    return answer === undefined ? [] : [[key, answer]];
   }));
   // Snapped onto the real edges, but for faces among lines nearer than the models' slip (a slab's label: its border,
   // the frame inside it and the ridge around it), where the nearest strong edge is often the wrong one.
@@ -195,7 +221,7 @@ export function readOf(sights: Sight[] = []): { read: Read; readBy: Record<strin
   // One vote a model a photo: a collection asked twice about a photo seats its members twice, and a model that read
   // a field two ways on one photo has no vote on it there. A value one model alone gives a photo, where two others
   // or more answered it and read no such thing, is left out ("alone"): a label prints an autograph grade or doesn't.
-  const votes: Record<string, (string | string[])[]> = {};
+  const votes: Record<string, { value: string | string[]; model: string }[]> = {};
   const alone = new Set<string>();
   for (const { answers } of sights) {
     const answered = answers.filter((a) => !a.error);
@@ -203,7 +229,7 @@ export function readOf(sights: Sight[] = []): { read: Read; readBy: Record<strin
     for (const key of new Set(answered.flatMap(({ read }) => Object.keys(read ?? {})))) {
       const given = models.flatMap((model) => {
         const own = [...new Set(answered.filter((a) => a.model === model && a.read?.[key] !== undefined).map((a) => text(a.read![key])))];
-        return own.length === 1 ? [answered.find((a) => a.model === model && a.read?.[key] !== undefined)!.read![key]] : [];
+        return own.length === 1 ? [{ value: answered.find((a) => a.model === model && a.read?.[key] !== undefined)!.read![key], model }] : [];
       });
       if (given.length === 1 && models.length - 1 >= 2) alone.add(key);
       else votes[key] = [...(votes[key] ?? []), ...given];
@@ -212,13 +238,14 @@ export function readOf(sights: Sight[] = []): { read: Read; readBy: Record<strin
   const read: Read = {};
   const readBy: Record<string, string> = {};
   for (const key of new Set([...Object.keys(votes), ...alone])) {
-    const values = votes[key] ?? [];
-    const count = (value: string | string[]) => values.filter((v) => text(v) === text(value)).length;
-    // Each value once, as first spelled ("GEM MINT" and "Gem  Mint" are one value).
-    const top = values.filter((v, i) => values.findIndex((w) => text(w) === text(v)) === i).sort((a, b) => count(b) - count(a));
-    // The value most models gave; a tie is no value, never the first given.
-    if (top.length && (top.length === 1 || count(top[0]) > count(top[1]))) read[key] = top[0];
-    readBy[key] = !values.length ? 'alone' : top.length > 1 ? 'disputed' : values.length > 1 ? 'agreed' : 'once';
+    const given = votes[key] ?? [];
+    // The value most models gave, each model once ("GEM MINT" and "Gem  Mint" are one value, as first spelled);
+    // a tie to the better record, else no value (decide).
+    const value = decide(given, (a, b) => text(a) === text(b));
+    if (value !== undefined) read[key] = value;
+    const spellings = new Set(given.map(({ value: v }) => text(v)));
+    const models = new Set(given.map(({ model }) => model));
+    readBy[key] = !given.length ? 'alone' : spellings.size > 1 ? 'disputed' : models.size > 1 ? 'agreed' : 'once';
   }
   return { read, readBy };
 }
@@ -236,13 +263,12 @@ export async function identify(picture: Picture, kinds: Kind[]): Promise<Identit
   };
   // The object most models name, each once (none from a model that named two): none with a tie, so a tie asks for more.
   const most = (asked: Answer[]) => {
-    const said = [...new Set(asked.map(({ model }) => model))].flatMap((model) => {
+    const votes = [...new Set(asked.map(({ model }) => model))].flatMap((model) => {
       const named = [...new Set(asked.filter((a) => a.model === model && a.object).map((a) => a.object!))];
-      return named.length === 1 ? named : [];
+      return named.length === 1 ? [{ value: named[0], model }] : [];
     });
-    const count = (object: string) => said.filter((o) => o === object).length;
-    const top = [...new Set(said)].sort((a, b) => count(b) - count(a));
-    return top.length && (top.length === 1 || count(top[0]) > count(top[1])) ? { object: top[0], count: count(top[0]) } : undefined;
+    const object = decide(votes);
+    return object === undefined ? undefined : { object, count: votes.filter(({ value }) => value === object).length };
   };
   const clash = (asked: Answer[]) => new Set(asked.filter((a) => a.object).map((a) => a.object)).size > 1 && (most(asked)?.count ?? 0) < 2;
   const prompt = identifyPrompt(kinds);
@@ -449,7 +475,10 @@ export function settle(answers: Answer[], evidence: Evidence = {}): { faces: See
       .sort((x, y) => y.by.length - x.by.length || fit(name, y.corners) - fit(name, x.corners));
     const [top] = places;
     const next = top && places.find(({ corners }) => distance(corners, top.corners) >= AGREE);
-    if (top && (!next || top.by.length > next.by.length || fit(name, top.corners) - fit(name, next.corners) >= CLEARLY)) {
+    // More answers there; else clearly nearer its shape and edges; else the models with the clearly better record.
+    const record = (by: string[]) => by.reduce((sum, model) => sum + trustOf(model), 0);
+    if (top && (!next || top.by.length > next.by.length || fit(name, top.corners) - fit(name, next.corners) >= CLEARLY
+      || record(top.by) - record(next.by) >= TRUSTED_BY)) {
       place(top.corners, top.by, true);
       continue;
     }

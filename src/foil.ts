@@ -33,7 +33,7 @@ const [FOIL, PRINT] = ['rgb(255,77,153)', 'rgb(0,102,0)'];
  */
 function seenOn(sights: Sight[] | undefined, face: string, key: string, kinds: string[]): string | undefined {
   const facing = sights?.filter(({ faces }) => faces.some((f) => f.face === face));
-  const said = (facing ?? []).flatMap(({ answers }) => votesOn(answers, key).filter((kind) => kinds.includes(kind)));
+  const said = (facing ?? []).flatMap(({ answers }) => votesOn(answers, key).map(({ value }) => value).filter((kind) => kinds.includes(kind)));
   return said.filter((kind) => kind !== kinds[0]).length >= 2 ? pooled(facing, key, kinds.slice(1)) : said.length ? kinds[0] : undefined;
 }
 /** A card's kind of foil, as the models see `face`: a photo of the back alone shows none. */
@@ -62,7 +62,7 @@ export const labelFinishAsk = 'the grade label insert itself (not the card): is 
 export function labelFinishOf(sights: Sight[] | undefined): string | undefined {
   const facing = sights?.filter(({ faces }) => faces.some(({ face }) => face === 'label')) ?? [];
   const saying = (kind: string) => new Set(facing.flatMap(({ answers }) => [...new Set(answers.map(({ model }) => model))]
-    .filter((model) => votesOn(answers.filter((a) => a.model === model), 'labelFinish')[0] === kind))).size;
+    .filter((model) => votesOn(answers.filter((a) => a.model === model), 'labelFinish')[0]?.value === kind))).size;
   const [foil, paper] = [saying('foil'), saying('paper')];
   return foil >= 2 && foil > paper ? 'foil' : foil || paper ? 'paper' : undefined;
 }

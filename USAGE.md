@@ -259,6 +259,11 @@ Without it, no bench is asked.
   it agreed with another on a face (or on what the object is), not useful
   when it failed. A seat that disagreed may be the one that was right, so
   it's left for you to judge in the bench's dashboard.
+- Each seat's record on thicken's questions (Benchwarmers' `GET
+  /bench/record`: its share of useful verdicts) breaks ties. When as many
+  models say one thing as another, the side whose models have the clearly
+  better record wins; with no record to go on, it's no answer. More models
+  always outvote a better record. A gateway without the route breaks no ties.
 - The `THICKEN_VISION_*` roster stands in when the gateway is down or no
   seat answers a photo.
 - The gateway waits for its slowest seat, up to 7 minutes a photo, and a
