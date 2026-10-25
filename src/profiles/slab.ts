@@ -6,7 +6,7 @@
 // has them.
 import { Document } from '@gltf-transform/core';
 import sharp from 'sharp';
-import { addPart, assignFaces, backgroundOf, cardFoil, clearMaterial, colorMaterial, cut, borderAsk, borderFoil, grown, inQuad, tighten, type Faces, type Foil, foilAsk, FRAME, FRAME_FACE, labelFinishAsk, labelFinishOf, patternAsk, textureAsk, textureOf, unseenPattern, foiled, foilKind, foilLook, foilMap, lookName, mapping, type Picture, PICTURE_BOX, pictureMaterial, pictureRecord, plate, type Profile, readOf, type Region, regionIn, regionOf, ring, rounded, type Scanned, shots, sidesUnknown, type Sight, straighten, subjectBox, texture, toGlb } from '../kit.ts';
+import { addPart, assignFaces, backgroundOf, cardFoil, clearMaterial, colorMaterial, cut, borderAsk, borderFoil, grown, inQuad, level, tighten, type Faces, type Foil, foilAsk, FRAME, FRAME_FACE, labelFinishAsk, labelFinishOf, patternAsk, textureAsk, textureOf, unseenPattern, foiled, foilKind, foilLook, foilMap, lookName, mapping, type Picture, PICTURE_BOX, pictureMaterial, pictureRecord, plate, type Profile, readOf, type Region, regionIn, regionOf, ring, rounded, type Scanned, shots, sidesUnknown, type Sight, straighten, subjectBox, texture, toGlb } from '../kit.ts';
 import { CARD_DEPTH_MM, CARD_MM, CARD_READS, CARDSTOCK, CORNERS_ASK, cornersOf, PT_MM } from './card.ts';
 
 // A grader's QR code points at its own verification page, which says whose holder this is.
@@ -268,6 +268,11 @@ async function make(
       : undefined;
     // ponytail: the label only. A card's art (dark photos, textured foil) looks too much like granite to this model of
     // the background, which cut 9% off 497's card; the card's size is the standard one's anyway (standardCard).
+    if (found.has('label')) {
+      // The whole label leveled by its print, then pulled in off the background (turning an edge can tip a corner
+      // onto it).
+      found.set('label', level(pictures[picture], level(pictures[picture], found.get('label')!))); // twice: the second refines
+    }
     if (background && found.has('label')) {
       const { corners: tight, off } = tighten(pictures[picture], found.get('label')!, background);
       found.set('label', tight);

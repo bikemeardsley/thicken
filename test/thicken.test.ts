@@ -9,7 +9,7 @@ import sharp from 'sharp';
 import { backgroundOf, grown, inQuad, tighten } from '../src/background.ts';
 import { edgesOf } from '../src/edges.ts';
 import { assignFaces, cut, type Shot } from '../src/faces.ts';
-import { codes, load, snap } from '../src/image.ts';
+import { codes, level, load, snap } from '../src/image.ts';
 import { startPreview } from '../src/preview.ts';
 import { batchItems, thicken, VERSION } from '../src/thicken.ts';
 import { readOf, settle } from '../src/vision.ts';
@@ -274,6 +274,22 @@ test('background: a label\'s corners that run onto the speckled table behind it 
   const truth = [[100, 60], [500, 60], [500, 180], [100, 180]];
   assert.ok(corners.every((p, k) => Math.hypot(p[0] - truth[k][0], p[1] - truth[k][1]) <= 2.5), JSON.stringify(corners));
   assert.deepEqual(off, []);
+});
+
+test('level: a label\'s corners that tilt its print are turned so every line of it reads level, top and bottom alike', async () => {
+  // Lines of print on a pale label, its corners given tilted 2 degrees against the print (as 497's were, about 1.5).
+  const svg = '<svg width="800" height="300"><rect width="800" height="300" fill="#d8c070"/>'
+    + [60, 100, 200, 240].map((y) => `<rect x="60" y="${y}" width="${y < 150 ? 520 : 600}" height="14" fill="#111"/>`).join('')
+    + '<rect x="660" y="60" width="70" height="140" fill="#111"/></svg>';
+  const [picture] = await load(await sharp(Buffer.from(svg)).png().toBuffer());
+  const t = Math.tan((2 * Math.PI) / 180) * 400;
+  const tilted = [[20, 20 + t], [780, 20 - t], [780, 280 - t], [20, 280 + t]];
+  const turned = level(picture, level(picture, tilted));
+  const angle = (a: number[], b: number[]) => (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+  assert.ok(Math.abs(angle(turned[0], turned[1])) < 0.25 && Math.abs(angle(turned[3], turned[2])) < 0.25, JSON.stringify(turned));
+  // A face with too little print to tell keeps its corners.
+  const [blank] = await load(await sharp({ create: { width: 400, height: 200, channels: 3, background: '#d8c070' } }).png().toBuffer());
+  assert.deepEqual(level(blank, [[0, 0], [400, 0], [400, 200], [0, 200]]), [[0, 0], [400, 0], [400, 200], [0, 200]]);
 });
 
 test('a face two models agreed on is kept over a sharper one only one placed, and a file name naming a face places it', () => {
