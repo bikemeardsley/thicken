@@ -121,6 +121,7 @@ export const card: Profile = {
     const found = regionIn(sights, 'art', 'front');
     // The standard picture box is a portrait card's: a landscape card's, not found, is anyone's guess.
     const box = found ?? (front.height > front.width ? PICTURE_BOX : undefined);
+    if ((foil === 'holo' || foil === 'reverse') && !found && box) review.push(`the card's picture box (the models didn't find it: its ${foil} foil is placed where a standard Pokémon card's box is)`);
     const boxed = foil === 'full' || ((foil === 'holo' || foil === 'reverse') && box !== undefined);
     if ((foil === 'holo' || foil === 'reverse') && !box) review.push(`foil (the models say ${foil}, but found no picture box on this landscape card: left off)`);
     // A foil border, inside the frame the models found or a standard card's; an emboss, from the front's own picture.

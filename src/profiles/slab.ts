@@ -380,6 +380,7 @@ async function make(
   const artBox = regionIn(fronts, 'art', 'card');
   const [cardW, cardH] = [rects.card.x1 - rects.card.x0, rects.card.y1 - rects.card.y0];
   const box = artBox ?? (cardH > cardW ? PICTURE_BOX : undefined); // the standard box is a portrait card's
+  if ((foil === 'holo' || foil === 'reverse') && !artBox && box) review.push(`the card's picture box (the models didn't find it: its ${foil} foil is placed where a standard Pokémon card's box is)`);
   const boxed = foil === 'full' || ((foil === 'holo' || foil === 'reverse') && box !== undefined);
   if ((foil === 'holo' || foil === 'reverse') && !box) review.push(`the card's foil (the models say ${foil}, but found no picture box on this sideways card: left off)`);
   // A foil border and an emboss, as on a raw card (src/profiles/card.ts).

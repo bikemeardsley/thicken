@@ -115,8 +115,9 @@ export const cardFoil = (kind: string, box: Region, aspect: number, look?: Look,
 export const patternAsk = (front: string) => `if ${front} has foil, which pattern is in its shine: ${Object.entries(PATTERNS).map(([name, { about }]) => `"${name}" (${about})`).join('; ')}? Say "none" if it has no foil.`;
 
 /**
- * A card's foil look and what decided it: its parallel's name (the models' read `variant`, as "Gold Wave Refractor"),
- * when a word in it names a look; else the pattern the models saw on `face`; else plain. Two words that make
+ * A card's foil look and what decided it: the pattern the models saw on `face`, refined by its parallel's name (the
+ * models' read `variant`, as "Gold Wave Refractor") where a word in it names a look of that same pattern; the name's
+ * look where the models saw none; else plain. Two words that make
  * one ("X-Fractor", "Poké Ball", "Ray Wave") count as one, and of several, the last that isn't a plain sweep wins: a
  * name ends in its pattern, after the product or box ("Mosaic Genesis", "Choice Tiger", "Cosmic Chrome Nucleus").
  */
@@ -134,8 +135,10 @@ export function foilLook(sights: Sight[] | undefined, face: string): { look: Loo
     if (look) named.push(look);
   }
   const look = named.findLast((l) => l.pattern !== 'sweep') ?? named[0];
-  if (look) return { look, lookBy: 'parallel' };
+  // What the models saw comes first: the name's look only where it's that same pattern (its settings are the
+  // name's own: "Gold Wave" is flow wave in gold), or where the models saw none.
   const seen = pooled(sights?.filter(({ faces }) => faces.some((f) => f.face === face)), 'pattern', Object.keys(PATTERNS));
+  if (look && (!seen || PATTERNS[seen].look.pattern === look.pattern)) return { look, lookBy: 'parallel' };
   return seen ? { look: PATTERNS[seen].look, lookBy: 'vision' } : { look: PLAIN, lookBy: 'assumed' };
 }
 
