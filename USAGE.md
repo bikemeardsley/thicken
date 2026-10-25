@@ -185,9 +185,13 @@ THICKEN_VISION_MODELS=gemini-3.8-flash-high,gpt-6-luna,gpt-5.6-terra,gemini-3.1-
   table goes, and an angled shot gives two faces.
 - The models also read what's printed on the object, each profile saying
   what to read (a slab's label, a card's player and set, a book's title).
-  The sidecar's `read` keeps each field as most answers gave it, over every
-  photo, and `readBy` how sure: `agreed`, `once` (one answer) or `disputed`
-  (others differ; every answer is in the sidecar's `vision`).
+  The sidecar's `read` keeps each field as most models gave it, over every
+  photo, each model counted once a photo however often it was asked, and
+  `readBy` how sure: `agreed`, `once` (one answer) or `disputed` (others
+  differ; a tie is left out of `read`). A value one model alone gives a
+  photo, where two or more others answered it and read no such thing, is
+  left out too (`alone`): a label prints an autograph grade or it doesn't.
+  Every answer is in the sidecar's `vision`.
 - Two answers agreeing (corners within 3% of the photo's diagonal, in the
   same order) is the confidence, and every answer that agrees is averaged.
   No model outranks another, primary included: where they disagree, a face

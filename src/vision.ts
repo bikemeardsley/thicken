@@ -181,15 +181,34 @@ export async function look(picture: Picture, kind: Kind): Promise<Sight> {
  * "once" (one answer) or "disputed" (other answers differ; every model's is in the vision record).
  */
 export function readOf(sights: Sight[] = []): { read: Read; readBy: Record<string, string> } {
-  const said = sights.flatMap(({ answers }) => answers.flatMap(({ read }) => Object.entries(read ?? {})));
-  const same = (a: string | string[], b: string | string[]) => JSON.stringify(a).toLowerCase().replace(/\s+/g, ' ') === JSON.stringify(b).toLowerCase().replace(/\s+/g, ' ');
+  const text = (v: string | string[]) => JSON.stringify(v).toLowerCase().replace(/\s+/g, ' ');
+  // One vote a model a photo: a collection asked twice about a photo seats its members twice, and a model that read
+  // a field two ways on one photo has no vote on it there. A value one model alone gives a photo, where two others
+  // or more answered it and read no such thing, is left out ("alone"): a label prints an autograph grade or doesn't.
+  const votes: Record<string, (string | string[])[]> = {};
+  const alone = new Set<string>();
+  for (const { answers } of sights) {
+    const answered = answers.filter((a) => !a.error);
+    const models = [...new Set(answered.map(({ model }) => model))];
+    for (const key of new Set(answered.flatMap(({ read }) => Object.keys(read ?? {})))) {
+      const given = models.flatMap((model) => {
+        const own = [...new Set(answered.filter((a) => a.model === model && a.read?.[key] !== undefined).map((a) => text(a.read![key])))];
+        return own.length === 1 ? [answered.find((a) => a.model === model && a.read?.[key] !== undefined)!.read![key]] : [];
+      });
+      if (given.length === 1 && models.length - 1 >= 2) alone.add(key);
+      else votes[key] = [...(votes[key] ?? []), ...given];
+    }
+  }
   const read: Read = {};
   const readBy: Record<string, string> = {};
-  for (const key of new Set(said.map(([key]) => key))) {
-    const values = said.filter(([k]) => k === key).map(([, value]) => value);
-    const count = (value: string | string[]) => values.filter((v) => same(v, value)).length;
-    read[key] = values.reduce((best, value) => (count(value) > count(best) ? value : best));
-    readBy[key] = count(read[key]) < values.length ? 'disputed' : values.length > 1 ? 'agreed' : 'once';
+  for (const key of new Set([...Object.keys(votes), ...alone])) {
+    const values = votes[key] ?? [];
+    const count = (value: string | string[]) => values.filter((v) => text(v) === text(value)).length;
+    // Each value once, as first spelled ("GEM MINT" and "Gem  Mint" are one value).
+    const top = values.filter((v, i) => values.findIndex((w) => text(w) === text(v)) === i).sort((a, b) => count(b) - count(a));
+    // The value most models gave; a tie is no value, never the first given.
+    if (top.length && (top.length === 1 || count(top[0]) > count(top[1]))) read[key] = top[0];
+    readBy[key] = !values.length ? 'alone' : top.length > 1 ? 'disputed' : values.length > 1 ? 'agreed' : 'once';
   }
   return { read, readBy };
 }

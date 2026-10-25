@@ -213,7 +213,8 @@ test('slab: the models read its label, the grade and the card, and with no QR co
   t.after(() => fetch.mock.restore());
   const { sidecar } = await thicken([photo], { profile: 'slab' });
   assert.ok(prompts[0].includes('"grade":""'), 'the models are asked for the grade');
-  assert.deepEqual(sidecar.read, { grader: 'CGC', grade: '10', gradeName: 'GEM MINT', name: 'Charizard', set: 'Base Set', year: '1999' });
+  // The year, one model each way, is a tie: no year, rather than the first model's.
+  assert.deepEqual(sidecar.read, { grader: 'CGC', grade: '10', gradeName: 'GEM MINT', name: 'Charizard', set: 'Base Set' });
   assert.deepEqual(sidecar.readBy, { grader: 'agreed', grade: 'agreed', gradeName: 'agreed', name: 'agreed', set: 'once', year: 'disputed' });
   assert.deepEqual([sidecar.holder, sidecar.grader, (sidecar.identifiedBy as { grader: string }).grader], ['cgc-tall', 'cgc', 'vision']);
 });

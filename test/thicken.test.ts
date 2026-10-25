@@ -11,7 +11,7 @@ import { assignFaces, cut, type Shot } from '../src/faces.ts';
 import { codes, load, snap } from '../src/image.ts';
 import { startPreview } from '../src/preview.ts';
 import { batchItems, thicken, VERSION } from '../src/thicken.ts';
-import { settle } from '../src/vision.ts';
+import { readOf, settle } from '../src/vision.ts';
 import { fixture, hasFfmpeg, letterboxed, catalog, colorOf, near, read } from './helpers.ts';
 
 test('video: its sharpest frames, upright, join the photos for the vision models, and a photo still beats a frame', { skip: !hasFfmpeg && 'ffmpeg isn\'t installed' }, async (t) => {
@@ -175,6 +175,20 @@ test('vision: a face given as its mirror image says it is there, but only a face
   assert.deepEqual(settle([answer('a', mirror), answer('b', mirror)]), { faces: [], disputed: ['spine'] });
   // A mirror image beside a right answer still counts as naming the face, and where it is.
   assert.deepEqual(settle([answer('a', mirror), answer('b', seen)]).faces.map(({ face, by }) => [face, by]), [['spine', ['b', 'a']]]);
+});
+
+test('vision: what\'s read counts each model once a photo, and a value one model alone gives, where others read none, is left out', () => {
+  const sight = (answers: { model: string; read?: Record<string, string> }[]) => ({ faces: [], answers: answers.map((a) => ({ ms: 1, ...a })), disputed: [] });
+  // The back of 497 (2026-10-25): asked twice, command-a made up an autograph both times; three others read none.
+  const back = sight([
+    { model: 'command-a', read: { grader: 'Beckett', autoGrade: '10' } }, { model: 'gemini', read: { grader: 'Beckett' } },
+    { model: 'argon', read: { grader: 'Beckett' } }, { model: 'inkling', read: { grader: 'BGS' } },
+    { model: 'command-a', read: { grader: 'Beckett', autoGrade: '10' } }, { model: 'gemini', read: { grader: 'Beckett' } },
+  ]);
+  assert.deepEqual(readOf([back]), { read: { grader: 'Beckett' }, readBy: { grader: 'disputed', autoGrade: 'alone' } });
+  // Two models each way is a tie: no value, whichever came first.
+  const split = sight([{ model: 'a', read: { year: '1999' } }, { model: 'b', read: { year: '2000' } }, { model: 'c', read: { year: '2000' } }, { model: 'd', read: { year: '1999' } }]);
+  assert.deepEqual([readOf([split]), readOf([{ ...split, answers: split.answers.toReversed() }])].map(({ read }) => read), [{}, {}]);
 });
 
 test('vision: two models naming different objects, with no third to ask, is no answer: the primary\'s isn\'t taken', async (t) => {
