@@ -198,7 +198,7 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `lookups` | every catalog request: host, path, status and time |
 
 </details>
-<details><summary><code>card</code>: corners, cornersBy, foil, foilBy, foilLook, foilLookBy, pictureBox, pictureBoxBy, border, borderBy, frame, frameBy, texture, textureBy, pt, measuredBy</summary>
+<details><summary><code>card</code>: corners, cornersBy, foil, foilBy, foilLook, foilLookBy, pictureBox, pictureBoxBy, border, borderBy, frame, frameBy, texture, textureBy, pt, format, formatBy, stock, stockBy, finish, finishBy, measuredBy</summary>
 
 | Field | What it holds |
 | --- | --- |
@@ -217,7 +217,13 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `texture` | its front's surface: textured (raised ridges, embossed in the model from the photo's own lines) or smooth |
 | `textureBy` | how that was found: vision or assumed |
 | `pt` | a thick card's thickness in points, when given |
-| `measuredBy` | where its size came from: standard or given; its thickness: standard, given or pt |
+| `format` | its size of card: standard, small (Yu-Gi-Oh! and Japanese size) or other |
+| `formatBy` | how that was found: vision or assumed |
+| `stock` | its stock: standard, or thick (a patch, relic or acrylic card) |
+| `stockBy` | how that was found: vision or assumed |
+| `finish` | its front's finish: glossy or matte |
+| `finishBy` | how that was found: vision or assumed |
+| `measuredBy` | where its size came from: its format (as the models see it) or given; its thickness: standard, thick, given or pt |
 
 </details>
 <details><summary><code>lettering</code>: text, font, fontLicense, color, measuredBy</summary>

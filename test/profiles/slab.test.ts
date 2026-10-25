@@ -175,6 +175,28 @@ test('slab: a label the models see as foil shines, and the grader\'s logo on the
   assert.deepEqual(pick((paper.sidecar.inside as Record<string, Record<string, unknown>>).label, ['finish', 'finishBy']), { finish: 'paper', finishBy: 'vision' });
 });
 
+test('slab: with no grader named, the holder is the one its size gives against the card inside; a thick one as the models see it', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  const photo = path.join(folder, 'IMG_1.png');
+  let [slab, card, depth] = [[0, 0, 83, 131], [9.75, 33, 73.25, 121.9], 'standard']; // a BGS-size holder, a standard card
+  const fetch = catalog({}, {
+    vision: async () => ({ faces: [{ face: 'front', corners: letterboxed(slab) }, { face: 'card', corners: letterboxed(card) }], holderDepth: depth }),
+  });
+  t.after(() => fetch.mock.restore());
+  await slabPhoto(photo, [[slab, '#c8ccd0'], [card, '#2e7d32']]);
+  const bgs = await thicken([photo], { profile: 'slab' });
+  assert.deepEqual([bgs.sidecar.holder, bgs.sidecar.widthMm, bgs.sidecar.heightMm], ['bgs', 83, 131]);
+  assert.ok(bgs.sidecar.warnings.some((w) => w.startsWith('taken for a bgs holder by its size')), bgs.sidecar.warnings.join('; '));
+  // A PSA-size one, its size a near match for CGC's and TAG's too, stays PSA; the models see it thick.
+  [slab, card, depth] = [[0, 0, 80.5, 136], [8.5, 33, 72, 121.9], 'thick'];
+  await slabPhoto(photo, [[slab, '#c8ccd0'], [card, '#2e7d32']]);
+  const thick = await thicken([photo], { profile: 'slab' });
+  assert.deepEqual([thick.sidecar.holder, thick.sidecar.depthMm], ['psa-thick', 10.25]);
+});
+
 test('slab: a tall holder is told by its label, the same size on every holder but spanning much less of a tall one', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
