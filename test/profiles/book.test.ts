@@ -9,7 +9,7 @@ import { type Iridescence } from '@gltf-transform/extensions';
 import sharp, { type Sharp } from 'sharp';
 import { cut } from '../../src/faces.ts';
 import { mapping } from '../../src/image.ts';
-import { thicken } from '../../src/thicken.ts';
+import { NO_VISION, thicken } from '../../src/thicken.ts';
 import { fixture, letterboxed, catalog, faceOf, pictureOn, colorOf, near, read, pick, assertExtents, assertClosed, roundedVolume, cornerAt } from '../helpers.ts';
 
 // book-scan.pdf: two pages of 500 × 800 (a 5 × 8 in shape) as a scanner app
@@ -22,7 +22,7 @@ test('book: a scanned PDF, its ISBN read off the back cover, its size from Open 
     profile: 'book', sources: ['book-scan.pdf'], isbn: '9780140328721', widthMm: 127, heightMm: 203.2, depthMm: 25.4,
     measuredBy: { width: 'openlibrary', height: 'openlibrary', depth: 'openlibrary' }, pages: 320,
     faces: { front: 'photo', back: 'photo', spine: 'color', top: 'pages', bottom: 'pages', edge: 'pages' },
-    review: ['spine (plain color)'], warnings: [], identifiedBy: { profile: 'recognized', isbn: 'barcode' },
+    review: ['spine (plain color)', NO_VISION], warnings: [], identifiedBy: { profile: 'recognized', isbn: 'barcode' },
   });
   assert.deepEqual((sidecar.pictures as { file: string; page: number; role: string }[]).map(({ file, page, role }) => [file, page, role]),
     [['book-scan.pdf', 1, 'front'], ['book-scan.pdf', 2, 'back']]);
@@ -149,7 +149,7 @@ test('book: pictures are placed by what they show, whatever their names, order o
   // No vision roster set: nothing asked, nothing recorded.
   assert.equal(sidecar.vision, undefined);
   assert.ok(fetch.mock.calls.every((call) => !String(call.arguments[0]).includes('/chat/completions')));
-  assert.deepEqual([sidecar.review, sidecar.warnings], [[], ['1 picture(s) not used: none looked like another shot of a face', 'www.googleapis.com answered 429']]);
+  assert.deepEqual([sidecar.review, sidecar.warnings], [[NO_VISION], ['1 picture(s) not used: none looked like another shot of a face', 'www.googleapis.com answered 429']]);
   // Stood up, the spine and page edge measure the thickness: 60/800 and 50/800 of the 203.2 mm height.
   assert.deepEqual([sidecar.depthMm, (sidecar.measuredBy as Record<string, string>).depth], [14, 'photos']);
 
@@ -373,8 +373,8 @@ test('book: any number of photos, each on its face, the sharpest kept, the thick
 
   // Thickness: spine 60/800 and edge 50/800 of the 203.2 mm height, median 13.97 mm; the page count says 7.5 mm.
   assert.deepEqual([sidecar.depthMm, (sidecar.measuredBy as Record<string, string>).depth, sidecar.depthEstimates], [14, 'photos', { photos: 14, pages: 7.5 }]);
-  // Every face photographed: nothing to review. The thickness estimates disagreeing is only a warning.
-  assert.deepEqual(sidecar.review, []);
+  // Every face photographed: nothing to review but the missing vision. The thickness estimates disagreeing is only a warning.
+  assert.deepEqual(sidecar.review, [NO_VISION]);
   assert.ok(sidecar.warnings.includes('the photos say 14 mm thick, the page count 7.5 mm: check the spine photo\'s crop'));
   assert.deepEqual(pick(sidecar.catalog as Record<string, unknown>, ['title', 'authors', 'publishers', 'publishDate']),
     { title: 'Fantastic Mr Fox', authors: ['Roald Dahl'], publishers: ['Puffin'], publishDate: '1988' });

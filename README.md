@@ -198,7 +198,7 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `lookups` | every catalog request: host, path, status and time |
 
 </details>
-<details><summary><code>card</code>: corners, cornersBy, foil, foilBy, pictureBox, pictureBoxBy, pt, measuredBy</summary>
+<details><summary><code>card</code>: corners, cornersBy, foil, foilBy, foilLook, foilLookBy, pictureBox, pictureBoxBy, border, borderBy, frame, frameBy, texture, textureBy, pt, measuredBy</summary>
 
 | Field | What it holds |
 | --- | --- |
@@ -206,8 +206,16 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `cornersBy` | how that was found: vision or assumed |
 | `foil` | its foil: none, holo (the picture shines), reverse (all but the picture) or full |
 | `foilBy` | how that was found: vision or assumed |
+| `foilLook` | its foil's pattern, when it shines (src/patterns.ts): "shards", "flow wave", "circles"… |
+| `foilLookBy` | how that was found: parallel (a word in the variant read off it), vision or assumed |
 | `pictureBox` | where its picture box is, in fractions of the front, for holo and reverse foil |
 | `pictureBoxBy` | how that was found: vision or the standard layout |
+| `border` | its printed border: foil (it shines, as on Pokémon-ex and LV.X cards) or plain |
+| `borderBy` | how that was found: vision or assumed |
+| `frame` | inside its foil border, in fractions of the front |
+| `frameBy` | how that was found: vision or the standard layout |
+| `texture` | its front's surface: textured (raised ridges, embossed in the model from the photo's own lines) or smooth |
+| `textureBy` | how that was found: vision or assumed |
 | `pt` | a thick card's thickness in points, when given |
 | `measuredBy` | where its size came from: standard or given; its thickness: standard, given or pt |
 
@@ -231,7 +239,7 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `cert` | its certification number |
 | `verifyUrl` | the grader's page for this cert, from its QR code |
 | `holder` | the holder it was built as (psa, cgc-tall…) |
-| `inside` | the card and the label inside: each one's size, middle and what placed it; the card's corners and foil; where the label's hologram is |
+| `inside` | the card and the label inside: each one's size, middle and what placed it; the card's corners, foil and its pattern, border and texture; where the label's hologram is |
 | `measuredBy` | where its size came from: the holder table, or measured |
 
 </details>
@@ -286,7 +294,10 @@ marked for review, so one photo of the back is enough to start a book.
 With `THICKEN_VISION_URL` set, the photos
 themselves (re-encoded, so without their EXIF) go to that host. A LAN server
 you control still forwards each photo to the model's provider; a hosted
-endpoint sees every photo. The only other calls out are a book's catalog
+endpoint sees every photo. With `THICKEN_BENCH_URL` naming a
+[Benchwarmers](USAGE.md#benchwarmers-a-model-bench) gateway with a vision
+collection, the photos go to that gateway, which forwards each to the
+providers of every seat it picks. The only other calls out are a book's catalog
 lookups (Open Library, the Library of Congress, Google Books), which send its
 ISBN, or the title and author the models read off it; never a photo.
 

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import sharp from 'sharp';
-import { thicken } from '../../src/thicken.ts';
+import { NO_VISION, thicken } from '../../src/thicken.ts';
 import { read, pick, assertExtents } from '../helpers.ts';
 
 test('box: anything box-shaped, at the size given, its sides plain until photographed', async (t) => {
@@ -23,7 +23,7 @@ test('box: anything box-shaped, at the size given, its sides plain until photogr
     profile: 'box', widthMm: 70, heightMm: 150, depthMm: 8, warnings: [], identifiedBy: { profile: 'given' },
     faces: { front: 'photo', back: 'color', left: 'plain', right: 'plain', top: 'plain', bottom: 'plain' },
   });
-  assert.deepEqual(sidecar.review, ['back (plain color)']);
+  assert.deepEqual(sidecar.review, ['back (plain color)', NO_VISION]);
   assertExtents(await read(glb), [0.07, 0.15, 0.008]);
 });
 

@@ -37,14 +37,19 @@ export function pictureMaterial(doc: Document, name: string, image: Uint8Array, 
  * Foil on a picture: where the map says so, the surface is metal under a thin film whose colors shift as it turns
  * (KHR_materials_iridescence), as holofoil flashes when a card is tilted; elsewhere it stays print. One PNG serves
  * both, in glTF's own channels: red the film, green the roughness, blue the metalness. The film's index and
- * thickness are the extension's defaults, as Khronos's sample models use them.
+ * thickness range are the extension's defaults, as Khronos's sample models use them; where in that range each piece
+ * of foil lies, and which way it tilts, come from its pattern (src/foil.ts).
  */
-export function foiled(doc: Document, material: Material, map: Uint8Array): Material {
-  const texture = doc.createTexture(`${material.getName()}-foil`).setImage(map).setMimeType('image/png');
+export function foiled(doc: Document, material: Material, { map, thickness, facets, film: shines }: Foil): Material {
+  const png = (name: string, image: Uint8Array) => doc.createTexture(`${material.getName()}-${name}`).setImage(image).setMimeType('image/png');
+  if (!shines) return material.setNormalTexture(png('facets', facets)); // an emboss on print alone
+  const texture = png('foil', map);
   const film = doc.createExtension(KHRMaterialsIridescence).createIridescence()
     .setIridescenceFactor(1).setIridescenceTexture(texture).setIridescenceIOR(1.3)
+    .setIridescenceThicknessTexture(png('film', thickness))
     .setIridescenceThicknessMinimum(100).setIridescenceThicknessMaximum(400);
-  return material.setMetallicFactor(1).setRoughnessFactor(1).setMetallicRoughnessTexture(texture).setExtension('KHR_materials_iridescence', film);
+  return material.setMetallicFactor(1).setRoughnessFactor(1).setMetallicRoughnessTexture(texture)
+    .setNormalTexture(png('facets', facets)).setExtension('KHR_materials_iridescence', film);
 }
 
 /** Artwork exactly as it is: unlit, so it shows its own colors whatever the viewer's lights. */
@@ -76,7 +81,9 @@ export async function toGlb(doc: Document, mesh: Mesh): Promise<Uint8Array> {
 
 export type Face = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom';
 /** A face shows a JPEG picture or a plain color, foil where its map says (foiled). Faces given the same Side object share a draw call. */
-export interface Side { picture?: Uint8Array; color?: string; roughness?: number; foil?: Uint8Array }
+export interface Side { picture?: Uint8Array; color?: string; roughness?: number; foil?: Foil }
+/** A face's foil, as PNGs (src/foil.ts foilMap): where it is (foiled's map), each piece's film thickness (gray) and each piece's tilt and any emboss (a normal map); `film`, whether any of it shines. */
+export interface Foil { map: Uint8Array; thickness: Uint8Array; facets: Uint8Array; film: boolean }
 
 /** A Side's material. */
 export function sideMaterial(doc: Document, name: string, side: Side): Material {

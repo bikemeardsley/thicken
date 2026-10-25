@@ -9,7 +9,7 @@ import { type Iridescence } from '@gltf-transform/extensions';
 import sharp from 'sharp';
 import { cut } from '../../src/faces.ts';
 import { codes } from '../../src/image.ts';
-import { thicken } from '../../src/thicken.ts';
+import { NO_VISION, thicken } from '../../src/thicken.ts';
 import { fixture, letterboxed, slabPhoto, catalog, near, read, pick, assertExtents, assertWatertight } from '../helpers.ts';
 
 // slab.jpg: 296 × 500, a PSA holder's shape, with a QR code to a psacard.com cert on its label.
@@ -17,7 +17,7 @@ test('slab: a grader\'s QR code picks the holder, and the holder its size', asyn
   const { glb, sidecar } = await thicken([fixture('slab.jpg')]);
   assert.deepEqual(pick(sidecar, ['profile', 'sources', 'holder', 'grader', 'cert', 'verifyUrl', 'widthMm', 'heightMm', 'depthMm', 'measuredBy', 'faces', 'review', 'warnings', 'identifiedBy']), {
     profile: 'slab', sources: ['slab.jpg'], holder: 'psa', grader: 'psa', cert: '12345678', verifyUrl: 'https://www.psacard.com/cert/12345678',
-    widthMm: 80.5, heightMm: 136, depthMm: 6.5, measuredBy: 'table', faces: { front: 'photo', back: 'color' }, review: ['back (plain color)'],
+    widthMm: 80.5, heightMm: 136, depthMm: 6.5, measuredBy: 'table', faces: { front: 'photo', back: 'color' }, review: ['back (plain color)', NO_VISION],
     warnings: ['the card and label are placed where a psa holder usually has them: with a vision roster they\'re found in the photos'],
     identifiedBy: { profile: 'recognized', grader: 'qr', cert: 'qr' },
   });

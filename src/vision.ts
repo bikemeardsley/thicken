@@ -7,6 +7,13 @@
 // seat that fails, and one more is asked when the two disagree. Two answers
 // agreeing is the confidence. Without THICKEN_VISION_URL nothing is asked,
 // and photos are used whole as before.
+//
+// Benchwarmers (github.com/WendellResearch-AI/benchwarmers), a model bench
+// whose gateway asks a collection of models at once and learns from verdicts
+// which to trust, is asked first when THICKEN_BENCH_URL names its gateway and
+// it has a vision collection: every seat answers each photo, thicken settles
+// their answers as it settles its own roster's, and tells the bench how each
+// seat did. The roster stands in when the gateway is down or no seat answers.
 import sharp from 'sharp';
 import { snap, type Picture } from './image.ts';
 import { keep, trainingOn } from './training.ts';
@@ -28,7 +35,7 @@ export interface Kind {
 type Read = Record<string, string | string[]>;
 /** One model's answer, corners in the picture's own pixels. */
 export interface Answer {
-  model: string; ms: number; status?: number; error?: string;
+  model: string; ms: number; status?: number; error?: string; call?: string; // a bench seat's call, for its verdict
   faces?: { face: string; corners: number[][] }[]; read?: Read; asked?: Record<string, string>; // finding faces
   object?: string; sizeMm?: number[]; // saying what it is
 }
@@ -41,8 +48,34 @@ export interface Sight { faces: Seen[]; asked?: Record<string, string>; answers:
 /** What the models said the object is: a profile's name (none, if none fits), its estimated size, and whether they disagreed. */
 export interface Identity { profile?: string; sizeMm?: number[]; disputed: boolean; answers: Answer[] }
 
-export const visionOn = () => Boolean(process.env.THICKEN_VISION_URL && process.env.THICKEN_VISION_MODELS);
+const rosterOn = () => Boolean(process.env.THICKEN_VISION_URL && process.env.THICKEN_VISION_MODELS);
+export const visionOn = () => Boolean(bench || rosterOn());
 const roster = () => process.env.THICKEN_VISION_MODELS!.split(',').map((m) => m.trim()).filter(Boolean);
+
+const BENCH_TIMEOUT_MS = 450_000; // the gateway waits up to 420 s for its slowest seat
+let bench: { url: string; collection: string } | undefined; // while it answers
+let found: typeof bench; // as found, for the record
+const looked = new Map<string, Promise<typeof bench>>();
+/**
+ * Whether the bench gateway THICKEN_BENCH_URL names has a vision collection (`bench/vision`, or one tagged "vision"):
+ * asked once per process and gateway, quickly. Without THICKEN_BENCH_URL, nothing is asked.
+ */
+export async function findBench(): Promise<void> {
+  const url = (process.env.THICKEN_BENCH_URL ?? '').replace(/\/$/, '');
+  if (!looked.has(url)) looked.set(url, lookFor(url));
+  bench = found = await looked.get(url);
+}
+async function lookFor(url: string): Promise<typeof bench> {
+  if (!url || url === 'off') return undefined;
+  try {
+    const { data } = await (await fetch(`${url}/v1/models`, { signal: AbortSignal.timeout(2000) })).json() as { data?: { id: string; tags?: string[] }[] };
+    const collections = (data ?? []).filter(({ id }) => id.startsWith('bench/') && !id.includes(':'));
+    const vision = collections.find(({ id }) => id === 'bench/vision') ?? collections.find(({ tags }) => tags?.includes('vision'));
+    return vision && { url, collection: vision.id };
+  } catch {
+    return undefined; // no bench on this machine
+  }
+}
 
 /** The question about one picture: where its faces are, if it has any to find (artwork doesn't), and what's on it. */
 const facesPrompt = ({ name, about, faces, note, reads = {}, asks = {} }: Kind) => {
@@ -100,7 +133,9 @@ export async function look(picture: Picture, kind: Kind): Promise<Sight> {
   const clash = (asked: Answer[]) => settle(asked).disputed.length > 0 || keys.some((key) => new Set(asked.flatMap((a) => a.asked?.[key] ?? [])).size > 1);
   const answers = await consult(jpeg, prompt, (json) => parseFaces(json, Object.keys(kind.faces), keys, Object.keys(kind.reads ?? {})), clash);
   const settled = settle(answers);
-  const back = <T extends { corners: number[][] }>(faces: T[]) => faces.map((f) => ({ ...f, corners: f.corners.map(toPicture) }));
+  // A seat agreed when one of its faces lies within AGREE of a face two seats settled, not only when it was one of the two.
+  judge(answers, ({ faces }) => settled.faces.some((s) => s.agreed && Boolean(faces?.some((f) => f.face === s.face && distance(f.corners, s.corners) < AGREE))), `${kind.name} faces`);
+  const back =<T extends { corners: number[][] }>(faces: T[]) => faces.map((f) => ({ ...f, corners: f.corners.map(toPicture) }));
   // Each question's answer: the one most models gave, the higher seat's on a tie.
   const asked = Object.fromEntries(keys.flatMap((key) => {
     const said = answers.flatMap((a) => (a.asked?.[key] ? [a.asked[key]] : []));
@@ -158,6 +193,7 @@ export async function identify(picture: Picture, kinds: Kind[]): Promise<Identit
   // Settled where two answers name the same object (the higher seats first); else the first answer's, disputed.
   const agreed = usable.find((a, i) => usable.slice(i + 1).some((b) => b.object === a.object));
   const pick = agreed ?? usable[0];
+  judge(answers, ({ object }) => Boolean(agreed) && object === agreed!.object, 'what it is');
   const sizes = usable.filter((a) => a.object === pick?.object && a.sizeMm).map((a) => a.sizeMm!);
   const sizeMm = sizes.length ? [0, 1, 2].map((k) => sizes.reduce((sum, s) => sum + s[k], 0) / sizes.length) : undefined;
   const disputed = !agreed && usable.length > 1;
@@ -172,10 +208,11 @@ export async function identify(picture: Picture, kinds: Kind[]): Promise<Identit
 export const visionRecord = (sights?: Sight[], identity?: Identity) => {
   const round = <T extends { corners: number[][]; asSeen?: number[][] }>(f: T) =>
     ({ ...f, corners: f.corners.map((p) => p.map(Math.round)), ...(f.asSeen && { asSeen: f.asSeen.map((p) => p.map(Math.round)) }) });
-  const { host, pathname } = new URL(process.env.THICKEN_VISION_URL!);
+  const { host, pathname } = new URL(found ? `${found.url}/v1` : process.env.THICKEN_VISION_URL!);
   return {
     endpoint: `${host}${pathname.replace(/\/$/, '')}/chat/completions`,
-    models: roster(),
+    models: found ? [found.collection] : roster(),
+    ...(found && rosterOn() && { standIns: roster() }),
     ...(identity && { identified: identity }),
     ...(sights && {
       photos: sights.map((s, picture) => ({ picture, ...s, faces: s.faces.map(round), answers: s.answers.map((a) => ({ ...a, faces: a.faces?.map(round) })) })),
@@ -204,6 +241,11 @@ async function letterbox(picture: Picture) {
  * falls to the higher seat.
  */
 async function consult(jpeg: Buffer, prompt: string, parse: (json: any) => Partial<Answer> | undefined, clash: (answers: Answer[]) => boolean): Promise<Answer[]> {
+  // The bench's seats answer all at once, so a clash needs no extra seat: the third is already in hand.
+  if (bench) {
+    const seats = await panel(bench, jpeg, prompt, parse);
+    if (seats.some((a) => !a.error) || !rosterOn()) return seats;
+  }
   const models = roster();
   const answers: Answer[] = [];
   let next = 0;
@@ -300,6 +342,19 @@ export function settle(answers: Answer[]): { faces: Seen[]; disputed: string[] }
 const distance = (a: number[][], b: number[][]) =>
   a.reduce((sum, p, i) => sum + Math.hypot(p[0] - b[i][0], p[1] - b[i][1]), 0) / 4 / Math.hypot(SIZE, SIZE);
 
+/** The question and the photo, as an OpenAI-compatible chat request's body. */
+const request = (model: string, jpeg: Buffer, prompt: string) => JSON.stringify({
+  model, temperature: 0, max_tokens: 4000, stream: false,
+  messages: [{ role: 'user', content: [
+    { type: 'text', text: prompt },
+    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${jpeg.toString('base64')}` } },
+  ] }],
+});
+/** The JSON in a model's reply, as `parse` takes it; undefined when there's none to take. */
+function answerIn(text: string, parse: (json: any) => Partial<Answer> | undefined): Partial<Answer> | undefined {
+  try { return parse(JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? 'null')); } catch { return undefined; }
+}
+
 async function ask(model: string, jpeg: Buffer, prompt: string, parse: (json: any) => Partial<Answer> | undefined): Promise<Answer> {
   const started = performance.now();
   const ms = () => Math.round(performance.now() - started);
@@ -307,21 +362,54 @@ async function ask(model: string, jpeg: Buffer, prompt: string, parse: (json: an
     const response = await fetch(`${process.env.THICKEN_VISION_URL!.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(process.env.THICKEN_VISION_KEY && { Authorization: `Bearer ${process.env.THICKEN_VISION_KEY}` }) },
-      body: JSON.stringify({
-        model, temperature: 0, max_tokens: 4000, stream: false,
-        messages: [{ role: 'user', content: [
-          { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${jpeg.toString('base64')}` } },
-        ] }],
-      }),
+      body: request(model, jpeg, prompt),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     const { status } = response;
     if (!response.ok) return { model, ms: ms(), status, error: `answered ${status}` };
-    const text: string = (await response.json())?.choices?.[0]?.message?.content ?? '';
-    const value = parse(JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? 'null'));
+    const value = answerIn((await response.json())?.choices?.[0]?.message?.content ?? '', parse);
     return value ? { model, ms: ms(), status, ...value } : { model, ms: ms(), status, error: 'no usable answer' };
   } catch (error) {
     return { model, ms: ms(), error: (error as Error).name === 'TimeoutError' ? 'timed out' : (error as Error).message };
+  }
+}
+
+/**
+ * One photo put to the bench's collection: every seat's answer, in the order the gateway gives them (its members
+ * first), each with its call for the verdict. A gateway that can't be reached is let go for the rest of the run.
+ */
+async function panel(on: { url: string; collection: string }, jpeg: Buffer, prompt: string, parse: (json: any) => Partial<Answer> | undefined): Promise<Answer[]> {
+  const started = performance.now();
+  try {
+    const response = await fetch(`${on.url}/v1/chat/completions`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: request(on.collection, jpeg, prompt), signal: AbortSignal.timeout(BENCH_TIMEOUT_MS),
+    });
+    if (!response.ok) return [{ model: on.collection, ms: Math.round(performance.now() - started), status: response.status, error: `answered ${response.status}` }];
+    const seats: { alias: string; call: string; status: string; seconds?: number; answer?: string; error?: string }[] = (await response.json())?.bench?.seats ?? [];
+    return seats.map(({ alias, call, status, seconds = 0, answer = '', error }) => {
+      const seat = { model: alias, ms: Math.round(seconds * 1000), call };
+      if (status !== 'ok') return { ...seat, error: error || status };
+      const value = answerIn(answer, parse);
+      return value ? { ...seat, ...value } : { ...seat, error: 'no usable answer' };
+    });
+  } catch (error) {
+    bench = undefined;
+    return [{ model: on.collection, ms: Math.round(performance.now() - started), error: (error as Error).name === 'TimeoutError' ? 'timed out' : (error as Error).message }];
+  }
+}
+
+/**
+ * Tells the bench how each seat did, in the background (a verdict that doesn't arrive costs nothing): useful when
+ * `agreed` says its answer matched another seat's, not useful when it failed. One that disagreed may be the one
+ * that was right, so it's left for a person to judge from the sidecar.
+ */
+function judge(answers: Answer[], agreed: (answer: Answer) => boolean, task: string): void {
+  const url = bench?.url;
+  if (!url) return;
+  for (const answer of answers.filter((a) => a.call)) {
+    const useful = answer.error ? false : agreed(answer) || undefined;
+    if (useful === undefined) continue;
+    const note = useful ? `thicken ${task}: agreed with another seat` : `thicken ${task}: ${answer.error}`;
+    fetch(`${url}/bench/verdict`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ call: answer.call, useful, note }) }).catch(() => {});
   }
 }

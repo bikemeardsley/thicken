@@ -53,6 +53,39 @@ test('card: a raw trading card in uncropped photos, a thin plate with rounded co
   assert.deepEqual([thick.sidecar.depthMm, thick.sidecar.pt, (thick.sidecar.measuredBy as { depth: string }).depth], [3.3, 130, 'pt']);
 });
 
+test('card: with a model bench on this machine, its vision collection answers every photo, and each seat is judged', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  process.env.THICKEN_BENCH_URL = 'http://bench.test';
+  t.after(() => { process.env.THICKEN_BENCH_URL = ''; });
+  const quad = [[300, 330], [681, 330], [681, 863.4], [300, 863.4]];
+  const files = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
+  for (const [file, fill] of [[files[0], '#2e7d32'], [files[1], '#1d4f9e']]) {
+    const svg = `<svg width="900" height="1200"><polygon points="${quad.map((p) => p.join(',')).join(' ')}" fill="${fill}"/></svg>`;
+    await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } }).composite([{ input: Buffer.from(svg) }]).png().toFile(file);
+  }
+  const seen = quad.map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]);
+  // Seats a and b answer; c, an explorer, fails. No roster is set: the bench is all there is.
+  const fetch = catalog({}, {
+    bench: ['a', 'b', 'c'],
+    vision: async ({ model, photo }) => {
+      if (model === 'c') return undefined;
+      const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
+      const middle = (500 * info.width + 500) * info.channels;
+      return { faces: [{ face: data[middle + 1] > data[middle + 2] ? 'front' : 'back', corners: seen }], corners: 'square' };
+    },
+  });
+  t.after(() => fetch.mock.restore());
+  const { sidecar } = await thicken(files, { profile: 'card' });
+  const vision = sidecar.vision as { models: string[]; photos: { answers: { model: string; error?: string }[] }[] };
+  assert.deepEqual([vision.models, sidecar.corners, sidecar.cornersBy, sidecar.faces], [['bench/vision'], 'square', 'vision', { front: 'photo', back: 'photo' }]);
+  assert.deepEqual(vision.photos[0].answers.map(({ model, error }) => [model, Boolean(error)]), [['a', false], ['b', false], ['c', true]]);
+  // Each photo's seats judged: a and b agreed on its face; c failed.
+  await new Promise((resolve) => setImmediate(resolve));
+  const verdicts = fetch.mock.calls.filter((call) => String(call.arguments[0]).endsWith('/bench/verdict')).map((call) => JSON.parse(String(call.arguments[1]!.body)));
+  assert.deepEqual(verdicts.map(({ call, useful }) => `${call} ${useful}`).sort(), ['p1.a true', 'p1.a true', 'p1.b true', 'p1.b true', 'p1.c false', 'p1.c false']);
+});
+
 test('card: holofoil as the models see it, a reverse holo shining everywhere but its picture box, as film-coated metal', async (t) => {
   Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
   t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
@@ -71,6 +104,8 @@ test('card: holofoil as the models see it, a reverse holo shining everywhere but
   }
   const seen = (corners: number[][]) => corners.map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]);
   let flash = (model: string) => 'reverse'; // what each model says of the front where the foil caught the light
+  let pattern: string | undefined = 'shards'; // and the foil's pattern there
+  let border = 'foil'; // and its border
   const fetch = catalog({}, {
     vision: async ({ model, photo }) => {
       const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
@@ -78,13 +113,15 @@ test('card: holofoil as the models see it, a reverse holo shining everywhere but
       // On the back, the models see no foil: that says nothing of the front, so it isn't counted.
       if (data[middle + 1] <= data[middle + 2]) return { faces: [{ face: 'back', corners: seen(quad) }], corners: 'round', foil: 'none' };
       if (data[corner + 2] > 200) return { faces: [{ face: 'front', corners: seen(quad) }], corners: 'round', foil: 'none' };
-      return { faces: [{ face: 'front', corners: seen(quad) }, { face: 'art', corners: seen(box) }], corners: 'round', foil: flash(model) };
+      return { faces: [{ face: 'front', corners: seen(quad) }, { face: 'art', corners: seen(box) }], corners: 'round', foil: flash(model), ...(pattern && { pattern }), border, texture: 'textured' };
     },
   });
   t.after(() => fetch.mock.restore());
   // Two answers naming the foil outweigh four from frames that missed it.
   const { glb, sidecar } = await thicken(files, { profile: 'card' });
   assert.deepEqual([sidecar.foil, sidecar.foilBy, sidecar.pictureBoxBy, sidecar.warnings], ['reverse', 'vision', 'vision', []]);
+  assert.deepEqual([sidecar.foilLook, sidecar.foilLookBy, sidecar.review], ['shards', 'vision', []], 'the pattern the models saw: cracked ice');
+  assert.deepEqual([sidecar.border, sidecar.frameBy, sidecar.texture], ['foil', 'layout', 'textured'], 'a foil border inside a standard frame; embossed');
   const found = sidecar.pictureBox as Record<string, number>;
   for (const [key, want] of Object.entries({ x0: 0.1, x1: 0.9, y0: 0.12, y1: 0.5 })) assert.ok(Math.abs(found[key] - want) < 0.01, `picture box ${key} ${found[key]}`);
 
@@ -98,10 +135,26 @@ test('card: holofoil as the models see it, a reverse holo shining everywhere but
   const pixel = (u: number, v: number) => [...data.subarray((Math.round(v * info.height) * info.width + Math.round(u * info.width)) * info.channels).subarray(0, 3)];
   assert.deepEqual(pixel(0.5, 0.3), [0, 102, 0], 'the picture box: print');
   assert.deepEqual(pixel(0.5, 0.75), [255, 77, 153], 'the rest: film, glossier, partly metal');
+  // The foil in pieces (cracked ice): each its own film thickness, and tilted where there's film, flat on the print.
+  const thick = await sharp(film.getIridescenceThicknessTexture()!.getImage()!).raw().toBuffer();
+  assert.ok(new Set(thick).size > 50, 'many pieces, each its own thickness');
+  const facets = await sharp(material('card-front').getNormalTexture()!.getImage()!).raw().toBuffer({ resolveWithObject: true });
+  const tilt = (u: number, v: number) => { const at = (Math.round(v * facets.info.height) * facets.info.width + Math.round(u * facets.info.width)) * 3; return [...facets.data.subarray(at, at + 3)]; };
+  assert.deepEqual(tilt(0.5, 0.3), [128, 128, 255], 'the print lies flat');
+  const pieces = [0.6, 0.7, 0.8, 0.9].map((v) => tilt(0.5, v));
+  assert.ok(pieces.every(([x, y, z]) => z > 230 && Math.hypot(x - 128, y - 128) < 34) && new Set(pieces.map(String)).size > 1, `the foil's pieces lean their own ways ${pieces}`);
 
-  // One model alone seeing foil isn't enough: a plain card stays plain.
+  // The foil, its pattern unseen: drawn plain, and a video asked for.
+  pattern = undefined;
+  const unseen = (await thicken(files, { profile: 'card' })).sidecar;
+  assert.deepEqual([unseen.foil, unseen.foilLook, unseen.foilLookBy], ['reverse', 'plain', 'assumed']);
+  assert.ok((unseen.review as string[]).some((note) => note.includes('video')), 'a video asked for');
+
+  // One model alone seeing foil isn't enough: a plain card stays plain (its border plain too).
+  border = 'plain';
   flash = (model) => (model === 'a' ? 'holo' : 'none');
   const plain = await thicken(files, { profile: 'card' });
   assert.deepEqual([plain.sidecar.foil, plain.sidecar.foilBy], ['none', 'vision']);
+  assert.ok((await read(plain.glb)).getRoot().listMaterials().find((m) => m.getName() === 'card-front')!.getNormalTexture(), 'still textured: embossed, without film');
   assert.equal((await read(plain.glb)).getRoot().listMaterials().find((m) => m.getName() === 'card-front')!.getExtension('KHR_materials_iridescence'), null);
 });

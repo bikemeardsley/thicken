@@ -144,6 +144,27 @@ so the kind is asked instead. The metal and roughness were tuned on the same
 card: all metal buried the print in a dark mirror, and at 60% the text stays
 clear.
 
+The foil is drawn in its pattern, in pieces that each shift color and flash
+on their own as the card turns: one of eleven (`sweep`, `lines`, `cells`,
+`motifs`, `points`, `circles`, `shards`, `flow`, `radial`, `skin`, `maze`),
+which between them cover Pokémon holos and reverses, Topps refractors and
+Panini prizms ([docs/foil-patterns.md](docs/foil-patterns.md)). The pattern
+comes from the parallel's name, when two models read it alike off the card ("Gold Wave Refractor" is
+`flow wave`; "Cracked Ice" is `shards`), else from the models, asked which
+pattern they see. When neither says, it's drawn `plain`, one flat sheet of
+film (less foil is better than wrong foil), and the review asks for a short
+video of the front tilting under a light, whose frames show the models the
+foil as it flashes. The sidecar records `foilLook` and `foilLookBy`
+(`parallel`, `vision` or `assumed`) beside `foil`.
+
+Two more things the models are asked of a card's front. Whether its printed
+border is foil (Pokémon-ex, LV.X and Prime borders): if so, the border
+shines too, outside the border's inside edge they find, or a standard 3 mm
+border where they don't (`border`, `frame`). And whether its surface is
+textured (full arts, special illustration and gold rares): if so, the
+photo's own lines are raised as ridges in the model, foil or not
+(`texture`).
+
 ## Vision (optional)
 
 With a vision roster, photos needn't be cropped: shoot the book on the
@@ -186,7 +207,30 @@ THICKEN_VISION_MODELS=gemini-3.8-flash-high,gpt-6-luna,gpt-5.6-terra,gemini-3.1-
 - The rest of the roster stands in for a seat that fails or takes over 3
   minutes. A fine-tuned model goes in by putting it first; training mode
   (below) collects the examples to tune one on.
-- With no vision settings, nothing is asked and photos are used whole.
+- With no vision settings, nothing is asked and photos are used whole, and
+  the review says so every time: what vision would have added.
+
+### Benchwarmers (a model bench)
+
+With `THICKEN_BENCH_URL` set to a
+[Benchwarmers](https://github.com/WendellResearch-AI/benchwarmers) gateway
+(`http://127.0.0.1:8122` when it runs on the same machine) that has a vision
+collection (`bench/vision`, or one tagged `vision`), thicken uses it first.
+Without it, no bench is asked.
+
+- Each photo goes to the collection: its members and the explorer seats the
+  bench adds, all at once. Every seat's answer is settled as a roster's are,
+  so a disagreement needs no extra seat; each is in the sidecar's `vision`
+  under its own name.
+- After each photo, thicken tells the bench how each seat did: useful when
+  it agreed with another on a face (or on what the object is), not useful
+  when it failed. A seat that disagreed may be the one that was right, so
+  it's left for you to judge in the bench's dashboard.
+- The `THICKEN_VISION_*` roster stands in when the gateway is down or no
+  seat answers a photo.
+- The gateway waits for its slowest seat, up to 7 minutes a photo, and a
+  collection's rate limits are its slowest member's: a long video can hit
+  them.
 
 What leaves your machine, vision included, is in the
 [README](README.md#what-leaves-your-machine).
