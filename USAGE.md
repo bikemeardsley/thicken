@@ -321,8 +321,9 @@ THICKEN_DATASET=../thicken-dataset  # outside the repo: it holds your photos
   marked, so they can be checked by hand before training on them.
 - Each line also says what it's about, for splitting a set by object (a
   slab's photos all in training or all in testing) and checking it by hand:
-  `run` and `at`, the `thicken` version, the `object` (its profile, and what
-  its codes said: a cert, a grader, an ISBN), the photo it came from
+  `run` and `at`, the `thicken` version, the `object` (its profile, what its
+  codes said, such as a cert, a grader or an ISBN, and its photos' folder and
+  file names, which tell apart objects with no code), the photo it came from
   (`source`: file, page, video time, camera), where that photo sits in the
   image sent (`sent`: `left`, `top`, `scale`), what the build made of it
   (`used`: `front`, `alternate back`, `unused`) or why the run stopped

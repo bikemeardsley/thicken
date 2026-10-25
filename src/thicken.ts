@@ -193,10 +193,11 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
   // Training mode: every question asked, kept once the run knows what came of it (src/training.ts).
   const keep = (asked: (Sight | Identity | undefined)[], object: object, extra: { roles?: { file: string; page?: number; time?: number; role: string }[]; failed?: string }) =>
     (trainingOn() ? keepRun(asked, { thicken: VERSION, object, ...extra }) : Promise.resolve());
+  const madeFrom = inputs.map((input) => `${path.basename(path.dirname(path.resolve(input)))}/${path.basename(input)}`);
   if (!profile) {
     const failed = `can't tell what this is: no ISBN barcode, no grader's QR code or cert barcode, not cut-out artwork${
       visionOn() ? ', and the vision models couldn\'t say' : ', and no vision roster to ask (see the README)'}. Name it: thicken ${PROFILES.map((p) => p.name).join('|')} <pictures>`;
-    await keep([identity], {}, { failed });
+    await keep([identity], { inputs: madeFrom }, { failed });
     throw new Error(failed);
   }
 
@@ -206,9 +207,10 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
   // then any a person placed (--corners, --cropped) take the place of theirs.
   const looked = visionOn() && (Object.keys(profile.faces).length || profile.reads) ? await lookAll(pictures, profile) : undefined;
   const sights = options.corners || (options.cropped && looked) ? byHand(pictures, looked, options) : looked;
-  // What the codes said of the object (a cert, an ISBN), for the training set's lines.
+  // What the codes said of the object (a cert, an ISBN), and what it was made from (each photo's folder and name, no
+  // more of its path), for the training set's lines: an object with no code is told by its photos.
   const { recognized: _, use: __, ...said } = facts;
-  const object = { profile: profile.name, ...said };
+  const object = { profile: profile.name, ...said, inputs: profile.words ? inputs : madeFrom };
   let built: Awaited<ReturnType<Profile['build']>>;
   try {
     built = await profile.build(pictures, { options, facts, codes: recorded.map((code, i) => ({ ...code, at: scanned[i].at })), sights, estimateMm: identity?.sizeMm, ...(profile.words && { words: inputs }) });

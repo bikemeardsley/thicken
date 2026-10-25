@@ -140,7 +140,7 @@ test('vision: with nothing else to go on, the models say what it is and roughly 
   // build made of it, and the photo itself, as loaded.
   const [first, second] = examples;
   assert.equal(first.run, second.run);
-  assert.deepEqual([second.thicken, second.object, second.source.file, second.used], [VERSION, { profile: 'box' }, path.basename(photo), ['front']]);
+  assert.deepEqual([second.thicken, second.object, second.source.file, second.used], [VERSION, { profile: 'box', inputs: [`${path.basename(folder)}/${path.basename(photo)}`] }, path.basename(photo), ['front']]);
   assert.deepEqual(Object.keys(second.sent).sort(), ['left', 'scale', 'top']);
   const original = await sharp(path.join(dataset, second.original)).metadata();
   assert.deepEqual([original.width, original.height, original.exif], [second.source.width, second.source.height, undefined]);
