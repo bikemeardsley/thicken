@@ -34,6 +34,7 @@ export interface Source {
   takenAt?: string; // the camera's own clock, with its UTC offset when it wrote one
   time?: number; // seconds into a video, for one of its frames
   face?: string; // cut from the photo as this face, where the vision models found it
+  agreed?: boolean; // where two models or more (or a person) put that face, not one alone
 }
 
 export interface Picture { data: Buffer; width: number; height: number; transparent: boolean; source: Source }

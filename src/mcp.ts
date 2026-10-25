@@ -21,6 +21,9 @@ const makeInput = {
   pt: mm.optional().describe('A thick trading card\'s thickness in points (thousandths of an inch: 55, 75, 100, 130, 180)'),
   width_mm: mm.optional().describe('A badge\'s or lettering\'s width in millimeters'),
   depth_mm: mm.optional().describe('A badge\'s or lettering\'s thickness in millimeters'),
+  cropped: z.boolean().optional().describe('Each photo is cropped to the object\'s edges: the vision models say which face it shows, not where. Use it when the user cropped them, or when the review says the models disagreed where a face is'),
+  corners: z.record(z.string(), z.record(z.string(), z.array(z.array(z.number()).length(2)).length(4))).optional()
+    .describe('Faces a person placed: {"<photo file name>": {"<face>": [[x,y],[x,y],[x,y],[x,y]]}}, corners top-left first, clockwise, in the photo\'s own pixels. They take the place of the models\''),
   out: z.string().min(1).optional().describe('Where to write the GLB (an absolute path ending in .glb); the sidecar goes beside it as .json, never over a .json that isn\'t a thicken sidecar. Default: beside the first picture, named after it'),
   preview: z.boolean().optional().describe('Also draw <name>.preview.png, both sides of the model (needs Chrome or Edge installed)'),
 };
@@ -29,7 +32,7 @@ const makeInput = {
 async function made(args: z.infer<z.ZodObject<typeof makeInput>>): Promise<string> {
   const size = args.size_mm;
   const options: Options = {
-    profile: args.profile, isbn: args.isbn, holder: args.holder, pt: args.pt, widthMm: args.width_mm, depthMm: args.depth_mm,
+    profile: args.profile, isbn: args.isbn, holder: args.holder, pt: args.pt, widthMm: args.width_mm, depthMm: args.depth_mm, cropped: args.cropped, corners: args.corners,
     ...(size && { sizeMm: [size.width, size.height, size.depth] as number[] }),
   };
   const profile = PROFILES.find((p) => p.name === args.profile);

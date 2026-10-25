@@ -225,7 +225,7 @@ test('book: vision models find the faces in uncropped photos, which are cut out 
   assert.equal(vision.endpoint, 'vision.test/api/chat/completions');
   // The record keeps what the models said; the barcode decided where it went.
   assert.deepEqual(vision.photos.map(({ faces }) => faces.map(({ face, by, agreed }) => [face, by, agreed])),
-    [[['front', ['a', 'c'], true], ['spine', ['a', 'b'], true]], [['front', ['a', 'b'], true], ['sticker', ['a', 'b'], true]], []]);
+    [[['front', ['a', 'c'], true], ['spine', ['a', 'b', 'c'], true]], [['front', ['a', 'b'], true], ['sticker', ['a', 'b'], true]], []]);
   // The spine shares its photo with the back, so it's taken as seen at an angle: no thickness from it.
   assert.deepEqual([(sidecar.measuredBy as Record<string, string>).depth, sidecar.depthEstimates], ['default', { photos: undefined, pages: undefined }]);
   assert.deepEqual(vision.photos.map(({ answers }) => answers.map(({ model }) => model)), [['a', 'b', 'c'], ['a', 'b'], ['a', 'b', 'c']]);

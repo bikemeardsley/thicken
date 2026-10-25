@@ -55,6 +55,8 @@ export const card: Profile = {
   reads: CARD_READS,
   asks: { corners: CORNERS_ASK, foil: foilAsk('the front'), pattern: patternAsk('the front'), border: borderAsk('the front'), texture: textureAsk('the front') },
   unsnapped: ['art', 'frame'],
+  // A standard card, upright or sideways: the edges seat finds its outline, and an answer far off it places nothing.
+  shapes: { front: [CARD_MM[0] / CARD_MM[1], CARD_MM[1] / CARD_MM[0]], back: [CARD_MM[0] / CARD_MM[1], CARD_MM[1] / CARD_MM[0]] },
   build: async (pictures, { options, sights }) => {
     const warnings: string[] = [];
     const review: string[] = [];

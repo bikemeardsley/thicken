@@ -15,7 +15,8 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { codes, load, VIDEO, type Picture } from './image.ts';
-import { findBench, identify, lookAll, readOf, visionOn, visionRecord, type Sight } from './vision.ts';
+import { keepRun, trainingOn } from './training.ts';
+import { findBench, identify, lookAll, readOf, visionOn, visionRecord, type Identity, type Sight } from './vision.ts';
 
 /** A kind of object Thicken knows. */
 export interface Profile {
@@ -40,6 +41,13 @@ export interface Profile {
   asks?: Record<string, string>;
   /** Faces left where the models put them, not snapped to the nearest strong edge (it's often the wrong one). */
   unsnapped?: string[];
+  /**
+   * The shapes a face can have, width over height upright (a slab's front: each holder's). An answer far off every
+   * one places nothing; the closer fit wins a tie; and on faces not `unsnapped`, the edges seat finds outlines of them.
+   */
+  shapes?: Record<string, number[]>;
+  /** What a face always shows, as fields of `reads` (a slab's front: its grade): a model naming it reads one of them off it. */
+  shows?: Record<string, string[]>;
   /** A generic shape (box), taking anything of its shape: tried after every specific profile. */
   generic?: boolean;
   /** Made from words, not pictures (lettering): what's given in place of files is its text, handed to build as `job.words`. */
@@ -114,6 +122,8 @@ export interface Options {
   pt?: number; // a card's thickness in points (thousandths of an inch), raw or slabbed: thick cards are sold by it
   widthMm?: number; // badge
   depthMm?: number; // badge
+  cropped?: boolean; // each photo is cropped to the object's edges: the models say which face, not where
+  corners?: Record<string, Record<string, number[][]>>; // a photo's faces as a person placed them: file name, face, corners in its pixels
 }
 
 /** A barcode or QR code as read off a picture. */
@@ -180,16 +190,33 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
   // Nothing gives it away: with a vision roster, the models say which it is, and roughly how big.
   const identity = profile || !visionOn() ? undefined : await identify(pictures[0], PROFILES.filter((p) => Object.keys(p.faces).length));
   profile ??= PROFILES.find((p) => p.name === identity?.profile);
+  // Training mode: every question asked, kept once the run knows what came of it (src/training.ts).
+  const keep = (asked: (Sight | Identity | undefined)[], object: object, extra: { roles?: { file: string; page?: number; time?: number; role: string }[]; failed?: string }) =>
+    (trainingOn() ? keepRun(asked, { thicken: VERSION, object, ...extra }) : Promise.resolve());
   if (!profile) {
-    throw new Error(`can't tell what this is: no ISBN barcode, no grader's QR code or cert barcode, not cut-out artwork${
-      visionOn() ? ', and the vision models couldn\'t say' : ', and no vision roster to ask (see the README)'}. Name it: thicken ${PROFILES.map((p) => p.name).join('|')} <pictures>`);
+    const failed = `can't tell what this is: no ISBN barcode, no grader's QR code or cert barcode, not cut-out artwork${
+      visionOn() ? ', and the vision models couldn\'t say' : ', and no vision roster to ask (see the README)'}. Name it: thicken ${PROFILES.map((p) => p.name).join('|')} <pictures>`;
+    await keep([identity], {}, { failed });
+    throw new Error(failed);
   }
 
   const facts = profile.read?.(scanned, pictures) ?? { recognized: false, use: [] };
   const recorded: Code[] = scanned.map(({ picture, format, text }, i) => ({ picture, format, ...(facts.use[i] && { use: facts.use[i], text }) }));
-  // With a vision roster, the models find each photo's faces, which are cut out and straightened (src/vision.ts).
-  const sights = visionOn() && (Object.keys(profile.faces).length || profile.reads) ? await lookAll(pictures, profile) : undefined;
-  const built = await profile.build(pictures, { options, facts, codes: recorded.map((code, i) => ({ ...code, at: scanned[i].at })), sights, estimateMm: identity?.sizeMm, ...(profile.words && { words: inputs }) });
+  // With a vision roster, the models find each photo's faces, which are cut out and straightened (src/vision.ts);
+  // then any a person placed (--corners, --cropped) take the place of theirs.
+  const looked = visionOn() && (Object.keys(profile.faces).length || profile.reads) ? await lookAll(pictures, profile) : undefined;
+  const sights = options.corners || (options.cropped && looked) ? byHand(pictures, looked, options) : looked;
+  // What the codes said of the object (a cert, an ISBN), for the training set's lines.
+  const { recognized: _, use: __, ...said } = facts;
+  const object = { profile: profile.name, ...said };
+  let built: Awaited<ReturnType<Profile['build']>>;
+  try {
+    built = await profile.build(pictures, { options, facts, codes: recorded.map((code, i) => ({ ...code, at: scanned[i].at })), sights, estimateMm: identity?.sizeMm, ...(profile.words && { words: inputs }) });
+  } catch (error) {
+    await keep([identity, ...(looked ?? [])], object, { failed: (error as Error).message });
+    throw error;
+  }
+  await keep([identity, ...(looked ?? [])], object, { roles: built.sidecar.pictures as { file: string; role: string }[] | undefined });
 
   const named_ = (i: number) => {
     const { file, page, time } = pictures[i].source;
@@ -204,11 +231,12 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
   const unsure = [
     ...(identity?.disputed ? [`what this is (the vision models disagree; made as a ${profile.name}: name the profile if that's wrong)`] : []),
     ...(sights ?? []).flatMap((sight, i) => (!worth(i) ? [] : [
-      ...sight.disputed.map((face) => `${face} in ${named_(i)} (the vision models disagree where it is or which way up: check it)`),
+      ...sight.disputed.map((face) => `${face} in ${named_(i)} (the vision models disagree where it is or which way up, and nothing settled it, so it was left out: crop the photo to it and use --cropped, or give its --corners)`),
       ...sight.faces.filter(({ face, agreed }) => !agreed && !sight.disputed.includes(face))
         .map(({ face, by }) => `${face} in ${named_(i)} (only ${by[0]} answered, so no second model checked it: check it)`),
       // A frame no model answered for is just left out (src/faces.ts): one of a handful, nothing to review.
-      ...(sight.answers.some((a) => !a.error) || pictures[i].source.time !== undefined ? [] : [`${named_(i)} (no vision model answered, so it was used whole: run again, or crop it)`]),
+      ...(!looked || sight.answers.some((a) => !a.error) || pictures[i].source.time !== undefined || sight.faces.some(({ by }) => by[0] === 'given') ? []
+        : [`${named_(i)} (no vision model answered, so it was used whole: run again, or crop it)`]),
     ])),
     // Made without vision, every time: what the models would have added (artwork has nothing for them to find).
     ...(visionOn() || !Object.keys(profile.faces).length ? [] : [NO_VISION]),
@@ -226,10 +254,42 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
       codes: recorded,
       // What the vision models read off it (a slab's grade, a card's player and set, a book's title), and how sure.
       ...(Object.keys(printed.read).length && printed),
-      ...((sights || identity) && { vision: visionRecord(sights, identity) }),
+      ...((looked || identity) && { vision: visionRecord(sights, identity) }),
       build: { thicken: VERSION, createdAt: new Date().toISOString(), ms: Math.round(performance.now() - started), glbBytes: built.glb.length },
     },
   };
+}
+
+/**
+ * Faces a person placed, in place of the models': corners given for a photo, by its file name, in its own pixels
+ * (--corners); or, with --cropped, each photo's biggest face is the whole photo, named as the models named it
+ * (failing that, the name most of them gave their biggest face). A video's frames are left to the models.
+ */
+function byHand(pictures: Picture[], sights: Sight[] | undefined, { corners = {}, cropped }: Options): Sight[] {
+  const area = (q: number[][]) => Math.abs(q.reduce((sum, p, k) => sum + p[0] * q[(k + 1) % 4][1] - q[(k + 1) % 4][0] * p[1], 0)) / 2;
+  return pictures.map((picture, i) => {
+    const sight = sights?.[i] ?? { faces: [], answers: [], disputed: [] };
+    const { width: w, height: h, source } = picture;
+    if (source.time !== undefined) return sight;
+    const given = corners[source.file];
+    if (given) {
+      const scale = Math.max(w, h) / Math.max(source.width, source.height); // loaded pictures are shrunk to at most 2048 px
+      return { ...sight, disputed: [], faces: Object.entries(given).map(([face, quad]) => {
+        const at = quad.map((p) => p.map((n) => n * scale));
+        return { face, corners: at, asSeen: at, by: ['given'], agreed: true };
+      }) };
+    }
+    if (!cropped) return sight;
+    const whole = [[0, 0], [w, 0], [w, h], [0, h]];
+    const biggest = sight.faces.reduce<Sight['faces'][0] | undefined>((a, b) => (!a || area(b.corners) > area(a.corners) ? b : a), undefined);
+    if (biggest) return { ...sight, faces: sight.faces.map((f) => (f === biggest ? { ...f, corners: whole, asSeen: whole } : f)), disputed: sight.disputed.filter((f) => f !== biggest.face) };
+    // Nothing settled where: what the models called the biggest face they each saw, if most called it one thing.
+    const names = sight.answers.flatMap(({ faces }) => (faces?.length ? [faces.reduce((a, b) => (area(b.corners) > area(a.corners) ? b : a)).face] : []));
+    const count = (face: string) => names.filter((n) => n === face).length;
+    const [top, next] = [...new Set(names)].sort((a, b) => count(b) - count(a));
+    if (!top || (next && count(next) === count(top))) return sight;
+    return { ...sight, faces: [{ face: top, corners: whole, asSeen: whole, by: sight.answers.filter(({ faces }) => faces?.some((f) => f.face === top)).map(({ model }) => model), agreed: count(top) > 1 }], disputed: sight.disputed.filter((f) => f !== top) };
+  });
 }
 
 /** Every barcode and QR code on every picture that passes its own checksum. */

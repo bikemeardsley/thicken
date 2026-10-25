@@ -13,6 +13,21 @@ const GRADER_SITES: Record<string, string> = { 'psacard.com': 'psa', 'beckett.co
 // Cert numbers: PSA ~8 digits, BGS 10, SGC 7 (older labels 7-3), CGC 7–12, TAG a letter then digits.
 const CERT = /^[A-Z]?\d{6,12}$|^\d{7}-\d{3}$/i;
 const SLAB_SHAPE_TOLERANCE = 0.06; // a photo this close to a holder's shape, give or take a loose crop
+// ponytail: graders don't publish exterior holder sizes, and the figures online disagree by 1–5 mm across
+// sources and holder generations. These are the best found (2026-10-01); measure real holders and correct
+// them. --size overrides per model. A QR code says the grader, not the holder, so a tall boy needs --holder.
+const HOLDERS: Record<string, number[]> = { // width, height, depth in mm
+  psa: [80.5, 136, 6.5], // collector caliper measurements
+  'psa-thick': [80.5, 136, 10.25],
+  'psa-tall': [108, 184, 6.5], // tall boys (1969–70 Topps basketball…): 4¼ × 7¼ in per Collectors Universe; depth assumed
+  bgs: [83, 131, 8.5],
+  cgc: [80.5, 135, 7.5],
+  // ponytail: from one photo (a 1969–70 Topps, 2026-10-03), its tall-boy card (63.5 mm wide) as the ruler; measure one
+  'cgc-tall': [113, 195, 7.5],
+  sgc: [86.5, 138.5, 8.5],
+  tag: [79.5, 133.5, 7.5], // TAG's help center: 3.125 × 5.25 in, 7.5 mm at the raised lip
+};
+const HOLDER_SHAPES = Object.values(HOLDERS).map(([w, h]) => w / h);
 
 export const slab: Profile = {
   name: 'slab',
@@ -59,6 +74,10 @@ export const slab: Profile = {
   // inside the holder's outline (one snapped the outline 11 px in, so everything inside measured 3% big), the well's
   // edge beside the card's, the frames inside and around the label beside its border.
   unsnapped: ['front', 'back', 'card', 'label', 'art', 'hologram', 'frame'],
+  // A holder's shape: an outline far off every holder's isn't the slab (a near-square box round a slab and the
+  // table beside it, 2026-10-25). The front shows the grade; the back never does.
+  shapes: { front: HOLDER_SHAPES, back: HOLDER_SHAPES },
+  shows: { front: ['grade'] },
   read: (scanned, [picture]) => {
     const { use, grader, cert, certFrom, verifyUrl } = readLabel(scanned);
     // A grader's QR code says it's a slab; a cert barcode alone only on a photo shaped like a holder.
@@ -113,20 +132,6 @@ function isSlabShaped(picture?: Picture): boolean {
   return Object.values(HOLDERS).some(([w, h]) => Math.abs(width / height / (w / h) - 1) < SLAB_SHAPE_TOLERANCE);
 }
 
-// ponytail: graders don't publish exterior holder sizes, and the figures online disagree by 1–5 mm across
-// sources and holder generations. These are the best found (2026-10-01); measure real holders and correct
-// them. --size overrides per model. A QR code says the grader, not the holder, so a tall boy needs --holder.
-const HOLDERS: Record<string, number[]> = { // width, height, depth in mm
-  psa: [80.5, 136, 6.5], // collector caliper measurements
-  'psa-thick': [80.5, 136, 10.25],
-  'psa-tall': [108, 184, 6.5], // tall boys (1969–70 Topps basketball…): 4¼ × 7¼ in per Collectors Universe; depth assumed
-  bgs: [83, 131, 8.5],
-  cgc: [80.5, 135, 7.5],
-  // ponytail: from one photo (a 1969–70 Topps, 2026-10-03), its tall-boy card (63.5 mm wide) as the ruler; measure one
-  'cgc-tall': [113, 195, 7.5],
-  sgc: [86.5, 138.5, 8.5],
-  tag: [79.5, 133.5, 7.5], // TAG's help center: 3.125 × 5.25 in, 7.5 mm at the raised lip
-};
 // A grader's label is the same size on every holder: it spans about 87% of a standard holder's width and about 60%
 // of a tall one's (real PSA and CGC slabs, 2026-10-03). Under this, the holder is the grader's tall one.
 const TALL_LABEL = 0.75;
