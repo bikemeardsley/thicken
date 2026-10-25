@@ -1,6 +1,7 @@
 # thicken, as a plugin
 
-The thicken MCP server (`npx -y thicken mcp`) and its skill, for Claude Code,
+The thicken MCP server (`npx -y thicken mcp`) and its skills (making a model,
+and making a profile), for Claude Code,
 Codex and Copilot CLI. The tools: `thicken_make` (photos, a video, words or an
 ISBN in; a GLB model and its metadata, a JSON sidecar, written) and
 `thicken_profiles` (the kinds of object it makes). The [README](../README.md)

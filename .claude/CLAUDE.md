@@ -28,7 +28,8 @@ boxes, badges, lettering. **Start with [README.md](../README.md)**, then
   contributors add or improve profiles only (CONTRIBUTING.md); CI fails a
   fork's pull request that touches anything else.
 - **Agents:** `thicken mcp` (src/mcp.ts, stdio only) and the skill in
-  `skills/thicken/SKILL.md`, copied to `plugin/skills/` (a test keeps them
+  `skills/` (`thicken`, and `thicken-profile` for making profiles), copied
+  to `plugin/skills/` (a test keeps them
   equal). The Claude plugin lives in `plugin/`.
 - Don't add anything (images, fonts, copied code) that can't be published.
   `pokemon-cards-css` is GPL-3.0: read it, don't copy it.

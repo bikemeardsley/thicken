@@ -1,6 +1,6 @@
 ---
 name: thicken
-description: Turns photos of a real object into two files that belong together, a 3D model (GLB) at the object's real size in millimeters and its metadata as JSON (read off the object and looked up), for any kind of object it has a profile for, such as a book, a graded trading-card slab, a raw trading card, anything box-shaped, a badge's cut-out artwork, or bubble lettering of a few words. Use when the user wants a 3D model, a GLB, or a three.js or Blender asset of a physical object they have photos of, a catalog of their things as models with their metadata, or a profile of their own for a kind of object.
+description: Turns photos of a real object into two files that belong together, a 3D model (GLB) at the object's real size in millimeters and its metadata as JSON (read off the object and looked up), for any kind of object it has a profile for, such as a book, a graded trading-card slab, a raw trading card, anything box-shaped, a badge's cut-out artwork, or bubble lettering of a few words. Use when the user wants a 3D model, a GLB, or a three.js or Blender asset of a physical object they have photos of, or a catalog of their things as models with their metadata.
 ---
 
 # thicken
@@ -17,7 +17,8 @@ It is not photogrammetry: it makes things close to a box or a flat outline.
   model; a book wants front, back and spine, a slab or card its front and back.
 - **What it is, if it isn't obvious.** A code on it decides by itself (a
   book's ISBN barcode, a grader's QR code); otherwise the vision models do, if
-  set up. Without them, name the profile.
+  set up. Without them, name the profile. No profile fits? The
+  thicken-profile skill makes one.
 - **A measured size beats every lookup:** pass it when the user has one.
 
 ## With the MCP tools
