@@ -586,4 +586,5 @@ npx skills add bikemeardsley/thicken
 ```
 
 The skill uses the MCP tools when they're connected, and otherwise the CLI
-through `npx -y thicken`.
+through `npx -y thicken`. A second, `thicken-profile`, makes, checks and
+contributes a profile of your own.

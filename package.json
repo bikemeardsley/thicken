@@ -1,10 +1,10 @@
 {
   "name": "thicken",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Photos in; out comes a 3D model (GLB) at the object's real size and its metadata as JSON. A profile for each kind of object; add your own.",
   "license": "MIT",
   "author": "Michael Beardsley (https://github.com/bikemeardsley)",
-  "repository": "github:bikemeardsley/thicken",
+  "repository": { "type": "git", "url": "git+https://github.com/bikemeardsley/thicken.git" },
   "mcpName": "io.github.bikemeardsley/thicken",
   "keywords": ["3d", "glb", "gltf", "photos", "books", "trading-cards", "graded-cards", "slab", "badge", "lettering", "vision", "mcp"],
   "type": "module",

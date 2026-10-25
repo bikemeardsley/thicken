@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -12,7 +12,7 @@ import './helpers.ts';
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 const repo = (file: string) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
 
-test('mcp: every manifest launches the version package.json says, and the plugin\'s skill is the repo\'s', () => {
+test('mcp: every manifest launches the version package.json says, and the plugin\'s skills are the repo\'s', () => {
   const { version } = JSON.parse(repo('package.json'));
   const pinned = ['thicken', '-y', `thicken@${version}`, 'mcp'];
   const plugin = JSON.parse(repo('plugin/.claude-plugin/plugin.json'));
@@ -29,7 +29,9 @@ test('mcp: every manifest launches the version package.json says, and the plugin
   assert.equal(JSON.parse(repo('plugin/package.json')).dependencies.thicken, version);
   // Line endings aside: the plugin's files check out as git would leave them (CRLF on Windows, by its default).
   const lf = (text: string) => text.replace(/\r\n/g, '\n');
-  assert.equal(lf(repo('plugin/skills/thicken/SKILL.md')), lf(repo('skills/thicken/SKILL.md')), 'the plugin\'s copy of the skill matches');
+  const skills = (folder: string) => readdirSync(new URL(`../${folder}`, import.meta.url)).sort();
+  assert.deepEqual(skills('plugin/skills'), skills('skills'), 'the plugin has every skill');
+  for (const skill of skills('skills')) assert.equal(lf(repo(`plugin/skills/${skill}/SKILL.md`)), lf(repo(`skills/${skill}/SKILL.md`)), `the plugin's copy of ${skill} matches`);
 });
 const text = (result: Awaited<ReturnType<Client['callTool']>>) => (result.content as { type: string; text: string }[])[0].text;
 

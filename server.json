@@ -3,12 +3,12 @@
   "name": "io.github.bikemeardsley/thicken",
   "description": "Photos in: a 3D model at the object's real size and its metadata as JSON, for any kind of object.",
   "repository": { "url": "https://github.com/bikemeardsley/thicken", "source": "github" },
-  "version": "0.1.0",
+  "version": "0.1.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "thicken",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "transport": { "type": "stdio" },
       "packageArguments": [{ "type": "positional", "value": "mcp" }],
       "environmentVariables": [

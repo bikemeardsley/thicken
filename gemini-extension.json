@@ -1,8 +1,8 @@
 {
   "name": "thicken",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "thicken: photos in; out comes a 3D model at the object's real size and its metadata as JSON.",
   "mcpServers": {
-    "thicken": { "command": "npx", "args": ["-y", "thicken@0.1.0", "mcp"] }
+    "thicken": { "command": "npx", "args": ["-y", "thicken@0.1.1", "mcp"] }
   }
 }

@@ -28,7 +28,8 @@ boxes, badges, lettering. **Start with [README.md](../README.md)**, then
   contributors add or improve profiles only (CONTRIBUTING.md); CI fails a
   fork's pull request that touches anything else.
 - **Agents:** `thicken mcp` (src/mcp.ts, stdio only) and the skill in
-  `skills/thicken/SKILL.md`, copied to `plugin/skills/` (a test keeps them
+  `skills/` (`thicken`, and `thicken-profile` for making profiles), copied
+  to `plugin/skills/` (a test keeps them
   equal). The Claude plugin lives in `plugin/`.
 - Don't add anything (images, fonts, copied code) that can't be published.
   `pokemon-cards-css` is GPL-3.0: read it, don't copy it.
@@ -40,10 +41,11 @@ Bump the version in `package.json`, `server.json` (twice),
 and `plugin/mcp.json` (the Agent Plugin, for Copilot), `plugin/mcp_config.json`
 (the same servers, for Antigravity), `mcp.json`,
 `gemini-extension.json` and `plugin/package.json` (test/mcp.test.ts fails
-until they agree). `npm publish` (staged: approve it on npmjs.com); then, once
-the version is on npm, `npm install --package-lock-only --ignore-scripts` in
-`plugin/` for the plugin directory's launcher lock; a `vX.Y.Z` tag and GitHub
-release; and `mcp-publisher publish` for the MCP registry.
+until they agree). Merge to main, then publish a `vX.Y.Z` GitHub release on
+it: `.github/workflows/release.yml` tests, publishes to npm (Trusted
+Publishing, no token) and then to the MCP Registry. Once the version is on
+npm, `npm install --package-lock-only --ignore-scripts` in `plugin/` for the
+plugin directory's launcher lock.
 
 **Codex / ChatGPT plugin directory: likely a dead end, for a while or for
 good.** Tried 2026-10-15. The portal (platform.openai.com/plugins) answered
