@@ -286,7 +286,11 @@ function byHand(pictures: Picture[], sights: Sight[] | undefined, { corners = {}
     const biggest = sight.faces.reduce<Sight['faces'][0] | undefined>((a, b) => (!a || area(b.corners) > area(a.corners) ? b : a), undefined);
     if (biggest) return { ...sight, faces: sight.faces.map((f) => (f === biggest ? { ...f, corners: whole, asSeen: whole } : f)), disputed: sight.disputed.filter((f) => f !== biggest.face) };
     // Nothing settled where: what the models called the biggest face they each saw, if most called it one thing.
-    const names = sight.answers.flatMap(({ faces }) => (faces?.length ? [faces.reduce((a, b) => (area(b.corners) > area(a.corners) ? b : a)).face] : []));
+    // Each model once: the name it gave its biggest face, if it gave the same each time it was asked.
+    const names = [...new Set(sight.answers.map(({ model }) => model))].flatMap((model) => {
+      const given = [...new Set(sight.answers.filter((a) => a.model === model && a.faces?.length).map(({ faces }) => faces!.reduce((a, b) => (area(b.corners) > area(a.corners) ? b : a)).face))];
+      return given.length === 1 ? given : [];
+    });
     const count = (face: string) => names.filter((n) => n === face).length;
     const [top, next] = [...new Set(names)].sort((a, b) => count(b) - count(a));
     if (!top || (next && count(next) === count(top))) return sight;

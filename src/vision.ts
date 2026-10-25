@@ -186,9 +186,9 @@ export async function look(picture: Picture, kind: Kind): Promise<Sight> {
 }
 
 /**
- * What the models read off the object, over every picture: each field as given most often (the first given on a
- * tie: the primary's on the first picture), and how sure: "agreed" (given more than once, nothing else given),
- * "once" (one answer) or "disputed" (other answers differ; every model's is in the vision record).
+ * What the models read off the object, over every picture: each field as most models gave it (a tie is no value),
+ * and how sure: "agreed" (given more than once, nothing else given), "once" (one answer), "disputed" (other answers
+ * differ) or "alone" (see below; every model's answer is in the vision record).
  */
 export function readOf(sights: Sight[] = []): { read: Read; readBy: Record<string, string> } {
   const text = (v: string | string[]) => JSON.stringify(v).toLowerCase().replace(/\s+/g, ' ');
@@ -234,9 +234,12 @@ export async function identify(picture: Picture, kinds: Kind[]): Promise<Identit
       ? json.sizeMm.map(Number) : undefined;
     return { object, ...(sizeMm && { sizeMm }) };
   };
-  // The object most answers name: none with a tie, so a tie asks for more.
+  // The object most models name, each once (none from a model that named two): none with a tie, so a tie asks for more.
   const most = (asked: Answer[]) => {
-    const said = asked.flatMap((a) => (a.object ? [a.object] : []));
+    const said = [...new Set(asked.map(({ model }) => model))].flatMap((model) => {
+      const named = [...new Set(asked.filter((a) => a.model === model && a.object).map((a) => a.object!))];
+      return named.length === 1 ? named : [];
+    });
     const count = (object: string) => said.filter((o) => o === object).length;
     const top = [...new Set(said)].sort((a, b) => count(b) - count(a));
     return top.length && (top.length === 1 || count(top[0]) > count(top[1])) ? { object: top[0], count: count(top[0]) } : undefined;
@@ -249,9 +252,14 @@ export async function identify(picture: Picture, kinds: Kind[]): Promise<Identit
   const pick = most(usable);
   const agreed = (pick?.count ?? 0) >= 2;
   judge(answers, ({ object }) => agreed && object === pick!.object, 'what it is');
-  const sizes = usable.filter((a) => a.object === pick?.object && a.sizeMm).map((a) => a.sizeMm!);
-  const sizeMm = sizes.length ? [0, 1, 2].map((k) => sizes.reduce((sum, s) => sum + s[k], 0) / sizes.length) : undefined;
-  const disputed = !agreed && usable.length > 1;
+  // The size, averaged over the models that named that object, each model's own answers averaged first.
+  const average = (list: number[][]) => [0, 1, 2].map((k) => list.reduce((sum, s) => sum + s[k], 0) / list.length);
+  const sizes = [...new Set(usable.map(({ model }) => model))].flatMap((model) => {
+    const own = usable.filter((a) => a.model === model && a.object === pick?.object && a.sizeMm).map((a) => a.sizeMm!);
+    return own.length ? [average(own)] : [];
+  });
+  const sizeMm = sizes.length ? average(sizes) : undefined;
+  const disputed = !agreed && new Set(usable.map(({ model }) => model)).size > 1;
   const identity = { profile: pick?.object === 'none' ? undefined : pick?.object, sizeMm, disputed, answers };
   if (trainingOn()) held.set(identity, { jpeg, picture, sent, example: { task: 'identify', prompt, answers, label: { object: pick?.object, sizeMm }, disputed } });
   return identity;
@@ -459,7 +467,7 @@ export function settle(answers: Answer[], evidence: Evidence = {}): { faces: See
   // Named by one model while others answered without it: left out, unless another put a face of another name in the
   // same place. Then they agree where it is but not what it is (a slab's back called its front): the name stands
   // whose answer read what that face always shows (a front's grade) where the other's didn't; else it's unsettled.
-  const readsIt = (model: string, face: string) => !shows[face] || shows[face].some((key) => Boolean(usable.find((a) => a.model === model)?.read?.[key]?.length));
+  const readsIt = (model: string, face: string) => !shows[face] || shows[face].some((key) => usable.some((a) => a.model === model && Boolean(a.read?.[key]?.length)));
   const sharing = (single: typeof singles[0]) => singles.filter((other) => other.model !== single.model && apartAnyway(other.corners, single.corners) < AGREE);
   const placedNear = (single: typeof singles[0]) => faces.some((f) => apartAnyway(f.corners, single.corners) < AGREE);
   for (const single of singles) {

@@ -16,7 +16,7 @@ const CERT = /^[A-Z]?\d{6,12}$|^\d{7}-\d{3}$/i;
 const SLAB_SHAPE_TOLERANCE = 0.06; // a photo this close to a holder's shape, give or take a loose crop
 // ponytail: graders don't publish exterior holder sizes, and the figures online disagree by 1–5 mm across
 // sources and holder generations. These are the best found (2026-10-01); measure real holders and correct
-// them. --size overrides per model. A QR code says the grader, not the holder, so a tall boy needs --holder.
+// them. --size overrides per model. A QR code says the grader, not the holder: a tall one is told by its label (TALL_LABEL).
 const HOLDERS: Record<string, number[]> = { // width, height, depth in mm
   psa: [80.5, 136, 6.5], // collector caliper measurements
   'psa-thick': [80.5, 136, 10.25],
