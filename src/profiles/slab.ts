@@ -312,7 +312,7 @@ async function make(
   const relief = surface === 'textured' ? pictured.front?.card : undefined;
   const shines = boxed || Boolean(frame);
   const { look, lookBy } = foilLook(sights, 'front');
-  if (shines && lookBy === 'assumed') review.push(`the card's ${unseenPattern(pictures.some(({ source }) => source.time !== undefined))}`);
+  if (shines && lookBy === 'assumed') review.push(unseenPattern(pictures.some(({ source }) => source.time !== undefined)).replace('the foil\'s', 'the card\'s foil\'s'));
   const foils: Record<string, Foil> = shines || relief ? { 'card-front': await cardFoil(boxed ? foil! : 'none', box ?? PICTURE_BOX, cardH / cardW, look, { frame, relief }) } : {};
   const labelAspect = (rects.label.y1 - rects.label.y0) / (rects.label.x1 - rects.label.x0);
   for (const [side, region] of Object.entries(holograms)) foils[`label-${side}`] = await foilMap([region], labelAspect);
