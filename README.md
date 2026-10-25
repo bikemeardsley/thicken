@@ -250,12 +250,16 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `measuredBy` | where its size came from: the holder table, or measured |
 
 </details>
-<details><summary><code>box</code>: barcode, measuredBy</summary>
+<details><summary><code>box</code>: barcode, measuredBy, rounding, roundingBy, finish, finishBy</summary>
 
 | Field | What it holds |
 | --- | --- |
 | `barcode` | its product barcode (UPC or EAN) and its kind, when a photo shows one |
-| `measuredBy` | where each of its sizes came from: measured, or the vision models' estimate |
+| `measuredBy` | where each of its sizes came from: measured, photos (its proportions there, scaled by a measured size or the estimate), or the vision models' estimate |
+| `rounding` | how rounded its corners and edges are: sharp, slight, round or very |
+| `roundingBy` | how that was found: vision or assumed |
+| `finish` | its surface: glossy or matte |
+| `finishBy` | how that was found: vision or assumed |
 
 </details>
 <!-- profiles:end -->

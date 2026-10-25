@@ -113,9 +113,11 @@ test('vision: with nothing else to go on, the models say what it is and roughly 
   assert.deepEqual([sidecar.profile, sidecar.identifiedBy], ['box', { profile: 'vision' }]);
   const { identified } = sidecar.vision as { identified: { profile: string; sizeMm: number[]; disputed: boolean; answers: { model: string }[] } };
   assert.deepEqual([identified.profile, identified.sizeMm, identified.disputed, identified.answers.map(({ model }) => model)], ['box', [71, 149, 8.5], false, ['a', 'b', 'c']]);
-  // Sized by the agreeing estimates, and warned, not reviewed; the back, never photographed, is.
-  assert.deepEqual([sidecar.widthMm, sidecar.heightMm, sidecar.depthMm], [71, 149, 8.5]);
-  assert.deepEqual(sidecar.warnings, ['the size is partly the vision models\' estimate (71 × 149 × 8.5 mm): --size for the real one']);
+  // Its proportions the photo's (the phone is drawn exactly 1:2), scaled by the agreeing estimates (71 × 149), its
+  // depth theirs, no side photographed: warned, not reviewed; the back, never photographed, is.
+  assert.deepEqual([sidecar.widthMm, sidecar.heightMm, sidecar.depthMm], [72.7, 145.6, 8.5]);
+  assert.deepEqual(sidecar.measuredBy, { width: 'photos', height: 'photos', depth: 'vision' });
+  assert.deepEqual(sidecar.warnings, ['the size is scaled by the vision models\' estimate, its proportions the front photo\'s and the estimate\'s depth (72.7 × 145.6 × 8.5 mm): --size for the real one']);
   assert.deepEqual(sidecar.review, ['back (plain color)']);
   assert.ok(near(await colorOf(await read(glb), [0, 0, 1]), '#26323a'), 'the front is the phone, cut from the table');
 
