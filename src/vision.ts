@@ -246,6 +246,7 @@ async function consult(jpeg: Buffer, prompt: string, parse: (json: any) => Parti
     const seats = await panel(bench, jpeg, prompt, parse);
     if (seats.some((a) => !a.error) || !rosterOn()) return seats;
   }
+  if (!rosterOn()) return []; // the bench stopped answering earlier this run, and there is no roster to stand in
   const models = roster();
   const answers: Answer[] = [];
   let next = 0;
@@ -343,8 +344,8 @@ const distance = (a: number[][], b: number[][]) =>
   a.reduce((sum, p, i) => sum + Math.hypot(p[0] - b[i][0], p[1] - b[i][1]), 0) / 4 / Math.hypot(SIZE, SIZE);
 
 /** The question and the photo, as an OpenAI-compatible chat request's body. */
-const request = (model: string, jpeg: Buffer, prompt: string) => JSON.stringify({
-  model, temperature: 0, max_tokens: 4000, stream: false,
+const request = (model: string, jpeg: Buffer, prompt: string, stream = false) => JSON.stringify({
+  model, temperature: 0, max_tokens: 4000, stream,
   messages: [{ role: 'user', content: [
     { type: 'text', text: prompt },
     { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${jpeg.toString('base64')}` } },
@@ -377,15 +378,21 @@ async function ask(model: string, jpeg: Buffer, prompt: string, parse: (json: an
 /**
  * One photo put to the bench's collection: every seat's answer, in the order the gateway gives them (its members
  * first), each with its call for the verdict. A gateway that can't be reached is let go for the rest of the run.
+ * Asked as a stream: the gateway sends keep-alives while its slowest seat thinks, where a plain reply sends nothing
+ * until every seat is done, and Node's fetch gives up on a reply whose headers take over 300 s.
  */
 async function panel(on: { url: string; collection: string }, jpeg: Buffer, prompt: string, parse: (json: any) => Partial<Answer> | undefined): Promise<Answer[]> {
   const started = performance.now();
   try {
     const response = await fetch(`${on.url}/v1/chat/completions`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: request(on.collection, jpeg, prompt), signal: AbortSignal.timeout(BENCH_TIMEOUT_MS),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: request(on.collection, jpeg, prompt, true), signal: AbortSignal.timeout(BENCH_TIMEOUT_MS),
     });
     if (!response.ok) return [{ model: on.collection, ms: Math.round(performance.now() - started), status: response.status, error: `answered ${response.status}` }];
-    const seats: { alias: string; call: string; status: string; seconds?: number; answer?: string; error?: string }[] = (await response.json())?.bench?.seats ?? [];
+    // Server-sent events: chunks of the answer, the seats on the last chunk, or an error; keep-alives are comments.
+    const events = (await response.text()).split('\n').filter((line) => line.startsWith('data: ') && line !== 'data: [DONE]').map((line) => JSON.parse(line.slice(6)));
+    const failed = events.find((event) => event.error);
+    if (failed) return [{ model: on.collection, ms: Math.round(performance.now() - started), error: failed.error.message ?? 'the bench failed' }];
+    const seats: { alias: string; call: string; status: string; seconds?: number; answer?: string; error?: string }[] = events.findLast((event) => event.bench)?.bench?.seats ?? [];
     return seats.map(({ alias, call, status, seconds = 0, answer = '', error }) => {
       const seat = { model: alias, ms: Math.round(seconds * 1000), call };
       if (status !== 'ok') return { ...seat, error: error || status };

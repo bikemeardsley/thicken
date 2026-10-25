@@ -86,6 +86,19 @@ test('card: with a model bench on this machine, its vision collection answers ev
   assert.deepEqual(verdicts.map(({ call, useful }) => `${call} ${useful}`).sort(), ['p1.a true', 'p1.a true', 'p1.b true', 'p1.b true', 'p1.c false', 'p1.c false']);
 });
 
+test('card: a bench that stops answering mid-run, with no roster to stand in, leaves the photos unread rather than crashing', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  process.env.THICKEN_BENCH_URL = 'http://bench.test';
+  t.after(() => { process.env.THICKEN_BENCH_URL = ''; });
+  const files = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
+  for (const file of files) await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } }).png().toFile(file);
+  // The gateway is found, then its first answer never comes: the connection drops, as a reply past 300 s did.
+  const fetch = catalog({}, { bench: ['a'], vision: async () => { throw new TypeError('fetch failed'); } });
+  t.after(() => fetch.mock.restore());
+  await assert.rejects(thicken(files, { profile: 'card' }), (error: Error) => !/split/.test(error.message) && /front/.test(error.message));
+});
+
 test('card: holofoil as the models see it, a reverse holo shining everywhere but its picture box, as film-coated metal', async (t) => {
   Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
   t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });

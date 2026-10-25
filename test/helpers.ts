@@ -46,13 +46,17 @@ export function catalog(edition: object, { cover, data, search, records, loc, vi
     if (bench && href === 'http://bench.test/v1/models') return Response.json({ data: [{ id: 'bench/core', tags: ['general'] }, { id: 'bench/vision', tags: ['vision'] }, { id: 'bench/vision:merged', tags: ['vision'] }] });
     if (bench && href === 'http://bench.test/bench/verdict') return Response.json({ ok: true });
     if (bench && vision && href === 'http://bench.test/v1/chat/completions') {
-      const { model, messages } = JSON.parse(String(init!.body));
+      const { model, messages, stream } = JSON.parse(String(init!.body));
+      if (!stream) return new Response('', { status: 400 }); // thicken asks for the stream, which keeps the connection alive
       const photo = Buffer.from(messages[0].content[1].image_url.url.split(',')[1], 'base64');
       const seats = await Promise.all(bench.map(async (alias, k) => {
         const answer = await vision({ model: alias, prompt: messages[0].content[0].text, photo, authorization: null });
         return { call: `p1.${alias}`, seat: k < 3 ? 'member' : 'explorer', alias, status: answer ? 'ok' : 'error', seconds: 1, answer: answer ? JSON.stringify(answer) : '', error: answer ? '' : 'no answer' };
       }));
-      return Response.json({ choices: [{ message: { content: '(every seat, under its own heading)' } }], bench: { collection: model, seats } });
+      // As the gateway streams a chat reply: chunks, keep-alive comments while seats think, the seats on the last chunk.
+      const chunk = (delta: object, extra = {}) => `data: ${JSON.stringify({ object: 'chat.completion.chunk', model, choices: [{ index: 0, delta }], ...extra })}\n\n`;
+      return new Response(`${chunk({ role: 'assistant', content: '' })}: keep-alive\n\n${chunk({ content: '(every seat, under its own heading)' })}${chunk({}, { bench: { collection: model, seats } })}data: [DONE]\n\n`,
+        { headers: { 'Content-Type': 'text/event-stream' } });
     }
     if (vision && href === 'http://vision.test/api/chat/completions') {
       const { model, messages } = JSON.parse(String(init!.body));
