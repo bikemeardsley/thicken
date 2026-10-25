@@ -186,10 +186,16 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
 
   // A profile with no faces is artwork (a badge), not a photo of an object: no codes to read.
   const scanned = named && !Object.keys(named.faces).length ? [] : await scan(pictures);
-  let profile = named ?? PROFILES.find((p) => p.read?.(scanned, pictures).recognized);
-  // Nothing gives it away: with a vision roster, the models say which it is, and roughly how big.
-  const identity = profile || !visionOn() ? undefined : await identify(pictures[0], PROFILES.filter((p) => Object.keys(p.faces).length));
-  profile ??= PROFILES.find((p) => p.name === identity?.profile);
+  // A code it carries (an ISBN, a grader's QR code) outranks a picture's shape (cut-out artwork): a photo lifted from
+  // its background on a phone is see-through around it too.
+  const recognizing = named ? [] : PROFILES.filter((p) => p.read?.(scanned, pictures).recognized);
+  let profile = named ?? recognizing.find((p) => p.read!(scanned, pictures).use.some(Boolean)) ?? recognizing[0];
+  // Nothing gives it away: with a vision roster, the models say which it is, and roughly how big. A picture taken
+  // for artwork by its shape alone is asked too, artwork among the choices: is it artwork, or a photo of an object?
+  const byShape = !named && profile && !Object.keys(profile.faces).length && !profile.read!(scanned, pictures).use.some(Boolean);
+  const identity = (profile && !byShape) || !visionOn() ? undefined
+    : await identify(pictures[0], PROFILES.filter((p) => Object.keys(p.faces).length || p === profile));
+  if (identity?.profile) profile = PROFILES.find((p) => p.name === identity.profile) ?? profile;
   // Training mode: every question asked, kept once the run knows what came of it (src/training.ts).
   const keep = (asked: (Sight | Identity | undefined)[], object: object, extra: { roles?: { file: string; page?: number; time?: number; role: string }[]; failed?: string }) =>
     (trainingOn() ? keepRun(asked, { thicken: VERSION, object, ...extra }) : Promise.resolve());
@@ -252,7 +258,7 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
       sources: inputs.map((input) => path.basename(input)),
       review: [...stillToShoot(own.faces), ...(own.review ?? []), ...unsure],
       // How each identifying fact was found, for anyone deciding how far to trust it.
-      identifiedBy: { profile: named ? 'given' : identity ? 'vision' : 'recognized', ...(own.identifiedBy as object | undefined) },
+      identifiedBy: { profile: named ? 'given' : identity?.profile ? 'vision' : 'recognized', ...(own.identifiedBy as object | undefined) },
       codes: recorded,
       // What the vision models read off it (a slab's grade, a card's player and set, a book's title), and how sure.
       ...(Object.keys(printed.read).length && printed),

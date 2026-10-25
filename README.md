@@ -173,12 +173,13 @@ What each one records in its sidecar, beside what every model has (its size and 
 pictures, its codes, what the vision models read and how sure, what's worth a second look: all in
 [USAGE.md](USAGE.md#what-the-sidecar-records)):
 
-<details><summary><code>badge</code>: edge, regions</summary>
+<details><summary><code>badge</code>: edge, regions, measuredBy</summary>
 
 | Field | What it holds |
 | --- | --- |
 | `edge` | the color just inside its outline, used for its sides and back (#rrggbb) |
 | `regions` | how many separate shapes the artwork is (a medal and its ribbon are two) |
+| `measuredBy` | where its width and depth came from: given, or the default (artwork carries no scale) |
 
 </details>
 <details><summary><code>book</code>: isbn, catalog, match, pages, binding, bindingBy, measuredBy, depthEstimates, coverUrl, sticker, lookups</summary>

@@ -47,6 +47,16 @@ test('badge: cut-out artwork, its outline extruded to a closed solid at real-wor
   }
 });
 
+test('badge: a cut-out picture the models say is an object, not artwork, is made as that object', async (t) => {
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  // A phone's "lift subject" leaves a photo see-through around its object, as artwork is: the models say a box.
+  const fetch = catalog({}, { vision: async ({ prompt }) => (prompt.includes('Which of these is it?') ? { object: 'box', sizeMm: [60, 60, 20] } : { title: 'A tin' }) });
+  t.after(() => fetch.mock.restore());
+  const { sidecar } = await thicken([fixture('badge.png')]);
+  assert.deepEqual([sidecar.profile, sidecar.identifiedBy], ['box', { profile: 'vision' }]);
+});
+
 test('badge: with vision, what it names and who issued it are read off it, with no faces to find or review', async (t) => {
   Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
   t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
@@ -54,12 +64,17 @@ test('badge: with vision, what it names and who issued it are read off it, with 
   const fetch = catalog({}, {
     vision: async ({ model, prompt }) => {
       prompts.push(prompt);
+      // Taken for artwork by its shape alone, it's asked first: artwork, or a photo of an object? Artwork.
+      if (prompt.includes('Which of these is it?')) return { object: 'badge' };
       return model === 'a' ? { name: 'Solutions Architect', issuer: 'Example Cloud', level: 'Associate' } : { name: 'Solutions Architect', issuer: 'Example Cloud' };
     },
   });
   t.after(() => fetch.mock.restore());
   const { sidecar } = await thicken([fixture('badge.png')], { widthMm: 35, depthMm: 2 });
-  assert.ok(!prompts[0].includes('corners') && prompts[0].includes('"issuer":""'), 'asked to read, not to find faces');
+  assert.ok(prompts[0].includes('"badge": cut-out digital artwork') && prompts[0].includes('"slab"'), 'artwork among the objects it could be');
+  const reading = prompts.find((p) => !p.includes('Which of these is it?'))!;
+  assert.ok(!reading.includes('corners') && reading.includes('"issuer":""'), 'asked to read, not to find faces');
+  assert.deepEqual(sidecar.measuredBy, { width: 'given', depth: 'given' });
   assert.deepEqual([sidecar.read, sidecar.readBy, sidecar.review], [
     { name: 'Solutions Architect', issuer: 'Example Cloud', level: 'Associate' }, { name: 'agreed', issuer: 'agreed', level: 'once' }, [],
   ]);
