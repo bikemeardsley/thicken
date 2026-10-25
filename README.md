@@ -182,7 +182,7 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `measuredBy` | where its width and depth came from: given, or the default (artwork carries no scale) |
 
 </details>
-<details><summary><code>book</code>: isbn, catalog, match, pages, binding, bindingBy, measuredBy, depthEstimates, coverUrl, sticker, lookups</summary>
+<details><summary><code>book</code>: isbn, catalog, match, pages, binding, bindingBy, measuredBy, depthEstimates, coverUrl, sticker, pageEdges, finish, finishBy, lookups</summary>
 
 | Field | What it holds |
 | --- | --- |
@@ -195,7 +195,10 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `measuredBy` | where each of its sizes came from: measured, openlibrary, loc, googlebooks, pages, photos, cover or trim |
 | `depthEstimates` | every thickness estimate made: from the photos and from the page count |
 | `coverUrl` | Open Library's cover, when it stands in for a front not photographed |
-| `sticker` | where a foil seal or sticker is on its front cover |
+| `sticker` | where a foil seal or sticker is on its front cover, and whether it's round |
+| `pageEdges` | its page edges' color (#rrggbb), whether gilt, and how found: photo (a photo shows them), vision (the models' colors) or assumed (cream) |
+| `finish` | its cover's finish: glossy or matte |
+| `finishBy` | how that was found: vision or assumed |
 | `lookups` | every catalog request: host, path, status and time |
 
 </details>

@@ -81,7 +81,7 @@ export async function toGlb(doc: Document, mesh: Mesh): Promise<Uint8Array> {
 
 export type Face = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom';
 /** A face shows a JPEG picture or a plain color, foil where its map says (foiled). Faces given the same Side object share a draw call. */
-export interface Side { picture?: Uint8Array; color?: string; roughness?: number; foil?: Foil }
+export interface Side { picture?: Uint8Array; color?: string; roughness?: number; metallic?: number; foil?: Foil }
 /** A face's foil, as PNGs (src/foil.ts foilMap): where it is (foiled's map), each piece's film thickness (gray) and each piece's tilt and any emboss (a normal map); `film`, whether any of it shines. */
 export interface Foil { map: Uint8Array; thickness: Uint8Array; facets: Uint8Array; film: boolean }
 
@@ -90,6 +90,7 @@ export function sideMaterial(doc: Document, name: string, side: Side): Material 
   const material = side.picture
     ? pictureMaterial(doc, name, side.picture, 'image/jpeg', side.roughness)
     : colorMaterial(doc, name, side.color ?? '#808080', side.roughness ?? 0.9);
+  if (side.metallic) material.setMetallicFactor(side.metallic); // a gilt page edge
   return side.foil ? foiled(doc, material, side.foil) : material;
 }
 

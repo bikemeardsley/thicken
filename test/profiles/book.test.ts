@@ -248,6 +248,39 @@ test('book: vision models find the faces in uncropped photos, which are cut out 
   assert.deepEqual([pixel(0.225, 0.375), pixel(0.11, 0.31), pixel(0.6, 0.7)], [[255, 77, 153], [0, 102, 0], [0, 102, 0]]);
 });
 
+test('book: page edges as a photo shows them (a sprayed edge glimpsed past the cover), else as the models see them, else cream', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  // The front cover, shot a little from the side: a sliver of its sprayed red page edge shows past it, too narrow to cut out.
+  const photo = path.join(folder, 'IMG_1.png');
+  await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } }).composite([
+    { input: await sharp({ create: { width: 420, height: 640, channels: 3, background: '#1d2b53' } }).png().toBuffer(), left: 240, top: 280 },
+    { input: await sharp({ create: { width: 14, height: 630, channels: 3, background: '#b0202a' } }).png().toBuffer(), left: 660, top: 285 },
+  ]).png().toFile(photo);
+  const seen = (corners: number[][]) => corners.map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]);
+  let pageColor = 'none';
+  let sliver = true;
+  const fetch = catalog({}, {
+    vision: async ({ prompt }) => (prompt.includes('Which of these is it?') ? { object: 'book', sizeMm: [140, 210, 25] } : {
+      faces: [{ face: 'front', corners: seen([[240, 280], [660, 280], [660, 920], [240, 920]]) },
+        ...(sliver ? [{ face: 'edge', corners: seen([[660, 285], [674, 285], [674, 915], [660, 915]]) }] : [])],
+      binding: 'paperback', pageEdges: 'colored', pageColor,
+    }),
+  });
+  t.after(() => fetch.mock.restore());
+  const shown = await thicken([photo], { profile: 'book', sizeMm: [140, 210, 25] });
+  const edges = shown.sidecar.pageEdges as { color: string; by: string };
+  assert.equal(edges.by, 'photo');
+  assert.ok(near([1, 3, 5].map((k) => parseInt(edges.color.slice(k, k + 2), 16)), '#b0202a'), edges.color);
+  // No sliver: the color two models gave; none, cream.
+  [sliver, pageColor] = [false, '#2050a0'];
+  assert.deepEqual(pick((await thicken([photo], { profile: 'book', sizeMm: [140, 210, 25] })).sidecar.pageEdges as object, ['color', 'by']), { color: '#2050a0', by: 'vision' });
+  pageColor = 'none';
+  assert.deepEqual(pick((await thicken([photo], { profile: 'book', sizeMm: [140, 210, 25] })).sidecar.pageEdges as object, ['color', 'by']), { color: '#efe6d2', by: 'assumed' });
+});
+
 test('book: with no barcode, the title and authors the models read find it, with how sure the match is', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));

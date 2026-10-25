@@ -224,6 +224,22 @@ THICKEN_VISION_MODELS=gemini-3.8-flash-high,gpt-6-luna,gpt-5.6-terra,gemini-3.1-
 - Each face keeps a photo two models agreed on before one only one model
   placed, however sharp, then a photo before a video's frame, then the
   sharpest.
+- What the photos can show is asked or measured, not assumed:
+  - **Cards:** the format (standard, or Yu-Gi-Oh!/Japanese size), the
+    stock (a thick card is made 55 pt, warned, without `--pt`) and the
+    front's finish.
+  - **Slabs:** the label's finish (foil or paper, two models needed for
+    foil). With no grader named, the holder by its size against the card
+    inside. A thick holder, and the logo's print, light or dark.
+  - **Boxes:** the shape from the straightened faces, scaled by a given size
+    or the estimate, plus how rounded it is and its finish.
+  - **Books:** the page edges' color from any sliver a photo shows, else the
+    models' colors, else cream; gilt edges as metal. The cover's finish, and
+    a sticker round or square.
+  - **Artwork:** a cut-out picture is asked whether it's artwork or an
+    object, and a code on it outranks its shape.
+
+  Each is recorded with how it was found (`…By`: vision, photo or assumed).
 - When nothing else says what the object is, the first photo also goes to
   the roster with the list of profiles: which is it, and roughly how big?
   The answer most models give settles it, with more asked on a tie; a tie
