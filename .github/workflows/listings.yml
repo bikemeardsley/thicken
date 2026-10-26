@@ -1,6 +1,8 @@
 # The listings that don't read the repo by themselves, refreshed on every release (and by hand: Actions > listings >
 # Run workflow). npm and the MCP Registry are release.yml's; skills.sh, the Claude plugin marketplace, Gemini and
-# Antigravity read this repo as it is; Glama and cursor.directory have no API (their owner refreshes them by hand).
+# Antigravity read this repo as it is; Glama re-reads it by itself at least daily. cursor.directory keeps a copy made at
+# submission and has no API: its owner refreshes it by hand, on the plugin's edit page, when a skill or the MCP setup
+# changes.
 #
 # Smithery: each skill in skills/ from its folder here, a new one listed, a changed one refreshed (Smithery doesn't
 # re-read a listed skill by itself). Its API takes a key: the repository secret SMITHERY_API_KEY (smithery.ai >
