@@ -121,12 +121,15 @@ test('vision: with nothing else to go on, the models say what it is and roughly 
   assert.deepEqual(sidecar.review, ['back (plain color)']);
   assert.ok(near(await colorOf(await read(glb), [0, 0, 1]), '#26323a'), 'the front is the phone, cut from the table');
 
-  // Training mode: both questions kept, in order, about one image kept once, exactly as sent.
-  const examples = (await readFile(path.join(dataset, 'metadata.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+  // Training mode: both questions kept, the identify one in identify/ and the faces in the profile's folder, each
+  // folder with the image exactly as sent.
+  const lines = async (dir: string) => (await readFile(path.join(dataset, dir, 'metadata.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+  const examples = [...await lines('identify'), ...await lines('box')];
   assert.deepEqual(examples.map(({ task }) => task), ['identify', 'faces']);
   assert.equal(examples[1].file_name, examples[0].file_name);
-  assert.deepEqual((await readdir(dataset)).sort(), ['.originals', examples[0].file_name, 'metadata.jsonl']);
-  const { width, height, format } = await sharp(path.join(dataset, examples[0].file_name)).metadata();
+  assert.deepEqual((await readdir(dataset)).sort(), ['box', 'identify']);
+  for (const dir of ['identify', 'box']) assert.deepEqual((await readdir(path.join(dataset, dir))).sort(), ['.originals', examples[0].file_name, 'metadata.jsonl']);
+  const { width, height, format } = await sharp(path.join(dataset, 'identify', examples[0].file_name)).metadata();
   assert.deepEqual([width, height, format], [1000, 1000, 'jpeg']);
   assert.match(examples[0].prompt, /Which of these is it\?/);
   assert.deepEqual(examples[0].answers.map(({ model, object }: { model: string; object: string }) => [model, object]), [['a', 'book'], ['b', 'box'], ['c', 'box']]);
@@ -145,7 +148,7 @@ test('vision: with nothing else to go on, the models say what it is and roughly 
   assert.equal(first.run, second.run);
   assert.deepEqual([second.thicken, second.object, second.source.file, second.used], [VERSION, { profile: 'box', inputs: [`${path.basename(folder)}/${path.basename(photo)}`] }, path.basename(photo), ['front']]);
   assert.deepEqual(Object.keys(second.sent).sort(), ['left', 'scale', 'top']);
-  const original = await sharp(path.join(dataset, second.original)).metadata();
+  const original = await sharp(path.join(dataset, 'box', second.original)).metadata();
   assert.deepEqual([original.width, original.height, original.exif], [second.source.width, second.source.height, undefined]);
 });
 

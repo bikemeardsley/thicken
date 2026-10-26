@@ -355,8 +355,11 @@ THICKEN_DATASET=../thicken-dataset  # outside the repo: it holds your photos
   (`failed`), and the photo itself as loaded, upright and stripped of its
   metadata, GPS included (`original`, in `.originals/`, which the loader
   skips). Lines from before 2026-10-25 have none of these.
-- It is the layout Hugging Face's `imagefolder` loader reads:
-  `load_dataset("imagefolder", data_dir="../thicken-dataset")`.
+- Each profile's faces go in a folder of their own (`slab/`, `book/`,
+  `card/`), and the questions about which object it is in `identify/`, so
+  a model can be tuned on one profile alone. Each folder is the layout
+  Hugging Face's `imagefolder` loader reads:
+  `load_dataset("imagefolder", data_dir="../thicken-dataset/slab")`.
 - thicken only collects. Training a model on the examples, and serving it
   where the roster can reach it, happen elsewhere.
 - With no vision roster nothing is asked, so nothing is collected.
