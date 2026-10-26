@@ -13,6 +13,13 @@ import { CARD_MM, CARD_READS, CARDSTOCK, cardSize, CORNERS_ASK, cornersOf, FORMA
 const GRADER_SITES: Record<string, string> = { 'psacard.com': 'psa', 'beckett.com': 'bgs', 'cgccards.com': 'cgc', 'gosgc.com': 'sgc', 'taggrading.com': 'tag' };
 // Cert numbers: PSA ~8 digits, BGS 10, SGC 7 (older labels 7-3), CGC 7–12, TAG a letter then digits.
 const CERT = /^[A-Z]?\d{6,12}$|^\d{7}-\d{3}$/i;
+// Each grader's cert lookup page, as VaultFlip looks them up (2026-10-25). ponytail: SGC's and TAG's not yet checked;
+// add them here once they are.
+const LOOKUPS: Record<string, (cert: string) => string> = {
+  psa: (cert) => `https://www.psacard.com/cert/${cert}/psa`,
+  cgc: (cert) => `https://www.cgccards.com/certlookup/${cert}/`,
+  bgs: (cert) => `https://www.beckett.com/grading/card-lookup?item_type=BGS&item_id=${cert}`,
+};
 const SLAB_SHAPE_TOLERANCE = 0.06; // a photo this close to a holder's shape, give or take a loose crop
 const HOLDER_MATCH = 0.1; // a holder whose width and height, summed, are this near what the card inside measures it as (497, a BGS, measured 5% wide and 2% short)
 const HOLDER_CLEAR = 0.04; // how much nearer than a PSA holder another must be to be taken instead
@@ -39,8 +46,8 @@ export const slab: Profile = {
   makes: 'A clear plastic holder at its grader\'s size, with the card and the grade label inside it, each cut from the photos',
   records: {
     grader: 'who graded it: psa, bgs, cgc, sgc or tag, from its QR code or its label',
-    cert: 'its certification number',
-    verifyUrl: 'the grader\'s page for this cert, from its QR code',
+    cert: 'its certification number: from its QR code or barcode, else as read off its label (identifiedBy.cert says which, and whether both agreed)',
+    verifyUrl: 'the grader\'s page for this cert: its QR code\'s link, else built from the grader and the cert (PSA, CGC, BGS)',
     holder: 'the holder it was built as (psa, cgc-tall…)',
     inside: 'the card and the label inside: each one\'s size, middle and what placed it; the card\'s corners, foil and its pattern, border and texture; the label\'s finish (foil or paper) and where its hologram is; and the grader\'s logo on the insert, where it was found',
     measuredBy: 'where its size came from: the holder table, or measured',
@@ -96,8 +103,20 @@ export const slab: Profile = {
     const said = String(readOf(sights).read.grader ?? '').toLowerCase();
     const read = Object.keys(HOLDERS).find((holder) => !holder.includes('-') && said.includes(holder)) ?? (said.includes('beckett') ? 'bgs' : undefined);
     const grader = options.holder ?? label.grader ?? read;
-    const { glb, sidecar } = await make(pictures, { holder: grader, holderGiven: Boolean(options.holder), sizeMm: options.sizeMm, pt: options.pt, label: { ...label, grader: label.grader ?? read }, sights });
-    return { glb, sidecar: { ...sidecar, identifiedBy: { grader: options.holder ? 'given' : label.grader ? 'qr' : read ? 'vision' : 'assumed', cert: facts.certFrom } } };
+    // The cert more than one way: from a code (a QR code or a cert barcode), and as read off the label, which every
+    // slab prints, QR code or not (a BGS label has none). Both said, they agree or they don't; the code's wins.
+    const printed = String(readOf(sights).read.cert ?? '').replace(/[\s-]/g, '').toUpperCase();
+    const onLabel = CERT.test(printed) ? printed : undefined;
+    const certBy = label.cert && onLabel ? (label.cert === onLabel ? `${facts.certFrom} and label` : 'disputed') : label.cert ? facts.certFrom : onLabel ? 'label' : undefined;
+    const cert = label.cert ?? onLabel;
+    // The grader's page for it: the QR code's own link, else built from the grader and the cert, where its pattern is known.
+    const lookup = !label.verifyUrl && cert && grader && LOOKUPS[grader.split('-')[0]]?.(cert);
+    const { glb, sidecar } = await make(pictures, {
+      holder: grader, holderGiven: Boolean(options.holder), sizeMm: options.sizeMm, pt: options.pt,
+      label: { ...label, grader: label.grader ?? read, cert, ...(lookup && { verifyUrl: lookup }) }, sights,
+    });
+    if (certBy === 'disputed') sidecar.review.push(`the cert (its ${facts.certFrom} says ${label.cert}, the label reads ${onLabel}: check it)`);
+    return { glb, sidecar: { ...sidecar, identifiedBy: { grader: options.holder ? 'given' : label.grader ? 'qr' : read ? 'vision' : 'assumed', cert: certBy, ...((label.verifyUrl || lookup) && { verifyUrl: label.verifyUrl ? 'qr' : 'built' }) } } };
   },
 };
 

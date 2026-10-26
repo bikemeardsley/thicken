@@ -246,8 +246,8 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | Field | What it holds |
 | --- | --- |
 | `grader` | who graded it: psa, bgs, cgc, sgc or tag, from its QR code or its label |
-| `cert` | its certification number |
-| `verifyUrl` | the grader's page for this cert, from its QR code |
+| `cert` | its certification number: from its QR code or barcode, else as read off its label (identifiedBy.cert says which, and whether both agreed) |
+| `verifyUrl` | the grader's page for this cert: its QR code's link, else built from the grader and the cert (PSA, CGC, BGS) |
 | `holder` | the holder it was built as (psa, cgc-tall…) |
 | `inside` | the card and the label inside: each one's size, middle and what placed it; the card's corners, foil and its pattern, border and texture; the label's finish (foil or paper) and where its hologram is; and the grader's logo on the insert, where it was found |
 | `measuredBy` | where its size came from: the holder table, or measured |

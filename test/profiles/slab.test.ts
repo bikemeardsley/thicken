@@ -19,7 +19,7 @@ test('slab: a grader\'s QR code picks the holder, and the holder its size', asyn
     profile: 'slab', sources: ['slab.jpg'], holder: 'psa', grader: 'psa', cert: '12345678', verifyUrl: 'https://www.psacard.com/cert/12345678',
     widthMm: 80.5, heightMm: 136, depthMm: 6.5, measuredBy: 'table', faces: { front: 'photo', back: 'color' }, review: ['back (plain color)', NO_VISION],
     warnings: ['the card and label are placed where a psa holder usually has them: with a vision roster they\'re found in the photos'],
-    identifiedBy: { profile: 'recognized', grader: 'qr', cert: 'qr' },
+    identifiedBy: { profile: 'recognized', grader: 'qr', cert: 'qr', verifyUrl: 'qr' },
   });
   const doc = await read(glb);
   assertExtents(doc, [0.0805, 0.136, 0.0065]);
@@ -230,17 +230,20 @@ test('slab: the models read its label, the grade and the card, and with no QR co
       prompts.push(prompt);
       const faces = [{ face: 'front', corners: letterboxed(slab) }, { face: 'card', corners: letterboxed(card) }, { face: 'label', corners: letterboxed(label) }];
       return model === 'a'
-        ? { faces, grader: 'CGC', grade: '10', gradeName: 'GEM MINT', name: 'Charizard', set: 'Base Set', year: '1999' }
-        : { faces, grader: 'CGC', grade: 10, gradeName: 'Gem  Mint', name: 'Charizard', year: 2000 };
+        ? { faces, grader: 'CGC', grade: '10', gradeName: 'GEM MINT', name: 'Charizard', set: 'Base Set', year: '1999', cert: '4123 5678' }
+        : { faces, grader: 'CGC', grade: 10, gradeName: 'Gem  Mint', name: 'Charizard', year: 2000, cert: '4123 5678' };
     },
   });
   t.after(() => fetch.mock.restore());
   const { sidecar } = await thicken([photo], { profile: 'slab' });
   assert.ok(prompts[0].includes('"grade":""'), 'the models are asked for the grade');
   // The year, one model each way, is a tie: no year, rather than the first model's.
-  assert.deepEqual(sidecar.read, { grader: 'CGC', grade: '10', gradeName: 'GEM MINT', name: 'Charizard', set: 'Base Set' });
-  assert.deepEqual(sidecar.readBy, { grader: 'agreed', grade: 'agreed', gradeName: 'agreed', name: 'agreed', set: 'once', year: 'disputed' });
+  assert.deepEqual(sidecar.read, { grader: 'CGC', grade: '10', gradeName: 'GEM MINT', name: 'Charizard', set: 'Base Set', cert: '4123 5678' });
+  assert.deepEqual(sidecar.readBy, { grader: 'agreed', grade: 'agreed', gradeName: 'agreed', name: 'agreed', set: 'once', year: 'disputed', cert: 'agreed' });
   assert.deepEqual([sidecar.holder, sidecar.grader, (sidecar.identifiedBy as { grader: string }).grader], ['cgc-tall', 'cgc', 'vision']);
+  // No QR code: the cert read off the label, and the grader's page for it built from the grader and the cert.
+  assert.deepEqual([sidecar.cert, sidecar.verifyUrl, pick(sidecar.identifiedBy as Record<string, unknown>, ['cert', 'verifyUrl'])],
+    ['41235678', 'https://www.cgccards.com/certlookup/41235678/', { cert: 'label', verifyUrl: 'built' }]);
 });
 
 test('slab: the cert is the first whole cert number in the QR link, not a tracking number after it', async (t) => {
