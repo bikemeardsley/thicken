@@ -14,12 +14,20 @@
 // it has a vision collection: every seat answers each photo, thicken settles
 // their answers as it settles its own roster's, and tells the bench how each
 // seat did. The roster stands in when the gateway is down or no seat answers.
+//
+// Where answers disagree, no seat outranks another: a face goes where the evidence puts it (other answers placing
+// it there, the edges seat, its shape), more answers are asked for while it's unsettled, and a face nothing settles
+// is left out for a person, never taken from whichever model was listed first (settle, below).
 import sharp from 'sharp';
+import { edgesOf } from './edges.ts';
 import { snap, type Picture } from './image.ts';
-import { keep, trainingOn } from './training.ts';
+import { held, trainingOn } from './training.ts';
 
 const SIZE = 1000; // photos go out letterboxed to 1000 x 1000, so pixels and a 0-1000 scale are the same numbers
 const AGREE = 0.03; // corners within 3% of the diagonal, on average, are the same face in the same place and turn
+const OFF_SHAPE = 0.25; // a face this far off every shape it can have is no placement of it (a slab's card is 13% off its holder)
+const OUTSIDE = 0.05; // corners this far past the photo (of the image) place nothing; nearer, a corner just out of frame
+const BENCH_ASKS = 2; // a collection asked again while a face is unsettled: its explorer seats rotate, so new models answer
 const TIMEOUT_MS = 180_000;
 const MAX_FACES = 12; // twice a box's six: more is noise, and settling compares every pair
 
@@ -31,6 +39,7 @@ const MAX_FACES = 12; // twice a box's six: more is noise, and settling compares
 export interface Kind {
   name: string; about?: string; faces: Record<string, string>; note?: string;
   reads?: Record<string, string | [string]>; asks?: Record<string, string>; unsnapped?: string[];
+  shapes?: Record<string, number[]>; shows?: Record<string, string[]>;
 }
 type Read = Record<string, string | string[]>;
 /** One model's answer, corners in the picture's own pixels. */
@@ -44,7 +53,7 @@ export interface Answer {
  * real edges; the corners as the models gave them; and who agreed.
  */
 export interface Seen { face: string; corners: number[][]; asSeen: number[][]; by: string[]; agreed: boolean }
-export interface Sight { faces: Seen[]; asked?: Record<string, string>; answers: Answer[]; disputed: string[] }
+export interface Sight { faces: Seen[]; asked?: Record<string, string>; answers: Answer[]; disputed: string[]; outline?: number[][] }
 /** What the models said the object is: a profile's name (none, if none fits), its estimated size, and whether they disagreed. */
 export interface Identity { profile?: string; sizeMm?: number[]; disputed: boolean; answers: Answer[] }
 
@@ -53,7 +62,8 @@ export const visionOn = () => Boolean(bench || rosterOn());
 const roster = () => process.env.THICKEN_VISION_MODELS!.split(',').map((m) => m.trim()).filter(Boolean);
 
 const BENCH_TIMEOUT_MS = 450_000; // the gateway waits up to 420 s for its slowest seat
-let bench: { url: string; collection: string } | undefined; // while it answers
+// While it answers; with each seat's record there (GET /bench/record), as its share of useful verdicts.
+let bench: { url: string; collection: string; trust?: Record<string, number> } | undefined;
 let found: typeof bench; // as found, for the record
 const looked = new Map<string, Promise<typeof bench>>();
 /**
@@ -71,10 +81,40 @@ async function lookFor(url: string): Promise<typeof bench> {
     const { data } = await (await fetch(`${url}/v1/models`, { signal: AbortSignal.timeout(2000) })).json() as { data?: { id: string; tags?: string[] }[] };
     const collections = (data ?? []).filter(({ id }) => id.startsWith('bench/') && !id.includes(':'));
     const vision = collections.find(({ id }) => id === 'bench/vision') ?? collections.find(({ tags }) => tags?.includes('vision'));
-    return vision && { url, collection: vision.id };
+    if (!vision) return undefined;
+    // Each seat's record on thicken's questions, smoothed so a seat with few verdicts sits near even. A gateway
+    // without the route (before Benchwarmers had it) gives none, and ties stay undecided.
+    const record = await fetch(`${url}/bench/record?collection=${encodeURIComponent(vision.id)}&task=thicken`, { signal: AbortSignal.timeout(2000) })
+      .then((r) => (r.ok ? r.json() as Promise<{ aliases?: Record<string, { useful: number; judged: number }> }> : undefined), () => undefined);
+    const trust = record?.aliases && Object.fromEntries(Object.entries(record.aliases).map(([alias, { useful, judged }]) => [alias, (useful + 1) / (judged + 2)]));
+    return { url, collection: vision.id, ...(trust && { trust }) };
   } catch {
     return undefined; // no bench on this machine
   }
+}
+
+/** A model's record on the bench, 0 to 1: its share of useful verdicts, smoothed; even (0.5) for one with none. */
+const trustOf = (model: string) => found?.trust?.[model] ?? 0.5;
+const TRUSTED_BY = 0.25; // how much higher one side's models' records must sum to break a tie
+
+/**
+ * The value most models gave, each model counted once (a collection asked twice seats its members twice). A tie
+ * goes to the side whose models have the clearly better record on the bench, and is otherwise no value: never the
+ * first given, never the first seat's.
+ */
+export function decide<T>(votes: { value: T; model: string }[], same: (a: T, b: T) => boolean = Object.is): T | undefined {
+  const sides: { value: T; models: Set<string> }[] = [];
+  for (const { value, model } of votes) {
+    const side = sides.find((s) => same(s.value, value));
+    if (side) side.models.add(model);
+    else sides.push({ value, models: new Set([model]) });
+  }
+  const most = Math.max(0, ...sides.map(({ models }) => models.size));
+  const tied = sides.filter(({ models }) => models.size === most);
+  if (tied.length === 1) return tied[0].value;
+  const record = (s: { models: Set<string> }) => [...s.models].reduce((sum, model) => sum + trustOf(model), 0);
+  const [best, next] = tied.sort((a, b) => record(b) - record(a));
+  return best && next && record(best) - record(next) >= TRUSTED_BY ? best.value : undefined;
 }
 
 /** The question about one picture: where its faces are, if it has any to find (artwork doesn't), and what's on it. */
@@ -107,14 +147,20 @@ Answer with JSON only, no prose:
 {"object":"${kinds[0]?.name}","sizeMm":[width,height,depth]}`;
 
 /**
- * A short question's answer about the object itself (a card's corners, a book's binding): one fact, so every
- * model's answer on every picture counts, the one given most winning (on a tie, the first given: the primary's on
- * the first picture). Undefined when no one gave one of `values`.
+ * A short question's answer about the object itself (a card's corners, a book's binding, a slab label's finish):
+ * one fact, so every model's answer on every picture counts, each model once a picture (a collection asked twice
+ * seats its members twice; a model that answered two ways there has no vote). The one given most wins; a tie, or
+ * no one giving one of `values`, is undefined, never the first given.
  */
 export function pooled(sights: Sight[] | undefined, key: string, values: string[]): string | undefined {
-  const said = (sights ?? []).flatMap(({ answers }) => answers.flatMap(({ asked }) => (asked?.[key] && values.includes(asked[key]) ? [asked[key]] : [])));
-  const count = (value: string) => said.filter((answer) => answer === value).length;
-  return said.reduce<string | undefined>((best, value) => (best === undefined || count(value) > count(best) ? value : best), undefined);
+  return decide((sights ?? []).flatMap(({ answers }) => votesOn(answers, key).filter(({ value }) => values.includes(value))));
+}
+/** Each model's answer to a short question about one picture, once: none from a model that answered it two ways. */
+export function votesOn(answers: Answer[], key: string): { value: string; model: string }[] {
+  return [...new Set(answers.map(({ model }) => model))].flatMap((model) => {
+    const given = [...new Set(answers.filter((a) => a.model === model && a.asked?.[key]).map((a) => a.asked![key]))];
+    return given.length === 1 ? [{ value: given[0], model }] : [];
+  });
 }
 
 /** Every picture looked at for a kind of object's faces, four at a time. */
@@ -126,58 +172,87 @@ export async function lookAll(pictures: Picture[], kind: Kind): Promise<Sight[]>
 
 /** Where a kind of object's faces are in a picture, from the roster's answers. */
 export async function look(picture: Picture, kind: Kind): Promise<Sight> {
-  const { jpeg, toPicture, toSent } = await letterbox(picture);
+  const { jpeg, toPicture, toSent, sent } = await letterbox(picture);
   const prompt = facesPrompt(kind);
   const keys = Object.keys(kind.asks ?? {});
-  // Disagreeing on a face, or on an answer, asks the next model.
-  const clash = (asked: Answer[]) => settle(asked).disputed.length > 0 || keys.some((key) => new Set(asked.flatMap((a) => a.asked?.[key] ?? [])).size > 1);
+  // The evidence beside the answers: where the photo is in the image sent, the shapes each face can have, what each
+  // face always shows, and, on the faces whose edges can be trusted, the edges seat's outline and edge strength.
+  const outlined = Object.keys(kind.shapes ?? {}).filter((face) => !kind.unsnapped?.includes(face));
+  const edges = outlined.length ? await edgesOf(picture) : undefined;
+  const outline = edges?.outline([...new Set(outlined.flatMap((face) => kind.shapes![face]))]);
+  const evidence: Evidence = {
+    bounds: [sent.left, sent.top, SIZE - sent.left, SIZE - sent.top], shapes: kind.shapes, shows: kind.shows, outlined,
+    ...(outline && { outline: outline.map(toSent) }), ...(edges && { support: (corners: number[][]) => edges.support(corners.map(toPicture)) }),
+  };
+  // A face left unsettled, or an answer disagreed on, asks for more.
+  const clash = (asked: Answer[]) => settle(asked, evidence).disputed.length > 0 || keys.some((key) => new Set(asked.flatMap((a) => a.asked?.[key] ?? [])).size > 1);
   const answers = await consult(jpeg, prompt, (json) => parseFaces(json, Object.keys(kind.faces), keys, Object.keys(kind.reads ?? {})), clash);
-  const settled = settle(answers);
+  const settled = settle(answers, evidence);
   // A seat agreed when one of its faces lies within AGREE of a face two seats settled, not only when it was one of the two.
   judge(answers, ({ faces }) => settled.faces.some((s) => s.agreed && Boolean(faces?.some((f) => f.face === s.face && distance(f.corners, s.corners) < AGREE))), `${kind.name} faces`);
   const back =<T extends { corners: number[][] }>(faces: T[]) => faces.map((f) => ({ ...f, corners: f.corners.map(toPicture) }));
-  // Each question's answer: the one most models gave, the higher seat's on a tie.
+  // Each question's answer: the one most models gave, each once (decide: a tie to the better record, else none).
   const asked = Object.fromEntries(keys.flatMap((key) => {
-    const said = answers.flatMap((a) => (a.asked?.[key] ? [a.asked[key]] : []));
-    const count = (value: string) => said.filter((s) => s === value).length;
-    return said.length ? [[key, said.reduce((best, value) => (count(value) > count(best) ? value : best))]] : [];
+    const answer = decide(votesOn(answers, key));
+    return answer === undefined ? [] : [[key, answer]];
   }));
   // Snapped onto the real edges, but for faces among lines nearer than the models' slip (a slab's label: its border,
   // the frame inside it and the ridge around it), where the nearest strong edge is often the wrong one.
   const faces = back(settled.faces).map((f) => ({ ...f, corners: kind.unsnapped?.includes(f.face) ? f.corners : snap(picture, f.corners), asSeen: f.corners }));
+  const sight: Sight = {
+    faces, ...(Object.keys(asked).length && { asked }),
+    answers: answers.map((a) => ({ ...a, faces: a.faces && back(a.faces) })), disputed: settled.disputed, ...(outline && { outline }),
+  };
   if (trainingOn()) {
     const { read } = readOf([{ faces, answers, disputed: [] }]);
     const label = { faces: faces.map(({ face, corners, agreed }) => ({ face, corners: corners.map((p) => toSent(p).map(Math.round)), agreed })), read, ...(keys.length && { asked }) };
-    await keep(jpeg, { task: 'faces', profile: kind.name, prompt, answers, label, disputed: settled.disputed });
+    held.set(sight, { jpeg, picture, sent, example: { task: 'faces', profile: kind.name, prompt, answers, label, disputed: settled.disputed } });
   }
-  return {
-    faces, ...(Object.keys(asked).length && { asked }),
-    answers: answers.map((a) => ({ ...a, faces: a.faces && back(a.faces) })), disputed: settled.disputed,
-  };
+  return sight;
 }
 
 /**
- * What the models read off the object, over every picture: each field as given most often (the first given on a
- * tie: the primary's on the first picture), and how sure: "agreed" (given more than once, nothing else given),
- * "once" (one answer) or "disputed" (other answers differ; every model's is in the vision record).
+ * What the models read off the object, over every picture: each field as most models gave it (a tie is no value),
+ * and how sure: "agreed" (given more than once, nothing else given), "once" (one answer), "disputed" (other answers
+ * differ) or "alone" (see below; every model's answer is in the vision record).
  */
 export function readOf(sights: Sight[] = []): { read: Read; readBy: Record<string, string> } {
-  const said = sights.flatMap(({ answers }) => answers.flatMap(({ read }) => Object.entries(read ?? {})));
-  const same = (a: string | string[], b: string | string[]) => JSON.stringify(a).toLowerCase().replace(/\s+/g, ' ') === JSON.stringify(b).toLowerCase().replace(/\s+/g, ' ');
+  const text = (v: string | string[]) => JSON.stringify(v).toLowerCase().replace(/\s+/g, ' ');
+  // One vote a model a photo: a collection asked twice about a photo seats its members twice, and a model that read
+  // a field two ways on one photo has no vote on it there. A value one model alone gives a photo, where two others
+  // or more answered it and read no such thing, is left out ("alone"): a label prints an autograph grade or doesn't.
+  const votes: Record<string, { value: string | string[]; model: string }[]> = {};
+  const alone = new Set<string>();
+  for (const { answers } of sights) {
+    const answered = answers.filter((a) => !a.error);
+    const models = [...new Set(answered.map(({ model }) => model))];
+    for (const key of new Set(answered.flatMap(({ read }) => Object.keys(read ?? {})))) {
+      const given = models.flatMap((model) => {
+        const own = [...new Set(answered.filter((a) => a.model === model && a.read?.[key] !== undefined).map((a) => text(a.read![key])))];
+        return own.length === 1 ? [{ value: answered.find((a) => a.model === model && a.read?.[key] !== undefined)!.read![key], model }] : [];
+      });
+      if (given.length === 1 && models.length - 1 >= 2) alone.add(key);
+      else votes[key] = [...(votes[key] ?? []), ...given];
+    }
+  }
   const read: Read = {};
   const readBy: Record<string, string> = {};
-  for (const key of new Set(said.map(([key]) => key))) {
-    const values = said.filter(([k]) => k === key).map(([, value]) => value);
-    const count = (value: string | string[]) => values.filter((v) => same(v, value)).length;
-    read[key] = values.reduce((best, value) => (count(value) > count(best) ? value : best));
-    readBy[key] = count(read[key]) < values.length ? 'disputed' : values.length > 1 ? 'agreed' : 'once';
+  for (const key of new Set([...Object.keys(votes), ...alone])) {
+    const given = votes[key] ?? [];
+    // The value most models gave, each model once ("GEM MINT" and "Gem  Mint" are one value, as first spelled);
+    // a tie to the better record, else no value (decide).
+    const value = decide(given, (a, b) => text(a) === text(b));
+    if (value !== undefined) read[key] = value;
+    const spellings = new Set(given.map(({ value: v }) => text(v)));
+    const models = new Set(given.map(({ model }) => model));
+    readBy[key] = !given.length ? 'alone' : spellings.size > 1 ? 'disputed' : models.size > 1 ? 'agreed' : 'once';
   }
   return { read, readBy };
 }
 
 /** Which kind of object a picture shows, and roughly how big, from the roster's answers: two agreeing settle it. */
 export async function identify(picture: Picture, kinds: Kind[]): Promise<Identity> {
-  const { jpeg } = await letterbox(picture);
+  const { jpeg, sent } = await letterbox(picture);
   const names = new Set([...kinds.map(({ name }) => name), 'none']);
   const parse = (json: any): Partial<Answer> | undefined => {
     const object = typeof json?.object === 'string' ? json.object.toLowerCase() : undefined;
@@ -186,19 +261,34 @@ export async function identify(picture: Picture, kinds: Kind[]): Promise<Identit
       ? json.sizeMm.map(Number) : undefined;
     return { object, ...(sizeMm && { sizeMm }) };
   };
-  const clash = (asked: Answer[]) => new Set(asked.filter((a) => a.object).map((a) => a.object)).size > 1;
+  // The object most models name, each once (none from a model that named two): none with a tie, so a tie asks for more.
+  const most = (asked: Answer[]) => {
+    const votes = [...new Set(asked.map(({ model }) => model))].flatMap((model) => {
+      const named = [...new Set(asked.filter((a) => a.model === model && a.object).map((a) => a.object!))];
+      return named.length === 1 ? [{ value: named[0], model }] : [];
+    });
+    const object = decide(votes);
+    return object === undefined ? undefined : { object, count: votes.filter(({ value }) => value === object).length };
+  };
+  const clash = (asked: Answer[]) => new Set(asked.filter((a) => a.object).map((a) => a.object)).size > 1 && (most(asked)?.count ?? 0) < 2;
   const prompt = identifyPrompt(kinds);
   const answers = await consult(jpeg, prompt, parse, clash);
   const usable = answers.filter((a) => a.object);
-  // Settled where two answers name the same object (the higher seats first); else the first answer's, disputed.
-  const agreed = usable.find((a, i) => usable.slice(i + 1).some((b) => b.object === a.object));
-  const pick = agreed ?? usable[0];
-  judge(answers, ({ object }) => Boolean(agreed) && object === agreed!.object, 'what it is');
-  const sizes = usable.filter((a) => a.object === pick?.object && a.sizeMm).map((a) => a.sizeMm!);
-  const sizeMm = sizes.length ? [0, 1, 2].map((k) => sizes.reduce((sum, s) => sum + s[k], 0) / sizes.length) : undefined;
-  const disputed = !agreed && usable.length > 1;
-  if (trainingOn()) await keep(jpeg, { task: 'identify', prompt, answers, label: { object: pick?.object, sizeMm }, disputed });
-  return { profile: pick?.object === 'none' ? undefined : pick?.object, sizeMm, disputed, answers };
+  // Settled by the most answers: a lone answer stands only when it's the only one; a tie is no answer, never the first seat's.
+  const pick = most(usable);
+  const agreed = (pick?.count ?? 0) >= 2;
+  judge(answers, ({ object }) => agreed && object === pick!.object, 'what it is');
+  // The size, averaged over the models that named that object, each model's own answers averaged first.
+  const average = (list: number[][]) => [0, 1, 2].map((k) => list.reduce((sum, s) => sum + s[k], 0) / list.length);
+  const sizes = [...new Set(usable.map(({ model }) => model))].flatMap((model) => {
+    const own = usable.filter((a) => a.model === model && a.object === pick?.object && a.sizeMm).map((a) => a.sizeMm!);
+    return own.length ? [average(own)] : [];
+  });
+  const sizeMm = sizes.length ? average(sizes) : undefined;
+  const disputed = !agreed && new Set(usable.map(({ model }) => model)).size > 1;
+  const identity = { profile: pick?.object === 'none' ? undefined : pick?.object, sizeMm, disputed, answers };
+  if (trainingOn()) held.set(identity, { jpeg, picture, sent, example: { task: 'identify', prompt, answers, label: { object: pick?.object, sizeMm }, disputed } });
+  return identity;
 }
 
 /**
@@ -228,39 +318,38 @@ async function letterbox(picture: Picture) {
   const jpeg = await sharp(picture.data, { raw: { width, height, channels: 4 } })
     .resize(SIZE, SIZE, { fit: 'contain', background: '#808080' }).flatten({ background: '#808080' }).jpeg({ quality: 85 }).toBuffer();
   return {
-    jpeg,
+    jpeg, sent: { left, top, scale },
     toPicture: ([x, y]: number[]) => [(x - left) / scale, (y - top) / scale],
     toSent: ([x, y]: number[]) => [x * scale + left, y * scale + top],
   };
 }
 
 /**
- * The roster asked about one image: two seats at once, the rest standing in
- * for a seat that fails, and one more when `clash` says the answers disagree.
- * The answers come back in roster order, whoever answered first, so a dispute
- * falls to the higher seat.
+ * The models asked about one image, for as long as `clash` says the answers leave something unsettled: the bench's
+ * collection (every seat at once, and again, its explorers rotated, while unsettled), then the roster, two seats at
+ * once and the rest one by one, standing in for a seat that fails or adding an answer, until it's settled or every
+ * model has answered. The roster's answers come back in its order, for the record; no seat outranks another.
  */
 async function consult(jpeg: Buffer, prompt: string, parse: (json: any) => Partial<Answer> | undefined, clash: (answers: Answer[]) => boolean): Promise<Answer[]> {
-  // The bench's seats answer all at once, so a clash needs no extra seat: the third is already in hand.
-  if (bench) {
-    const seats = await panel(bench, jpeg, prompt, parse);
-    if (seats.some((a) => !a.error) || !rosterOn()) return seats;
-  }
-  if (!rosterOn()) return []; // the bench stopped answering earlier this run, and there is no roster to stand in
-  const models = roster();
   const answers: Answer[] = [];
+  for (let asked = 0; bench && asked < BENCH_ASKS && (asked === 0 || clash(answers)); asked++) answers.push(...await panel(bench, jpeg, prompt, parse));
+  const answered = answers.some((a) => !a.error);
+  // The bench stopped answering earlier this run, or settled it; or there is no roster to stand in or add more.
+  if (!rosterOn() || (answered && !clash(answers))) return answers;
+  const models = roster();
+  const own: Answer[] = [];
   let next = 0;
   const seat = async (): Promise<void> => {
     while (next < models.length) {
       const answer = await ask(models[next++], jpeg, prompt, parse);
-      answers.push(answer);
+      own.push(answer);
       if (!answer.error) return;
     }
   };
-  const ranked = () => answers.sort((x, y) => models.indexOf(x.model) - models.indexOf(y.model));
-  await Promise.all([seat(), seat()]);
-  if (clash(ranked()) && next < models.length) await seat();
-  return ranked();
+  const all = () => [...answers, ...own.sort((x, y) => models.indexOf(x.model) - models.indexOf(y.model))];
+  if (!answered) await Promise.all([seat(), seat()]);
+  while (clash(all()) && next < models.length) await seat();
+  return all();
 }
 
 /**
@@ -283,58 +372,141 @@ function parseFaces(json: any, names: string[], keys: string[] = [], reads: stri
   return { ...(faces.length && { faces }), ...(Object.keys(read).length && { read }), ...(Object.keys(asked).length && { asked }) };
 }
 
-/**
- * Each face once: where two answers agree (the closest pair, averaged); else, disputed, where the first
- * answer to name it put it.
- */
+/** What settles a face beside the answers (look, above), all in the image as sent. */
+export interface Evidence {
+  bounds?: number[]; // the photo within the image: left, top, right, bottom
+  shapes?: Record<string, number[]>; // the shapes each face can have, width over height, upright
+  shows?: Record<string, string[]>; // what a face always shows: an answer naming it reads one of these off it
+  outline?: number[][]; // the edges seat's outline (src/edges.ts)
+  outlined?: string[]; // the faces it votes on: those whose edges can be trusted
+  support?: (corners: number[][]) => number; // how much of a face's outline runs along a real edge, 0 to 1
+}
+const CLEARLY = 0.1; // how much better one place must fit its shape and edges to win a tie on the answers
+
 /** Whether four corners run clockwise on screen (y down): twice their signed area, by the shoelace formula, is positive. */
 const clockwise = (corners: number[][]) => corners.reduce((sum, p, k) => sum + p[0] * corners[(k + 1) % 4][1] - corners[(k + 1) % 4][0] * p[1], 0) > 0;
+const side = (a: number[], b: number[]) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+/** A face's shape, width over height, in its own reading order. */
+const shapeOf = ([tl, tr, br, bl]: number[][]) => (side(tl, tr) + side(bl, br)) / (side(tl, bl) + side(tr, br));
+/** The same four corners in each order they can be given: four turns, each as itself and as its mirror image. */
+const orders = (q: number[][]) => [0, 1, 2, 3].flatMap((k) => {
+  const turned = [...q.slice(k), ...q.slice(0, k)];
+  return [turned, [turned[0], turned[3], turned[2], turned[1]]];
+});
+/** How far apart two faces are, whichever way each was turned: where they are, not which way up. */
+const apartAnyway = (a: number[][], b: number[][]) => Math.min(...orders(b).map((order) => distance(a, order)));
 
-export function settle(answers: Answer[]): { faces: Seen[]; disputed: string[] } {
+/**
+ * Each face once, by evidence, never by which model was listed first:
+ * - agreed where answers give the same place and turn: every one that does, averaged;
+ * - else where answers put it, whichever way each turned it (a mirror image says where, never which way up), or the
+ *   edges seat does: the one answer giving a turn there gives its turn. Two such places go to the one more answers
+ *   put it at, then to the one clearly nearer its shape and its edges; else to neither;
+ * - else where the edges seat outlines it, when the answers near it agree on its turn;
+ * - else it's unsettled: disputed and left out, so more models are asked, and failing that a person looks.
+ * An answer that can't be right places nothing: corners well past the photo, or a shape its face can't have. A face
+ * the only model that answered placed stands on its word, which the review says.
+ */
+export function settle(answers: Answer[], evidence: Evidence = {}): { faces: Seen[]; disputed: string[] } {
+  // Every answer counts, but a model only once in agreeing: a collection asked again seats its members again.
   const usable = answers.filter((a) => a.faces);
+  type Placing = { model: string; corners: number[][] };
+  const models = (list: { model: string }[]) => [...new Set(list.map(({ model }) => model))];
+  /** A model's own answers for a face, as one: averaged if they agree with each other, none if they don't. */
+  const consistent = (list: Placing[]) => (list.every(({ corners }) => distance(corners, list[0].corners) < AGREE) ? mean(list.map(({ corners }) => corners)) : undefined);
   const names = [...new Set(usable.flatMap((a) => a.faces!.map((f) => f.face)))];
+  const { bounds, shapes = {}, shows = {}, outline, outlined = [], support } = evidence;
+  const offShape = (face: string, corners: number[][]) => (shapes[face]?.length ? Math.min(...shapes[face].map((s) => Math.abs(shapeOf(corners) / s - 1))) : 0);
+  const slack = OUTSIDE * SIZE;
+  const possible = (face: string, corners: number[][]) => offShape(face, corners) <= OFF_SHAPE
+    && (!bounds || corners.every(([x, y]) => x >= bounds[0] - slack && x <= bounds[2] + slack && y >= bounds[1] - slack && y <= bounds[3] + slack));
+  const fit = (face: string, corners: number[][]) => 1 - offShape(face, corners) + (support && outlined.includes(face) ? support(corners) : 0);
   const faces: Seen[] = [];
   const disputed: string[] = [];
   const singles: { face: string; model: string; corners: number[][] }[] = [];
   for (const name of names) {
-    const all = usable.flatMap((a) => a.faces!.filter((f) => f.face === name).slice(0, 1).map((f) => ({ model: a.model, corners: f.corners })));
+    const all: Placing[] = usable.flatMap((a) => a.faces!.filter((f) => f.face === name).slice(0, 1).map((f) => ({ model: a.model, corners: f.corners })));
+    const fits = all.filter(({ corners }) => possible(name, corners));
     // A face as the camera saw it winds clockwise in its own reading order (y down). One wound the other way is its
-    // mirror image, which no photo shows (two models agreeing on one put a spine's lettering backward): it says the
-    // face is there, but its corners place nothing.
-    const each = all.filter(({ corners }) => clockwise(corners));
-    const named = all.length > 1 || usable.length === 1; // by more than one model, or by the only one that answered
-    let best: { by: string[]; corners: number[][]; apart: number } | undefined;
-    for (let i = 0; i < each.length; i++) {
-      for (let j = i + 1; j < each.length; j++) {
-        const apart = distance(each[i].corners, each[j].corners);
-        if (apart < AGREE && (!best || apart < best.apart)) {
-          best = { by: [each[i].model, each[j].model], apart, corners: each[i].corners.map((p, k) => [(p[0] + each[j].corners[k][0]) / 2, (p[1] + each[j].corners[k][1]) / 2]) };
-        }
-      }
+    // mirror image, which no photo shows (two models agreeing on one put a spine's lettering backward): it says
+    // where the face is, but not which way up.
+    const each = fits.filter(({ corners }) => clockwise(corners));
+    const edges = outline && outlined.includes(name) ? outline : undefined;
+    const lone = models(usable).length === 1; // only one model answered at all
+    if (models(all).length === 1 && !lone) { // named by one model while others answered without it
+      const corners = each.length ? consistent(each) : undefined;
+      if (corners) singles.push({ face: name, model: each[0].model, corners });
+      continue;
     }
-    if (best) faces.push({ face: name, corners: best.corners, asSeen: best.corners, by: best.by, agreed: true });
-    else if (named && each.length) {
-      // Named twice in different places or turns (disputed), or by the only model that answered.
-      faces.push({ face: name, corners: each[0].corners, asSeen: each[0].corners, by: [each[0].model], agreed: false });
-      if (all.length > 1) disputed.push(name);
-    } else if (named) {
-      disputed.push(name); // only mirror images: the next model is asked, and failing that it's for review
-    } else if (each.length) {
-      singles.push({ face: name, ...each[0] });
+    const place = (corners: number[][], by: string[], agreed: boolean) => faces.push({ face: name, corners, asSeen: corners, by, agreed });
+
+    // The same place and turn: each answer's group of those that agree with it. The group most models are in
+    // stands, all of them averaged; two such groups in different places are a dispute, for the evidence below.
+    const groups = each.map(({ corners }) => each.filter((other) => distance(other.corners, corners) < AGREE));
+    const most = Math.max(0, ...groups.map((group) => models(group).length));
+    const biggest = groups.filter((group) => models(group).length === most);
+    const middle = most >= 2 ? mean(biggest[0].map(({ corners }) => corners)) : undefined;
+    if (middle && biggest.every((group) => distance(mean(group.map(({ corners }) => corners)), middle) < AGREE)) {
+      const agreeing = [...new Set(biggest.flat())];
+      place(mean(agreeing.map(({ corners }) => corners)), models(agreeing), true);
+      continue;
+    }
+
+    // The same place, whichever way up: who else puts it there, the edges seat included. A place another answer
+    // gives a different turn has its turn in dispute.
+    const backers = ({ model, corners }: Placing) => [
+      ...models(fits.filter((other) => other.model !== model && apartAnyway(other.corners, corners) < AGREE)),
+      ...(edges && apartAnyway(edges, corners) < AGREE ? ['edges'] : []),
+    ];
+    const turnedAlike = (c: Placing) => !each.some((other) => apartAnyway(other.corners, c.corners) < AGREE && distance(other.corners, c.corners) >= AGREE);
+    if (lone) {
+      const corners = each.length ? consistent(each) : undefined;
+      if (corners) place(corners, [each[0].model, ...backers(each[0])], backers(each[0]).length > 0);
+      else disputed.push(name); // only a mirror image, one that can't be right, or two that differ: more are asked
+      continue;
+    }
+    // Each place a group of answers gives, averaged, and who puts it there; the place most do stands, then the one
+    // clearly nearer its shape and edges. A place and one within AGREE of it are the same place, not rivals.
+    const places = groups.map((group) => {
+      const corners = mean(group.map(({ corners: c }) => c));
+      const own = models(group);
+      return { corners, by: [...own, ...backers({ model: own[0], corners }).filter((m) => !own.includes(m))] };
+    }).filter(({ corners, by }) => by.length >= 2 && turnedAlike({ model: '', corners }))
+      .sort((x, y) => y.by.length - x.by.length || fit(name, y.corners) - fit(name, x.corners));
+    const [top] = places;
+    const next = top && places.find(({ corners }) => distance(corners, top.corners) >= AGREE);
+    // More answers there; else clearly nearer its shape and edges; else the models with the clearly better record.
+    const record = (by: string[]) => by.reduce((sum, model) => sum + trustOf(model), 0);
+    if (top && (!next || top.by.length > next.by.length || fit(name, top.corners) - fit(name, next.corners) >= CLEARLY
+      || record(top.by) - record(next.by) >= TRUSTED_BY)) {
+      place(top.corners, top.by, true);
+      continue;
+    }
+
+    // The edges seat's outline, where the answers near it agree which way up it is.
+    const near = edges ? each.filter(({ corners }) => apartAnyway(edges, corners) < 2 * AGREE) : [];
+    const turns = near.map(({ corners }) => [0, 1, 2, 3].reduce((best, k) => (distance(corners, turn(edges!, k)) < distance(corners, turn(edges!, best)) ? k : best), 0));
+    if (near.length && turns.every((k) => k === turns[0])) {
+      place(turn(edges!, turns[0]), [...models(near), 'edges'], true);
+      continue;
+    }
+    disputed.push(name);
+  }
+
+  // Named by one model while others answered without it: left out, unless another put a face of another name in the
+  // same place. Then they agree where it is but not what it is (a slab's back called its front): the name stands
+  // whose answer read what that face always shows (a front's grade) where the other's didn't; else it's unsettled.
+  const readsIt = (model: string, face: string) => !shows[face] || shows[face].some((key) => usable.some((a) => a.model === model && Boolean(a.read?.[key]?.length)));
+  const sharing = (single: typeof singles[0]) => singles.filter((other) => other.model !== single.model && apartAnyway(other.corners, single.corners) < AGREE);
+  const placedNear = (single: typeof singles[0]) => faces.some((f) => apartAnyway(f.corners, single.corners) < AGREE);
+  for (const single of singles) {
+    const rivals = sharing(single).filter((other) => other.face !== single.face);
+    if (!placedNear(single) && rivals.length && readsIt(single.model, single.face) && rivals.every((other) => !readsIt(other.model, other.face))) {
+      faces.push({ face: single.face, corners: single.corners, asSeen: single.corners, by: [single.model, ...sharing(single).map(({ model }) => model)], agreed: true });
     }
   }
-  // Named by one model while another answered without it: left out, unless the other put a face of another name in
-  // the same place. Then they agree where it is but not what it is (a slab's back called its front): the higher
-  // seat's name stands, disputed, so the next model is asked.
-  const seat = (model: string) => usable.findIndex((a) => a.model === model);
-  singles.sort((x, y) => seat(x.model) - seat(y.model));
-  for (const [i, single] of singles.entries()) {
-    const near = (corners: number[][]) => distance(corners, single.corners) < AGREE;
-    if (faces.some((f) => near(f.corners))) continue;
-    if (singles.some((other, j) => j > i && other.model !== single.model && near(other.corners))) {
-      faces.push({ face: single.face, corners: single.corners, asSeen: single.corners, by: [single.model], agreed: false });
-      disputed.push(single.face);
-    }
+  for (const single of singles) {
+    if (!placedNear(single) && sharing(single).length && !disputed.includes(single.face)) disputed.push(single.face);
   }
   return { faces, disputed };
 }
@@ -342,6 +514,10 @@ export function settle(answers: Answer[]): { faces: Seen[]; disputed: string[] }
 /** Mean distance between matching corners, as a share of the image's diagonal. */
 const distance = (a: number[][], b: number[][]) =>
   a.reduce((sum, p, i) => sum + Math.hypot(p[0] - b[i][0], p[1] - b[i][1]), 0) / 4 / Math.hypot(SIZE, SIZE);
+/** Corners averaged, corner by corner. */
+const mean = (quads: number[][][]) => quads[0].map((_, k) => [0, 1].map((xy) => quads.reduce((sum, q) => sum + q[k][xy], 0) / quads.length));
+/** Corners given from the k-th on: the same face, turned. */
+const turn = (q: number[][], k: number) => [...q.slice(k), ...q.slice(0, k)];
 
 /** The question and the photo, as an OpenAI-compatible chat request's body. */
 const request = (model: string, jpeg: Buffer, prompt: string, stream = false) => JSON.stringify({

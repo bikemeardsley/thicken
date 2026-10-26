@@ -10,7 +10,7 @@
 // count. With an ISBN the sidecar also gets Open Library's catalog record.
 import { Document, type Material } from '@gltf-transform/core';
 import sharp from 'sharp';
-import { addPart, assignFaces, box, type Code, cut, type Face, type Faces, foilMap, load, type Picture, pictureRecord, pooled, type Profile, readOf, regionIn, rounded, roundedBox, shots, type Side, sideMaterial, sidesUnknown, type Sight, texture, toGlb, turned } from '../kit.ts';
+import { addPart, assignFaces, box, type Code, cut, type Face, type Faces, foilMap, load, type Picture, pictureRecord, pooled, type Profile, readOf, regionIn, rounded, roundedBox, shots, type Side, sideMaterial, sidesUnknown, type Sight, straighten, texture, toGlb, turned } from '../kit.ts';
 
 export const book: Profile = {
   name: 'book',
@@ -27,7 +27,9 @@ export const book: Profile = {
     measuredBy: 'where each of its sizes came from: measured, openlibrary, loc, googlebooks, pages, photos, cover or trim',
     depthEstimates: 'every thickness estimate made: from the photos and from the page count',
     coverUrl: 'Open Library\'s cover, when it stands in for a front not photographed',
-    sticker: 'where a foil seal or sticker is on its front cover',
+    sticker: 'where a foil seal or sticker is on its front cover, and whether it\'s round',
+    pageEdges: 'its page edges\' color (#rrggbb), whether gilt, and how found: photo (a photo shows them), vision (the models\' colors) or assumed (cream)',
+    finish: 'its cover\'s finish: glossy or matte', finishBy: 'how that was found: vision or assumed',
     lookups: 'every catalog request: host, path, status and time',
   },
   faces: {
@@ -40,7 +42,13 @@ export const book: Profile = {
     title: 'its title', subtitle: 'its subtitle', authors: ['its authors'], series: 'the series and its number in it ("Discworld 12")',
     publisher: 'the publisher or imprint', edition: 'any edition or printing it names ("First edition", "Movie tie-in")',
   },
-  asks: { binding: 'is it a "hardcover" (stiff boards that stand a little past the pages at the top, bottom and page edge, with a dust jacket or without) or a "paperback" (a soft cover flush with its pages)?' },
+  asks: {
+    binding: 'is it a "hardcover" (stiff boards that stand a little past the pages at the top, bottom and page edge, with a dust jacket or without) or a "paperback" (a soft cover flush with its pages)?',
+    pageEdges: 'its page edges, if you can see any: "plain" (white or cream paper), "colored" (sprayed, stained or printed with a color or pattern) or "gilt" (gold or silver metal)? Say "none" if no page edge shows.',
+    pageColor: 'if you can see its page edges, their color as a hex code ("#efe6d2"); else "none"',
+    finish: 'is its cover "glossy" (it shines and reflects the light) or "matte" (a flat, dull finish)?',
+    stickerShape: 'if there\'s a foil sticker or seal on the front cover, is it "round" or "square"? Say "none" if there\'s none.',
+  },
   // An ISBN barcode (EAN-13 starting 978 or 979) says it's a book, which, and which photos show its back.
   read: (scanned) => {
     const use = scanned.map(({ format, text }) => (format === 'EAN13' && /^97[89]/.test(text) ? 'isbn' : undefined));
@@ -68,7 +76,9 @@ const BOARD_MM = BOARDS_MM / 2; // each board, with its cloth and any jacket; th
 const SQUARE_MM = 3; // how far the boards stand past the pages at the top, bottom and page edge: about 1/8 in
 const DEFAULT_DEPTH_MM = 20;
 const TRIMS_IN = [[4.25, 6.87], [5, 8], [5.5, 8.5], [6, 9], [7, 10], [8.5, 11], [8.5, 8.5]]; // width × height
-const CREAM = [0xef, 0xe6, 0xd2]; // page color
+const CREAM = [0xef, 0xe6, 0xd2]; // page color, where nothing shows the book's own
+const GILT = [0xc9, 0xa6, 0x40];
+const FINISH_ROUGHNESS: Record<string, number> = { glossy: 0.25, matte: 0.7 };
 const ROUNDED_MM = 1; // a paperback's soft edges
 const ESTIMATES_DISAGREE = 0.35; // photos against page count: beyond this, one of them is wrong
 const LOOKUP_TIMEOUT_MS = 10_000;
@@ -235,17 +245,25 @@ async function make(
   }
 
   const plain: Side = { color: front.edge, roughness: 0.6 }; // a wraparound cover carries on round the spine
-  const paper = await pageTextures();
-  const pagesAcross: Side = { picture: paper.across, roughness: 0.9 }; // one Side for top and bottom: one draw call
-  // A foil sticker on the front cover, where the models found one on a photo of it: round when its box is about
-  // square on the book (a seal), else as boxed. Not on a stand-in cover: it's someone else's copy.
+  // The page sides not photographed: their color as a photo shows them (a sliver of page edge past a cover, too
+  // narrow to cut out, still shows its color), else as the models see it, else cream; gilt edges as metal.
+  const { color: pageColor, by: pageBy } = pageColorOf(pictures, sights);
+  const gilt = pooled(sights, 'pageEdges', ['plain', 'colored', 'gilt']) === 'gilt';
+  const paper = await pageTextures(pageColor ?? (gilt ? GILT : CREAM));
+  const pageSide = (picture: Uint8Array): Side => ({ picture, roughness: gilt ? 0.3 : 0.9, ...(gilt && { metallic: 0.8 }) });
+  const pagesAcross = pageSide(paper.across); // one Side for top and bottom: one draw call
+  const finish = pooled(sights, 'finish', ['glossy', 'matte']);
+  const cover = finish ? { roughness: FINISH_ROUGHNESS[finish] } : {};
+  // A foil sticker on the front cover, where the models found one on a photo of it: round or square as they see it,
+  // else round when its box is about square on the book (a seal). Not on a stand-in cover: it's someone else's copy.
   const found = faces.front === 'photo' ? regionIn(sights, 'sticker', 'front') : undefined;
-  const sticker = found && { ...found, round: Math.abs(((found.x1 - found.x0) * width) / ((found.y1 - found.y0) * height) - 1) < 0.2 };
+  const shape = pooled(sights, 'stickerShape', ['round', 'square']);
+  const sticker = found && { ...found, round: shape ? shape === 'round' : Math.abs(((found.x1 - found.x0) * width) / ((found.y1 - found.y0) * height) - 1) < 0.2 };
   const sides: Record<Face, Side> = {
-    front: { picture: front.jpeg, ...(sticker && { foil: await foilMap([sticker], front.height / front.width) }) },
-    back: back ? { picture: back.jpeg } : plain,
-    left: spine ? { picture: spine.jpeg } : plain,
-    right: edge ? { picture: edge.jpeg } : { picture: paper.down, roughness: 0.9 },
+    front: { picture: front.jpeg, ...cover, ...(sticker && { foil: await foilMap([sticker], front.height / front.width) }) },
+    back: back ? { picture: back.jpeg, ...cover } : plain,
+    left: spine ? { picture: spine.jpeg, ...cover } : plain,
+    right: edge ? { picture: edge.jpeg } : pageSide(paper.down),
     top: top ? { picture: top.jpeg } : pagesAcross,
     bottom: bottom ? { picture: bottom.jpeg } : pagesAcross,
   };
@@ -258,7 +276,9 @@ async function make(
       profile: 'book', isbn, ...(coverUrl && { coverUrl }),
       widthMm: round(width), heightMm: round(height), depthMm: round(depth), measuredBy,
       depthEstimates: { photos: fromPhotos && round(fromPhotos), pages: fromPages && round(fromPages) },
-      pages, binding, bindingBy: seen ? 'vision' : listed ? 'catalog' : 'assumed', ...(sticker && { sticker: rounded(sticker) }),
+      pages, binding, bindingBy: seen ? 'vision' : listed ? 'catalog' : 'assumed', ...(sticker && { sticker: { ...rounded(sticker), round: sticker.round } }),
+      pageEdges: { color: `#${(pageColor ?? (gilt ? GILT : CREAM)).map((c) => c.toString(16).padStart(2, '0')).join('')}`, gilt, by: pageColor ? pageBy : gilt ? 'vision' : 'assumed' },
+      finish: finish ?? 'matte', finishBy: finish ? 'vision' : 'assumed',
       faces, review, warnings: log.warnings, catalog,
       ...(match && { match: { by: 'title', read: { title: read!.title, authors: read!.authors }, ...match } }),
       pictures: pictureRecord(all, roles), lookups: log.lookups,
@@ -324,14 +344,40 @@ async function hardcoverBook([width, height, depth]: number[], sides: Record<Fac
   return toGlb(doc, mesh);
 }
 
-let made: Promise<{ down: Uint8Array; across: Uint8Array }> | undefined;
 /**
- * Stacked pages for unphotographed page sides, the same for every book: each page a shade of its own,
- * neighbors drifting together as pages clump, a few darker gaps between sections, faint fibers along the
- * paper. The lines run down the page-edge texture and across the top-and-bottom one.
+ * The color of a book's page edges as its photos show them, where no page side was photographed whole: the mean of
+ * any sliver of page edge, top or bottom the models found (too narrow to cut out, but its color is there); else the
+ * color two models or more gave, averaged; else none.
  */
-function pageTextures(): Promise<{ down: Uint8Array; across: Uint8Array }> {
-  made ??= (async () => {
+function pageColorOf(pictures: Picture[], sights: Sight[] = []): { color?: number[]; by?: string } {
+  const seen = sights.flatMap(({ faces }, i) => faces.filter(({ face }) => face === 'edge' || face === 'top' || face === 'bottom').flatMap(({ corners }) => {
+    const { data, width, height } = straighten(pictures[i], corners);
+    const sum = [0, 0, 0];
+    let n = 0;
+    // Its middle, away from where it meets the cover.
+    for (let y = Math.floor(0.2 * height); y < Math.ceil(0.8 * height); y++) {
+      for (let x = Math.floor(0.2 * width); x < Math.ceil(0.8 * width); x++, n++) for (let k = 0; k < 3; k++) sum[k] += data[(y * width + x) * 4 + k];
+    }
+    return n ? [sum.map((s) => Math.round(s / n))] : [];
+  }));
+  const mean = (colors: number[][]) => [0, 1, 2].map((k) => Math.round(colors.reduce((s, c) => s + c[k], 0) / colors.length));
+  if (seen.length) return { color: mean(seen), by: 'photo' };
+  const said = sights.flatMap(({ answers }) => [...new Set(answers.map(({ model }) => model))].flatMap((model) => {
+    const hex = answers.find((a) => a.model === model && /^#?[0-9a-f]{6}$/i.test(a.asked?.pageColor ?? ''))?.asked!.pageColor.replace('#', '');
+    return hex ? [{ model, color: [0, 2, 4].map((k) => parseInt(hex.slice(k, k + 2), 16)) }] : [];
+  }));
+  return new Set(said.map(({ model }) => model)).size >= 2 ? { color: mean(said.map(({ color }) => color)), by: 'vision' } : {};
+}
+
+const made = new Map<string, Promise<{ down: Uint8Array; across: Uint8Array }>>();
+/**
+ * Stacked pages for unphotographed page sides, in `color` (cream, unless a photo or the models say otherwise): each
+ * page a shade of its own, neighbors drifting together as pages clump, a few darker gaps between sections, faint
+ * fibers along the paper. The lines run down the page-edge texture and across the top-and-bottom one.
+ */
+function pageTextures(color: number[]): Promise<{ down: Uint8Array; across: Uint8Array }> {
+  const key = color.join();
+  if (!made.has(key)) made.set(key, (async () => {
     const [pages, along] = [192, 256];
     let seed = 7; // mulberry32: seeded, so the texture never changes between runs
     const random = () => {
@@ -350,14 +396,14 @@ function pageTextures(): Promise<{ down: Uint8Array; across: Uint8Array }> {
     for (let y = 0; y < along; y++) {
       for (let x = 0; x < pages; x++) {
         const fiber = 1 + (random() - 0.5) * 0.025;
-        for (let k = 0; k < 3; k++) data[(y * pages + x) * 3 + k] = Math.min(255, Math.round(CREAM[k] * shade[x] * fiber));
+        for (let k = 0; k < 3; k++) data[(y * pages + x) * 3 + k] = Math.min(255, Math.round(color[k] * shade[x] * fiber));
       }
     }
     const image = sharp(data, { raw: { width: pages, height: along, channels: 3 } });
     const [down, across] = await Promise.all([image.clone().jpeg({ quality: 90 }).toBuffer(), image.clone().rotate(90).jpeg({ quality: 90 }).toBuffer()]);
     return { down, across };
-  })();
-  return made;
+  })());
+  return made.get(key)!;
 }
 
 /**

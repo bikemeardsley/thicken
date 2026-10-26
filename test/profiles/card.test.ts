@@ -7,7 +7,7 @@ import { type Iridescence } from '@gltf-transform/extensions';
 import sharp from 'sharp';
 import { cut } from '../../src/faces.ts';
 import { thicken } from '../../src/thicken.ts';
-import { letterboxed, catalog, read, pick, assertExtents, assertClosed } from '../helpers.ts';
+import { letterboxed, catalog, colorOf, near, read, pick, assertExtents, assertClosed } from '../helpers.ts';
 
 test('card: a raw trading card in uncropped photos, a thin plate with rounded corners; a thick one by its points', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
@@ -23,12 +23,13 @@ test('card: a raw trading card in uncropped photos, a thin plate with rounded co
   }
   const seen = quad.map(([x, y]) => [125 + (x * 5) / 6, (y * 5) / 6]); // letterboxed into 1000 × 1000
   let corners = (model: string) => 'round'; // what each model says of the card's corners
+  let said: object = {}; // and of anything else
   const fetch = catalog({}, {
     vision: async ({ model, prompt, photo }) => {
       if (prompt.includes('Which of these is it?')) return { object: 'card', sizeMm: [63, 88, 0.3] };
       const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
       const middle = (500 * info.width + 500) * info.channels; // green in the middle: the front
-      return { faces: [{ face: data[middle + 1] > data[middle + 2] ? 'front' : 'back', corners: seen }], corners: corners(model) };
+      return { faces: [{ face: data[middle + 1] > data[middle + 2] ? 'front' : 'back', corners: seen }], corners: corners(model), ...said };
     },
   });
   t.after(() => fetch.mock.restore());
@@ -48,9 +49,49 @@ test('card: a raw trading card in uncropped photos, a thin plate with rounded co
   assert.deepEqual([vintage.sidecar.corners, vintage.sidecar.cornersBy], ['square', 'vision']);
   assert.deepEqual((vintage.sidecar.vision as { photos: { answers: { model: string }[] }[] }).photos[0].answers.map(({ model }) => model), ['a', 'b', 'c']);
   assertClosed(await read(vintage.glb), 63.5 * 88.9 * 0.35, 1e-4);
+  // A Yu-Gi-Oh! card on thick stock, glossy, as the models see it: 59 × 86 mm, 55 pt (the thinnest thick), shiny.
+  said = { format: 'small', stock: 'thick', finish: 'glossy' };
+  const small = await thicken(files, { profile: 'card' });
+  said = {};
+  assert.deepEqual(pick(small.sidecar, ['widthMm', 'heightMm', 'depthMm', 'format', 'formatBy', 'stock', 'finish', 'finishBy']),
+    { widthMm: 59, heightMm: 86, depthMm: 1.4, format: 'small', formatBy: 'vision', stock: 'thick', finish: 'glossy', finishBy: 'vision' });
+  assert.ok(small.sidecar.warnings.some((w) => w.startsWith('a thick card (the models say)')), small.sidecar.warnings.join('; '));
   // A thick patch card, sold as 130 pt: 3.3 mm.
   const thick = await thicken(files, { profile: 'card', pt: 130 });
   assert.deepEqual([thick.sidecar.depthMm, thick.sidecar.pt, (thick.sidecar.measuredBy as { depth: string }).depth], [3.3, 130, 'pt']);
+});
+
+test('card: a person settles what the models can\'t: photos named for their faces, corners given, or photos cropped', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  // The same card on its table; and its front again, cropped to its edges.
+  const quad = [[300, 330], [681, 330], [681, 863.4], [300, 863.4]];
+  const [front, back, cropped] = [path.join(folder, 'front.png'), path.join(folder, 'back.png'), path.join(folder, 'IMG_3.png')];
+  for (const [file, fill] of [[front, '#2e7d32'], [back, '#1d4f9e']]) {
+    const svg = `<svg width="900" height="1200"><polygon points="${quad.map((p) => p.join(',')).join(' ')}" fill="${fill}"/></svg>`;
+    await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#8b5a2b' } }).composite([{ input: Buffer.from(svg) }]).png().toFile(file);
+  }
+  await sharp({ create: { width: 381, height: 533, channels: 3, background: '#2e7d32' } }).png().toFile(cropped);
+  const frontColor = async (glb: Uint8Array) => colorOf(await read(glb), [0, 0, 1]);
+
+  // No vision: two photos would stop the run, but their names say which is which. Used whole, the table and all.
+  const named = await thicken([back, front], { profile: 'card' });
+  assert.deepEqual((named.sidecar.pictures as { file: string; role: string }[]).map(({ file, role }) => [file, role]), [['back.png', 'back'], ['front.png', 'front']]);
+  assert.ok(!near(await frontColor(named.glb), '#2e7d32'), 'the front, uncropped, is mostly table');
+  // Its corners given, in the photo's own pixels: cut to the card, still with no vision, and nothing to review.
+  const given = await thicken([front, back], { profile: 'card', corners: { 'front.png': { front: quad } } });
+  assert.ok(near(await frontColor(given.glb), '#2e7d32'), 'the front is the card alone');
+  assert.equal(given.sidecar.vision, undefined);
+  assert.ok(given.sidecar.review.every((item) => !item.includes('no vision model answered')), given.sidecar.review.join('; '));
+
+  // With vision, the models name the cropped photo's face but put it well inside: --cropped makes it the whole photo.
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  const fetch = catalog({}, { vision: async () => ({ faces: [{ face: 'front', corners: [[400, 400], [600, 400], [600, 600], [400, 600]] }] }) });
+  t.after(() => fetch.mock.restore());
+  const whole = await thicken([cropped], { profile: 'card', cropped: true });
+  const [photo] = (whole.sidecar.vision as { photos: { faces: { face: string; corners: number[][]; agreed: boolean }[] }[] }).photos;
+  assert.deepEqual(photo.faces.map(({ face, corners, agreed }) => [face, corners, agreed]), [['front', [[0, 0], [381, 0], [381, 533], [0, 533]], true]]);
 });
 
 test('card: with a model bench on this machine, its vision collection answers every photo, and each seat is judged', async (t) => {

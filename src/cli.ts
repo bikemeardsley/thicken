@@ -23,6 +23,10 @@ ${PROFILES.map((p) => `  ${p.name.padEnd(8)} ${p.input.replace(/`/g, '')}`).join
 Options: --size WxHxD (mm; any left out are looked up or estimated), --isbn 978... (a book),
   --holder psa|psa-thick|psa-tall|bgs|cgc|cgc-tall|sgc|tag (a slab), --pt N (a thick card's points:
   55, 75, 100, 130, 180), --width and --depth (a badge, in mm).
+Settling what the models can't: --cropped (each photo is cropped to the object: the models say
+  which face, not where), --corners faces.json ({"IMG_1.jpg": {"front": [[x,y],[x,y],[x,y],[x,y]]}},
+  corners top-left first, clockwise, in the photo's pixels). A photo named for a face (front.jpg,
+  back.jpg) is that face.
 Pictures: JPEG, PNG, HEIC, WebP, AVIF, GIF, TIFF, SVG, or a scanner app's PDF (one picture per page).
 Video (MOV, MP4), with a vision roster and ffmpeg installed: a handful of its sharpest frames go
 to the models as more pictures, and show any face no photo does.
@@ -53,6 +57,8 @@ const { positionals, values } = parseArgs({
     pt: { type: 'string' },
     width: { type: 'string' },
     depth: { type: 'string' },
+    cropped: { type: 'boolean' },
+    corners: { type: 'string' },
     preview: { type: 'boolean' },
     force: { type: 'boolean' },
     help: { type: 'boolean', short: 'h' },
@@ -76,6 +82,7 @@ const options: Options = {
   pt: mm(values.pt),
   widthMm: mm(values.width),
   depthMm: mm(values.depth),
+  cropped: values.cropped,
 };
 
 const readSidecar = (glb: string): Promise<Sidecar | undefined> =>
@@ -110,6 +117,7 @@ async function previewer() {
 }
 
 try {
+  if (values.corners) options.corners = JSON.parse(await readFile(values.corners, 'utf8'));
   if (command === 'profile') {
     await (await import('./profile-tools.ts')).profileCommand(positionals, values.from);
   } else if (command === 'mcp') {

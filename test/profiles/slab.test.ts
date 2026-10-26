@@ -19,7 +19,7 @@ test('slab: a grader\'s QR code picks the holder, and the holder its size', asyn
     profile: 'slab', sources: ['slab.jpg'], holder: 'psa', grader: 'psa', cert: '12345678', verifyUrl: 'https://www.psacard.com/cert/12345678',
     widthMm: 80.5, heightMm: 136, depthMm: 6.5, measuredBy: 'table', faces: { front: 'photo', back: 'color' }, review: ['back (plain color)', NO_VISION],
     warnings: ['the card and label are placed where a psa holder usually has them: with a vision roster they\'re found in the photos'],
-    identifiedBy: { profile: 'recognized', grader: 'qr', cert: 'qr' },
+    identifiedBy: { profile: 'recognized', grader: 'qr', cert: 'qr', verifyUrl: 'qr' },
   });
   const doc = await read(glb);
   assertExtents(doc, [0.0805, 0.136, 0.0065]);
@@ -133,6 +133,70 @@ test('slab: the card and label are placed from the sides whose outline two model
   assert.deepEqual([inside.card.widthMm, inside.card.heightMm, inside.card.atMm[0]], [63.5, 88.9, 0]);
 });
 
+test('slab: a label the models see as foil shines, and the grader\'s logo on the clear insert is cut from the photos, the table behind it left out', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  // A BGS slab, the counter showing brown through its clear plastic, and a white logo printed on the insert left of
+  // the label (seen from behind on the right, as it's the same print).
+  const [slab, label, card, logo, mark] = [[0, 0, 83, 131], [17, 4.5, 79, 26], [9.75, 33, 73.25, 121.9], [4, 6, 15, 24], [6, 8, 13, 22]];
+  const [front, back] = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
+  const mirrored = ([x0, y0, x1, y1]: number[]) => [83 - x1, y0, 83 - x0, y1];
+  await slabPhoto(front, [[slab, '#6b5a4a'], [label, '#c9a640'], [mark, '#ffffff'], [card, '#2e7d32']]);
+  await slabPhoto(back, [[slab, '#6b5a4a'], [mirrored(label), '#c9a640'], [mirrored(mark), '#ffffff'], [card, '#1d4f9e']]);
+  let finish = (model: string) => 'foil'; // what each model says the label is printed on
+  const fetch = catalog({}, {
+    vision: async ({ model, photo }) => {
+      const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
+      const middle = (500 * info.width + 500) * info.channels;
+      const green = data[middle + 1] > data[middle + 2];
+      const side = (rect: number[]) => letterboxed(green ? rect : mirrored(rect));
+      return { faces: [{ face: green ? 'front' : 'back', corners: letterboxed(slab) }, { face: 'card', corners: letterboxed(card) }, { face: 'label', corners: side(label) }, { face: 'logo', corners: side(logo) }], labelFinish: finish(model) };
+    },
+  });
+  t.after(() => fetch.mock.restore());
+  const { glb, sidecar } = await thicken([front, back], { profile: 'slab', holder: 'bgs' });
+  const inside = sidecar.inside as Record<string, Record<string, unknown>>;
+  assert.deepEqual([inside.label.finish, inside.logo.widthMm, inside.logo.heightMm, inside.logo.atMm, inside.logo.sides], ['foil', 11, 18, [-32, 50.5], ['front', 'back']]);
+  const materials = Object.fromEntries((await read(glb)).getRoot().listMaterials().map((m) => [m.getName(), m]));
+  assert.deepEqual([materials['label-front'].getMetallicFactor(), materials['label-back'].getMetallicFactor()], [0.8, 0.8]);
+  for (const side of ['front', 'back']) {
+    const material = materials[`logo-${side}`];
+    assert.equal(material.getAlphaMode(), 'MASK');
+    const { data, info } = await sharp(material.getBaseColorTexture()!.getImage()!).raw().toBuffer({ resolveWithObject: true });
+    const alpha = (x: number, y: number) => data[(Math.round(y * info.height) * info.width + Math.round(x * info.width)) * info.channels + 3];
+    // The white mark (2/11 to 9/11 across, 2/18 to 16/18 down) kept; the brown plastic around it see-through.
+    assert.deepEqual([alpha(0.5, 0.5), alpha(0.08, 0.5), alpha(0.5, 0.05)], [255, 0, 0], side);
+  }
+  // The finish is the label's, as seen, not its grader's: one model alone saying foil doesn't make a label shine.
+  finish = (model) => (model === 'a' ? 'foil' : 'paper');
+  const paper = await thicken([front, back], { profile: 'slab', holder: 'bgs' });
+  assert.deepEqual(pick((paper.sidecar.inside as Record<string, Record<string, unknown>>).label, ['finish', 'finishBy']), { finish: 'paper', finishBy: 'vision' });
+});
+
+test('slab: with no grader named, the holder is the one its size gives against the card inside; a thick one as the models see it', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  const photo = path.join(folder, 'IMG_1.png');
+  let [slab, card, depth] = [[0, 0, 83, 131], [9.75, 33, 73.25, 121.9], 'standard']; // a BGS-size holder, a standard card
+  const fetch = catalog({}, {
+    vision: async () => ({ faces: [{ face: 'front', corners: letterboxed(slab) }, { face: 'card', corners: letterboxed(card) }], holderDepth: depth }),
+  });
+  t.after(() => fetch.mock.restore());
+  await slabPhoto(photo, [[slab, '#c8ccd0'], [card, '#2e7d32']]);
+  const bgs = await thicken([photo], { profile: 'slab' });
+  assert.deepEqual([bgs.sidecar.holder, bgs.sidecar.widthMm, bgs.sidecar.heightMm], ['bgs', 83, 131]);
+  assert.ok(bgs.sidecar.warnings.some((w) => w.startsWith('taken for a bgs holder by its size')), bgs.sidecar.warnings.join('; '));
+  // A PSA-size one, its size a near match for CGC's and TAG's too, stays PSA; the models see it thick.
+  [slab, card, depth] = [[0, 0, 80.5, 136], [8.5, 33, 72, 121.9], 'thick'];
+  await slabPhoto(photo, [[slab, '#c8ccd0'], [card, '#2e7d32']]);
+  const thick = await thicken([photo], { profile: 'slab' });
+  assert.deepEqual([thick.sidecar.holder, thick.sidecar.depthMm], ['psa-thick', 10.25]);
+});
+
 test('slab: a tall holder is told by its label, the same size on every holder but spanning much less of a tall one', async (t) => {
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
@@ -166,16 +230,20 @@ test('slab: the models read its label, the grade and the card, and with no QR co
       prompts.push(prompt);
       const faces = [{ face: 'front', corners: letterboxed(slab) }, { face: 'card', corners: letterboxed(card) }, { face: 'label', corners: letterboxed(label) }];
       return model === 'a'
-        ? { faces, grader: 'CGC', grade: '10', gradeName: 'GEM MINT', name: 'Charizard', set: 'Base Set', year: '1999' }
-        : { faces, grader: 'CGC', grade: 10, gradeName: 'Gem  Mint', name: 'Charizard', year: 2000 };
+        ? { faces, grader: 'CGC', grade: '10', gradeName: 'GEM MINT', name: 'Charizard', set: 'Base Set', year: '1999', cert: '4123 5678' }
+        : { faces, grader: 'CGC', grade: 10, gradeName: 'Gem  Mint', name: 'Charizard', year: 2000, cert: '4123 5678' };
     },
   });
   t.after(() => fetch.mock.restore());
   const { sidecar } = await thicken([photo], { profile: 'slab' });
   assert.ok(prompts[0].includes('"grade":""'), 'the models are asked for the grade');
-  assert.deepEqual(sidecar.read, { grader: 'CGC', grade: '10', gradeName: 'GEM MINT', name: 'Charizard', set: 'Base Set', year: '1999' });
-  assert.deepEqual(sidecar.readBy, { grader: 'agreed', grade: 'agreed', gradeName: 'agreed', name: 'agreed', set: 'once', year: 'disputed' });
+  // The year, one model each way, is a tie: no year, rather than the first model's.
+  assert.deepEqual(sidecar.read, { grader: 'CGC', grade: '10', gradeName: 'GEM MINT', name: 'Charizard', set: 'Base Set', cert: '4123 5678' });
+  assert.deepEqual(sidecar.readBy, { grader: 'agreed', grade: 'agreed', gradeName: 'agreed', name: 'agreed', set: 'once', year: 'disputed', cert: 'agreed' });
   assert.deepEqual([sidecar.holder, sidecar.grader, (sidecar.identifiedBy as { grader: string }).grader], ['cgc-tall', 'cgc', 'vision']);
+  // No QR code: the cert read off the label, and the grader's page for it built from the grader and the cert.
+  assert.deepEqual([sidecar.cert, sidecar.verifyUrl, pick(sidecar.identifiedBy as Record<string, unknown>, ['cert', 'verifyUrl'])],
+    ['41235678', 'https://www.cgccards.com/certlookup/41235678/', { cert: 'label', verifyUrl: 'built' }]);
 });
 
 test('slab: the cert is the first whole cert number in the QR link, not a tracking number after it', async (t) => {

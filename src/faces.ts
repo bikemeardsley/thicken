@@ -1,15 +1,17 @@
 // Which photo shows which face, for any number of photos of one object, from
-// what the photos show (file names are whatever the phone made up). With a
+// what the photos show (file names are whatever the phone made up, unless one
+// names a face: front.jpg, back.jpg, a person's word). With a
 // vision roster (src/vision.ts), each photo is cut into the faces the models
 // found, straightened and placed. Otherwise, or for a photo they found
 // nothing in, the photo is used whole and, in order: codes place some (a
-// book's ISBN barcode is on its back); a book's narrow photos, shot standing
-// or lying down, are its spine if they show print and a page side if plain
-// paper; a lone photo left is the front, and with one side proven the other
-// follows. Photo order is no evidence: two photos left that nothing tells
-// apart are for the vision models (sidesUnknown). Extra photos join the face
-// of the same shape whose color they match, and each face keeps its sharpest
-// photo, so more photos make a better model. A video's frames are for the
+// book's ISBN barcode is on its back); a file name naming a face places it;
+// a book's narrow photos, shot standing or lying down, are its spine if they
+// show print and a page side if plain paper; a lone photo left is the front,
+// and with one side proven the other follows. Photo order is no evidence: two
+// photos left that nothing tells apart are for the vision models
+// (sidesUnknown). Extra photos join the face of the same shape whose color
+// they match, and each face keeps a photo two models agreed on before one
+// only one placed, then its sharpest, so more photos make a better model. A video's frames are for the
 // models: one they found no face in is left out, and a frame shows a face only
 // where no photo does.
 import { inside, isQuad, measure, straighten, texture, type Picture } from './image.ts';
@@ -48,11 +50,11 @@ export function cut(pictures: Picture[], sights: Sight[] = [], proofs: Proof[] =
       from.push({ picture: i });
       parts.push(picture);
     }
-    for (const { face, corners } of faces) {
+    for (const { face, corners, agreed } of faces) {
       const named = proven.find(({ at }) => inside(at, corners))?.face ?? face;
       placed[parts.length] = named;
       from.push({ picture: i, corners });
-      parts.push({ ...straighten(picture, corners), source: { ...picture.source, face: named } });
+      parts.push({ ...straighten(picture, corners), source: { ...picture.source, face: named, agreed } });
     }
   });
   return { parts, placed, from };
@@ -93,7 +95,9 @@ export function assignFaces(all: Shot[], faces: string[], { placed = [], byShape
   const extras: number[] = [];
   let byOrder = 0;
   all.forEach((shot, i) => {
+    const named = shot.picture.source.face === undefined && shot.picture.source.time === undefined ? namedFace(shot.picture.source.file, faces) : undefined;
     if (placed[i]) add(placed[i], i);
+    else if (named) add(named, i);
     else if (narrow[i] && !pages[i]) add('spine', i);
     else if (narrow[i] && thinness(shot) < down * ACROSS) add('edge', i);
     else if (narrow[i] && !(candidates.has('top') && candidates.has('bottom'))) add(candidates.has('top') ? 'bottom' : 'top', i);
@@ -116,14 +120,24 @@ export function assignFaces(all: Shot[], faces: string[], { placed = [], byShape
   const roles = all.map(() => 'unused');
   for (const [face, list] of candidates) {
     if (!faces.includes(face)) continue;
-    // A photo beats a video's frame, however sharp the frame scores: frames are smaller, compressed and toned down.
-    const photos = list.filter((i) => all[i].picture.source.time === undefined);
-    const best = (photos.length ? photos : list).reduce((a, b) => (all[b].sharpness > all[a].sharpness ? b : a));
+    // A face two models agreed on beats one only one placed, however sharp: a sharp photo of the wrong place is
+    // worse than a softer one of the right place. Then a photo beats a video's frame, however sharp the frame
+    // scores (frames are smaller, compressed and toned down); then the sharpest.
+    const rank = (i: number) => [all[i].picture.source.agreed ? 1 : 0, all[i].picture.source.time === undefined ? 1 : 0, all[i].sharpness];
+    const better = (a: number, b: number) => { const [x, y] = [rank(a), rank(b)]; return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]; };
+    const best = list.reduce((a, b) => (better(b, a) > 0 ? b : a));
     chosen[face] = best;
     for (const i of list) roles[i] = i === best ? face : `alternate ${face}`;
   }
   // Front and back both left to photo order: nothing in the photos said which is which.
   return { chosen, roles, undecided: byOrder === 2 };
+}
+
+/** The face a photo's file name says it shows, when it names exactly one (front.jpg, IMG_2 back.png): the user's word. */
+function namedFace(file: string, faces: string[]): string | undefined {
+  const words = file.replace(/\.[^.]*$/, '').toLowerCase().split(/[^a-z]+/);
+  const named = faces.filter((face) => words.includes(face));
+  return named.length === 1 ? named[0] : undefined;
 }
 
 /**

@@ -2,6 +2,7 @@
 // geometry, foil, what the vision models saw) and the types a profile is made of. A profile in this repository imports
 // from '../kit.ts'; one of your own, in ~/.thicken/profiles, from 'thicken/kit', the same parts.
 export * from './faces.ts';
+export * from './background.ts';
 export * from './foil.ts';
 export * from './glb.ts';
 export * from './image.ts';

@@ -26,6 +26,34 @@ export const CARD_READS = {
 export const CARDSTOCK = '#ece8df';
 export const PT_MM = 0.0254; // a point: a thousandth of an inch
 const SHAPE_TOLERANCE = 0.04;
+// A card's size, as the models see it, not assumed: standard (2.5 × 3.5 in: sports, Pokémon, Magic) or small
+// (Yu-Gi-Oh! and other Japanese-size cards: 59 × 86 mm, Konami's own). Anything else is sized from its photo.
+export const CARD_FORMATS: Record<string, number[]> = { standard: CARD_MM, small: [59, 86] };
+export const FORMAT_ASK = 'what size of card is it: "standard" (2.5 × 3.5 in, as most sports, Pokémon and Magic cards), "small" (Yu-Gi-Oh! and other Japanese-size cards, a little narrower and shorter), or "other" (a mini, a tall boy, a jumbo or any odd size)?';
+// A card's stock: a thick one (a patch, relic, memorabilia or acrylic card) is sold by its points; without --pt, the
+// thinnest of those, 55 pt, warned.
+export const STOCK_ASK = 'is it on "standard" card stock, or is it a "thick" card (a patch, relic, memorabilia or acrylic card, clearly thicker than an ordinary card)?';
+export const THICK_PT = 55;
+// Its front's finish: a glossy card catches the light, a matte one doesn't.
+const FINISH_ASK = 'is the card\'s front "glossy" (it shines and reflects the light) or "matte" (a flat, dull finish)?';
+const FINISH_ROUGHNESS: Record<string, number> = { glossy: 0.25, matte: 0.6 };
+/** A card's size and thickness, as given, else as the models see it (its format and stock), else standard. */
+export function cardSize(sights: Sight[] | undefined, { sizeMm = [], pt }: { sizeMm?: number[]; pt?: number }, front?: { width: number; height: number }) {
+  const format = pooled(sights, 'format', ['standard', 'small', 'other']);
+  const stock = pooled(sights, 'stock', ['standard', 'thick']);
+  const warnings: string[] = [];
+  let [width, height] = CARD_FORMATS[format ?? 'standard'] ?? CARD_MM;
+  // An odd size: the standard width, its height from the front photo's shape.
+  if (format === 'other' && front && sizeMm[0] === undefined && sizeMm[1] === undefined) {
+    height = width * (front.height / front.width);
+    warnings.push(`an odd-sized card (the models say): ${width} mm wide, its height from the photo's shape; --size for its real size`);
+  }
+  [width, height] = [sizeMm[0] ?? width, sizeMm[1] ?? height];
+  const thick = stock === 'thick' && !pt && sizeMm[2] === undefined;
+  if (thick) warnings.push(`a thick card (the models say): made ${THICK_PT} pt, the thinnest thick cards are sold as; --pt for its own`);
+  const depth = pt ? pt * PT_MM : sizeMm[2] ?? (thick ? THICK_PT * PT_MM : CARD_DEPTH_MM);
+  return { width, height, depth, format: format ?? 'standard', formatBy: format ? 'vision' : 'assumed', stock: stock ?? 'standard', stockBy: stock ? 'vision' : 'assumed', warnings };
+}
 
 export const card: Profile = {
   name: 'card',
@@ -48,19 +76,24 @@ export const card: Profile = {
     texture: 'its front\'s surface: textured (raised ridges, embossed in the model from the photo\'s own lines) or smooth',
     textureBy: 'how that was found: vision or assumed',
     pt: 'a thick card\'s thickness in points, when given',
-    measuredBy: 'where its size came from: standard or given; its thickness: standard, given or pt',
+    format: 'its size of card: standard, small (Yu-Gi-Oh! and Japanese size) or other', formatBy: 'how that was found: vision or assumed',
+    stock: 'its stock: standard, or thick (a patch, relic or acrylic card)', stockBy: 'how that was found: vision or assumed',
+    finish: 'its front\'s finish: glossy or matte', finishBy: 'how that was found: vision or assumed',
+    measuredBy: 'where its size came from: its format (as the models see it) or given; its thickness: standard, thick, given or pt',
   },
   faces: { front: 'front', back: 'back', art: 'the picture box on the front: the artwork\'s panel, to the edge of its frame', frame: FRAME_FACE },
   note: 'The picture box and the frame are part of the front: give their corners in the front\'s own order, top-left first.',
   reads: CARD_READS,
-  asks: { corners: CORNERS_ASK, foil: foilAsk('the front'), pattern: patternAsk('the front'), border: borderAsk('the front'), texture: textureAsk('the front') },
+  asks: {
+    corners: CORNERS_ASK, foil: foilAsk('the front'), pattern: patternAsk('the front'), border: borderAsk('the front'), texture: textureAsk('the front'),
+    format: FORMAT_ASK, stock: STOCK_ASK, finish: FINISH_ASK,
+  },
   unsnapped: ['art', 'frame'],
+  // A standard card, upright or sideways: the edges seat finds its outline, and an answer far off it places nothing.
+  shapes: { front: [CARD_MM[0] / CARD_MM[1], CARD_MM[1] / CARD_MM[0]], back: [CARD_MM[0] / CARD_MM[1], CARD_MM[1] / CARD_MM[0]] },
   build: async (pictures, { options, sights }) => {
-    const warnings: string[] = [];
     const review: string[] = [];
     const given = options.sizeMm ?? [];
-    const [width, height] = [given[0] ?? CARD_MM[0], given[1] ?? CARD_MM[1]];
-    const depth = options.pt ? options.pt * PT_MM : given[2] ?? CARD_DEPTH_MM;
 
     // The picture box and the frame are kept apart from the card's sides, which are what's cut out.
     const { parts, placed } = cut(pictures, sights?.map((sight) => ({ ...sight, faces: sight.faces.filter(({ face }) => face !== 'art' && face !== 'frame') })));
@@ -69,6 +102,8 @@ export const card: Profile = {
     if (undecided) throw sidesUnknown(Boolean(sights));
     const [front, back] = (['front', 'back'] as const).map((face) => (chosen[face] === undefined ? undefined : all[chosen[face]!].texture));
     if (!front) throw new Error('a card needs a photo of its front');
+    const { width, height, depth, format, formatBy, stock, stockBy, warnings } = cardSize(sights, { sizeMm: given, pt: options.pt }, front);
+    const finish = pooled(sights, 'finish', ['glossy', 'matte']);
     for (const [face, photo] of [['front', front], ['back', back]] as const) {
       if (photo && Math.abs(photo.width / photo.height / (width / height) - 1) > SHAPE_TOLERANCE) {
         warnings.push(`the ${face} photo isn't the shape of a ${width} × ${height} mm card: crop it to the card's edges, or give --size`);
@@ -86,6 +121,7 @@ export const card: Profile = {
     const found = regionIn(sights, 'art', 'front');
     // The standard picture box is a portrait card's: a landscape card's, not found, is anyone's guess.
     const box = found ?? (front.height > front.width ? PICTURE_BOX : undefined);
+    if ((foil === 'holo' || foil === 'reverse') && !found && box) review.push(`the card's picture box (the models didn't find it: its ${foil} foil is placed where a standard Pokémon card's box is)`);
     const boxed = foil === 'full' || ((foil === 'holo' || foil === 'reverse') && box !== undefined);
     if ((foil === 'holo' || foil === 'reverse') && !box) review.push(`foil (the models say ${foil}, but found no picture box on this landscape card: left off)`);
     // A foil border, inside the frame the models found or a standard card's; an emboss, from the front's own picture.
@@ -96,7 +132,7 @@ export const card: Profile = {
     const shines = boxed || Boolean(frame);
     const { look, lookBy } = foilLook(sights, 'front');
     if (shines && lookBy === 'assumed') review.push(unseenPattern(pictures.some(({ source }) => source.time !== undefined)));
-    const face = pictureMaterial(doc, 'card-front', front.jpeg, 'image/jpeg', 0.4);
+    const face = pictureMaterial(doc, 'card-front', front.jpeg, 'image/jpeg', FINISH_ROUGHNESS[finish ?? ''] ?? 0.4);
     const extras = { frame, relief: texture === 'textured' ? front.jpeg : undefined };    addPart(doc, mesh, pieces.front, shines || extras.relief ? foiled(doc, face, await cardFoil(boxed ? foil! : 'none', box ?? PICTURE_BOX, front.height / front.width, look, extras)) : face);
     if (!back) pieces.back.uv.length = 0;
     addPart(doc, mesh, pieces.back, back ? pictureMaterial(doc, 'card-back', back.jpeg, 'image/jpeg', 0.4) : colorMaterial(doc, 'card-back', CARDSTOCK, 0.8));
@@ -105,12 +141,16 @@ export const card: Profile = {
     return {
       glb: await toGlb(doc, mesh),
       sidecar: {
-        widthMm: width, heightMm: height, depthMm: round(depth), ...(options.pt && { pt: options.pt }), corners, cornersBy,
+        widthMm: round(width), heightMm: round(height), depthMm: round(depth), ...(options.pt && { pt: options.pt }), corners, cornersBy,
+        format, formatBy, stock, stockBy, finish: finish ?? 'glossy', finishBy: finish ? 'vision' : 'assumed',
         foil: foil ?? 'none', foilBy: foil ? 'vision' : 'assumed', ...(shines && { foilLook: lookName(look), foilLookBy: lookBy }),
         ...((foil === 'holo' || foil === 'reverse') && box && { pictureBox: rounded(box), pictureBoxBy: found ? 'vision' : 'layout' }),
         border: border ?? 'plain', borderBy: border ? 'vision' : 'assumed', ...(frame && { frame: rounded(frame), frameBy: frameFound ? 'vision' : 'layout' }),
         texture: texture ?? 'smooth', textureBy: texture ? 'vision' : 'assumed',
-        measuredBy: { size: given[0] !== undefined || given[1] !== undefined ? 'given' : 'standard', depth: options.pt ? 'pt' : given[2] !== undefined ? 'given' : 'standard' },
+        measuredBy: {
+          size: given[0] !== undefined || given[1] !== undefined ? 'given' : format === 'other' ? 'photo' : format,
+          depth: options.pt ? 'pt' : given[2] !== undefined ? 'given' : stock === 'thick' ? 'thick' : 'standard',
+        },
         faces: { front: 'photo', back: back ? 'photo' : 'color' } satisfies Faces, review, warnings, pictures: pictureRecord(all, roles),
       },
     };

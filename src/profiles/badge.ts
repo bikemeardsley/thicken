@@ -15,6 +15,7 @@ export const badge: Profile = {
   records: {
     edge: 'the color just inside its outline, used for its sides and back (#rrggbb)',
     regions: 'how many separate shapes the artwork is (a medal and its ribbon are two)',
+    measuredBy: 'where its width and depth came from: given, or the default (artwork carries no scale)',
   },
   faces: {}, // artwork, not a photo of an object: nothing for the vision models to find, only to read
   reads: {
@@ -37,7 +38,10 @@ function isArtwork(picture?: Picture): boolean {
   return area < 0.9 * box;
 }
 
-async function make({ data, width, height, transparent }: Picture, { widthMm = 50, depthMm = 3.5 } = {}) {
+async function make({ data, width, height, transparent }: Picture, given: { widthMm?: number; depthMm?: number } = {}) {
+  // Artwork carries no scale of its own: its size is given, or a default, said so.
+  const { widthMm = 50, depthMm = 3.5 } = given;
+  const measuredBy = { width: given.widthMm ? 'given' : 'default', depth: given.depthMm ? 'given' : 'default' };
   if (!(widthMm > 0 && depthMm > 0)) throw new Error('width and depth must be positive millimeters');
   const { outlines, edge } = trace(data, width, height, 4);
   const png = await sharp(data, { raw: { width, height, channels: 4 } }).png().toBuffer();
@@ -104,6 +108,7 @@ async function make({ data, width, height, transparent }: Picture, { widthMm = 5
       widthMm: round(widthMm),
       heightMm: round((maxY - minY) * meters * 1000),
       depthMm: round(depthMm),
+      measuredBy,
       edge,
       regions: outlines.length,
       warnings: transparent ? [] : ['the picture has no transparency, so the badge is its whole rectangle: lift the subject out on your phone first'],

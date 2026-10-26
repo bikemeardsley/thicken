@@ -185,25 +185,73 @@ THICKEN_VISION_MODELS=gemini-3.8-flash-high,gpt-6-luna,gpt-5.6-terra,gemini-3.1-
   table goes, and an angled shot gives two faces.
 - The models also read what's printed on the object, each profile saying
   what to read (a slab's label, a card's player and set, a book's title).
-  The sidecar's `read` keeps each field as most answers gave it, over every
-  photo, and `readBy` how sure: `agreed`, `once` (one answer) or `disputed`
-  (others differ; every answer is in the sidecar's `vision`).
+  The sidecar's `read` keeps each field as most models gave it, over every
+  photo, each model counted once a photo however often it was asked, and
+  `readBy` how sure: `agreed`, `once` (one answer) or `disputed` (others
+  differ; a tie is left out of `read`). A value one model alone gives a
+  photo, where two or more others answered it and read no such thing, is
+  left out too (`alone`): a label prints an autograph grade or it doesn't.
+  Every answer is in the sidecar's `vision`.
 - Two answers agreeing (corners within 3% of the photo's diagonal, in the
-  same order) is the confidence. When two put a face in different places or
-  turns, the next model is asked; if it can't settle it, the primary's answer
-  is used and the face goes on the review list. A face only one model names,
-  while another answered without it, is left out. When only one model
-  answers for a photo at all, its faces are used, and go on the review list.
+  same order) is the confidence, and every answer that agrees is averaged.
+  No model outranks another, primary included: where they disagree, a face
+  goes where the evidence puts it. That is other answers putting it in the
+  same place whichever way up, the edges seat (below), and how well it fits
+  the face's shape and edges. Meanwhile more answers are asked for: the next
+  roster model, one at a time, or the bench's collection again, whose
+  explorer seats rotate. A face nothing settles is left out (that photo is
+  used whole, or not at all if it's a video frame) and goes on the review
+  list. It's never taken from whichever model was listed first.
+- An answer that can't be right places nothing: corners well past the photo,
+  or a shape the face can't have (a profile's `shapes`: a slab is its
+  holder's shape, a card a card's). A face only one model names, while
+  another answered without it, is left out. When two name the same place
+  differently, the name stands whose answer read what that face always
+  shows (a slab's front shows its grade). When only one model answers for a
+  photo at all, its faces are used, and go on the review list.
+- The edges seat finds the object's outline by its straight edges alone, as
+  a scanner app does, with no model asked. It says where, never which face
+  or which way up, and abstains when nothing fits. It votes only on faces
+  whose edges a profile trusts: a raw card's, measured right 7 times, wrong
+  once and abstaining twice in 10. Not a slab's: clear plastic on a busy
+  table has a faint outer edge, and it was right only 4 times in 16.
 - Only the profile's own faces count; an answer's corners that cross or
   fold make no face, and aren't cut out. Corners wound the wrong way round
   are the face's mirror image, which no photo shows: on real books about
   one answer in six was one, and two models agreeing on a mirror put a
-  spine's lettering backward. Such an answer counts as saying the face is
-  there, but places nothing.
+  spine's lettering backward. Such an answer says where the face is, but
+  never which way up.
+- Each face keeps a photo two models agreed on before one only one model
+  placed, however sharp, then a photo before a video's frame, then the
+  sharpest.
+- What the photos can show is asked or measured, not assumed:
+  - **Cards:** the format (standard, or Yu-Gi-Oh!/Japanese size), the
+    stock (a thick card is made 55 pt, warned, without `--pt`) and the
+    front's finish.
+  - **Slabs:** the label's finish (foil or paper, two models needed for
+    foil). With no grader named, the holder by its size against the card
+    inside. A thick holder, and the logo's print, light or dark.
+  - **Boxes:** the shape from the straightened faces, scaled by a given size
+    or the estimate, plus how rounded it is and its finish.
+  - **Books:** the page edges' color from any sliver a photo shows, else the
+    models' colors, else cream; gilt edges as metal. The cover's finish, and
+    a sticker round or square.
+  - **Artwork:** a cut-out picture is asked whether it's artwork or an
+    object, and a code on it outranks its shape.
+
+  Each is recorded with how it was found (`…By`: vision, photo or assumed).
 - When nothing else says what the object is, the first photo also goes to
   the roster with the list of profiles: which is it, and roughly how big?
-  Two agreeing settle it, the same way; the size estimate stands in only
-  where `--size` doesn't say, with a warning.
+  The answer most models give settles it, with more asked on a tie; a tie
+  that stays is no answer, and the run asks you to name the profile. The
+  size estimate stands in only where `--size` doesn't say, with a warning.
+- You can settle what the models can't. `--cropped` says each photo is
+  cropped to the object: the models say which face it shows, not where.
+  `--corners faces.json` gives a photo's faces yourself,
+  `{"IMG_1.jpg": {"front": [[x,y],[x,y],[x,y],[x,y]]}}`, corners top-left
+  first and clockwise, in the photo's own pixels; they work without vision
+  too. And a photo named for a face (`front.jpg`, `card back.png`) is that
+  face, vision or not.
 - The rest of the roster stands in for a seat that fails or takes over 3
   minutes. A fine-tuned model goes in by putting it first; training mode
   (below) collects the examples to tune one on.
@@ -219,13 +267,19 @@ collection (`bench/vision`, or one tagged `vision`), thicken uses it first.
 Without it, no bench is asked.
 
 - Each photo goes to the collection: its members and the explorer seats the
-  bench adds, all at once. Every seat's answer is settled as a roster's are,
-  so a disagreement needs no extra seat; each is in the sidecar's `vision`
-  under its own name.
+  bench adds, all at once. Every seat's answer is settled as a roster's are;
+  a face still unsettled asks the collection once more, for the explorers
+  that rotate in, and then the roster, if one is set. Each answer is in the
+  sidecar's `vision` under its own name.
 - After each photo, thicken tells the bench how each seat did: useful when
   it agreed with another on a face (or on what the object is), not useful
   when it failed. A seat that disagreed may be the one that was right, so
   it's left for you to judge in the bench's dashboard.
+- Each seat's record on thicken's questions (Benchwarmers' `GET
+  /bench/record`: its share of useful verdicts) breaks ties. When as many
+  models say one thing as another, the side whose models have the clearly
+  better record wins; with no record to go on, it's no answer. More models
+  always outvote a better record. A gateway without the route breaks no ties.
 - The `THICKEN_VISION_*` roster stands in when the gateway is down or no
   seat answers a photo.
 - The gateway waits for its slowest seat, up to 7 minutes a photo, and a
@@ -290,6 +344,17 @@ THICKEN_DATASET=../thicken-dataset  # outside the repo: it holds your photos
   the real edges, in the image's own pixels, and what was read (`read`;
   examples before 2026-10-08 have `title` and `authors` instead). Disputed faces and objects are
   marked, so they can be checked by hand before training on them.
+- Each line also says what it's about, for splitting a set by object (a
+  slab's photos all in training or all in testing) and checking it by hand:
+  `run` and `at`, the `thicken` version, the `object` (its profile, what its
+  codes said, such as a cert, a grader or an ISBN, and its photos' folder and
+  file names, which tell apart objects with no code), the photo it came from
+  (`source`: file, page, video time, camera), where that photo sits in the
+  image sent (`sent`: `left`, `top`, `scale`), what the build made of it
+  (`used`: `front`, `alternate back`, `unused`) or why the run stopped
+  (`failed`), and the photo itself as loaded, upright and stripped of its
+  metadata, GPS included (`original`, in `.originals/`, which the loader
+  skips). Lines from before 2026-10-25 have none of these.
 - It is the layout Hugging Face's `imagefolder` loader reads:
   `load_dataset("imagefolder", data_dir="../thicken-dataset")`.
 - thicken only collects. Training a model on the examples, and serving it
@@ -302,8 +367,12 @@ The review list is for what the model shows: if every face is your photo,
 the right way round, there's nothing to review. Each sidecar's `review`
 lists the rest, a batch ends with the list, and the preview caption shows
 it: a stand-in front, a plain spine or back, a face the vision models
-disagreed on, a face only one model answered for, and a photo no vision model
-answered for (used whole). Add the photos (in a subfolder named after the
+disagreed on that nothing settled (left out: if it's there, give its
+`--corners`; for the object's outline, a photo cropped to it and `--cropped`
+do too), a slab's label whose corners ran well onto what's behind it (a
+label's edges are pulled in off the table seen through the plastic, a few
+pixels at most), a face only one model answered for,
+and a photo no vision model answered for (used whole). Add the photos (in a subfolder named after the
 item), run again, and only that model is remade, with its review cleared.
 
 Guessed sizes are warnings instead (in `warnings`, and printed): a standard

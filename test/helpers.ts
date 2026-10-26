@@ -36,14 +36,18 @@ export async function slabPhoto(file: string, rects: [number[], string][]) {
  * quota. With `vision`, also a stand-in vision endpoint at http://vision.test/api, answering for each model and photo;
  * with `bench` too, a stand-in model bench at http://bench.test, its bench/vision collection's seats those models.
  */
-export function catalog(edition: object, { cover, data, search, records, loc, vision, bench }: {
+export function catalog(edition: object, { cover, data, search, records, loc, vision, bench, record }: {
   cover?: Uint8Array; data?: object; search?: object; records?: object; loc?: string;
   vision?: (request: { model: string; prompt: string; photo: Buffer; authorization: string | null }) => Promise<object | undefined>;
-  bench?: string[];
+  bench?: string[]; record?: Record<string, { useful: number; judged: number }>;
 } = {}) {
   return mock.method(globalThis, 'fetch', async (url: string | URL, init?: RequestInit) => {
     const href = String(url);
     if (bench && href === 'http://bench.test/v1/models') return Response.json({ data: [{ id: 'bench/core', tags: ['general'] }, { id: 'bench/vision', tags: ['vision'] }, { id: 'bench/vision:merged', tags: ['vision'] }] });
+    // Each seat's track record, as Benchwarmers' GET /bench/record gives it; none, as a gateway before it had the route.
+    if (bench && href.startsWith('http://bench.test/bench/record?collection=bench%2Fvision&task=thicken')) {
+      return record ? Response.json({ collection: 'bench/vision', task: 'thicken', aliases: record }) : new Response('', { status: 404 });
+    }
     if (bench && href === 'http://bench.test/bench/verdict') return Response.json({ ok: true });
     if (bench && vision && href === 'http://bench.test/v1/chat/completions') {
       const { model, messages, stream } = JSON.parse(String(init!.body));

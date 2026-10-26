@@ -46,8 +46,11 @@ every field and a TODO on each one to fill in.
   (each in a few words, for the models to find), `reads`
   (what's printed on it worth reading: more is better), `asks` (short
   questions with one-word answers). Optional: `note`, `unsnapped`, `generic`,
-  and `read` (how its codes or pictures give it away without vision). Each is
-  described on the `Profile` type.
+  `shapes` (the shapes a face can have, width over height: an answer far off
+  them places nothing, and the edges seat outlines them), `shows` (what a
+  face always shows, from `reads`: a slab's front, its grade), and `read`
+  (how its codes or pictures give it away without vision). Each is described
+  on the `Profile` type.
 - **Building it:** `build(pictures, job)` returns the model (GLB bytes) and
   its sidecar. thicken's parts come from `thicken/kit`: `cut` (the faces the
   models found, straightened), `shots`, `assignFaces`, `pictureRecord`,

@@ -34,6 +34,7 @@ export interface Source {
   takenAt?: string; // the camera's own clock, with its UTC offset when it wrote one
   time?: number; // seconds into a video, for one of its frames
   face?: string; // cut from the photo as this face, where the vision models found it
+  agreed?: boolean; // where two models or more (or a person) put that face, not one alone
 }
 
 export interface Picture { data: Buffer; width: number; height: number; transparent: boolean; source: Source }
@@ -411,6 +412,46 @@ const SNAP_SAMPLES = 41; // points along each side
 const SNAP_MIN_STEP = 4; // gray levels: a brightness step smaller than this is no edge
 const SNAP_PEAKS = 5; // the strongest steps kept at each point (wood grain and print make many)
 const SNAP_ENDS = 6; // points at each end of a side that candidate lines are drawn between
+
+/**
+ * A printed face's corners turned so its print reads level: in the face straightened, the angle at which the rows of
+ * dark print line up sharpest (their row counts peak hardest) is found in its top half and its bottom half apart,
+ * and the top and bottom edges are turned by those angles. Corners a few pixels off a face shot at a slight angle
+ * level one line (a label's big grade) and tilt the rest; this levels them all. Faces with too little print to
+ * tell keep their corners.
+ */
+export function level(picture: Picture, corners: number[][]): number[][] {
+  const flat = straighten(picture, corners);
+  const { data, width: w, height: h } = flat;
+  const light = (i: number) => (data[i * 4] + data[i * 4 + 1] + data[i * 4 + 2]) / 3;
+  const lights = Array.from({ length: w * h }, (_, i) => light(i)).sort((a, b) => a - b);
+  const ink = LEVEL_INK * lights[Math.floor(lights.length / 2)];
+  const dark = Uint8Array.from({ length: w * h }, (_, i) => (light(i) < ink ? 1 : 0));
+  // The angle (radians, y down) whose rows of print are sharpest, between rows y0 and y1.
+  const angleOf = (y0: number, y1: number) => {
+    let inked = 0;
+    for (let y = y0; y < y1; y++) for (let x = 0; x < w; x++) inked += dark[y * w + x];
+    if (inked < LEVEL_LEAST * w * (y1 - y0)) return 0;
+    let best = { angle: 0, score: -1 };
+    for (let deg = -LEVEL_MOST; deg <= LEVEL_MOST + 1e-9; deg += LEVEL_STEP) {
+      const t = Math.tan((deg * Math.PI) / 180);
+      const rows = new Float64Array(h + 2 * w);
+      for (let y = y0; y < y1; y++) for (let x = 0; x < w; x++) if (dark[y * w + x]) rows[Math.round(y - t * (x - w / 2)) + w]++;
+      const score = rows.reduce((sum, n) => sum + n * n, 0);
+      if (score > best.score + 1e-9) best = { angle: (deg * Math.PI) / 180, score };
+    }
+    return best.angle;
+  };
+  const [top, bottom] = [angleOf(0, Math.floor(h / 2)), angleOf(Math.floor(h / 2), h)];
+  if (!top && !bottom) return corners;
+  // Each edge turned about its middle, in the face's own shares of width and height.
+  const [kt, kb] = [Math.tan(top), Math.tan(bottom)].map((t) => (t * w) / (2 * h));
+  return [[0, -kt], [1, kt], [1, 1 + kb], [0, 1 - kb]].map(mapping([[0, 0], [1, 0], [1, 1], [0, 1]], corners));
+}
+const LEVEL_INK = 0.6; // of the face's median brightness: darker is print
+const LEVEL_LEAST = 0.01; // a half with less print than this share of it has too little to tell
+const LEVEL_MOST = 3; // degrees each way: more, and the corners were wrong, not a little off
+const LEVEL_STEP = 0.1; // degrees
 
 /** Points inside four corners taken to the same places inside four others, by the perspective transform between them. */
 export function mapping(from: number[][], to: number[][]): (point: number[]) => number[] {

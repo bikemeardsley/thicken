@@ -173,15 +173,16 @@ What each one records in its sidecar, beside what every model has (its size and 
 pictures, its codes, what the vision models read and how sure, what's worth a second look: all in
 [USAGE.md](USAGE.md#what-the-sidecar-records)):
 
-<details><summary><code>badge</code>: edge, regions</summary>
+<details><summary><code>badge</code>: edge, regions, measuredBy</summary>
 
 | Field | What it holds |
 | --- | --- |
 | `edge` | the color just inside its outline, used for its sides and back (#rrggbb) |
 | `regions` | how many separate shapes the artwork is (a medal and its ribbon are two) |
+| `measuredBy` | where its width and depth came from: given, or the default (artwork carries no scale) |
 
 </details>
-<details><summary><code>book</code>: isbn, catalog, match, pages, binding, bindingBy, measuredBy, depthEstimates, coverUrl, sticker, lookups</summary>
+<details><summary><code>book</code>: isbn, catalog, match, pages, binding, bindingBy, measuredBy, depthEstimates, coverUrl, sticker, pageEdges, finish, finishBy, lookups</summary>
 
 | Field | What it holds |
 | --- | --- |
@@ -194,11 +195,14 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `measuredBy` | where each of its sizes came from: measured, openlibrary, loc, googlebooks, pages, photos, cover or trim |
 | `depthEstimates` | every thickness estimate made: from the photos and from the page count |
 | `coverUrl` | Open Library's cover, when it stands in for a front not photographed |
-| `sticker` | where a foil seal or sticker is on its front cover |
+| `sticker` | where a foil seal or sticker is on its front cover, and whether it's round |
+| `pageEdges` | its page edges' color (#rrggbb), whether gilt, and how found: photo (a photo shows them), vision (the models' colors) or assumed (cream) |
+| `finish` | its cover's finish: glossy or matte |
+| `finishBy` | how that was found: vision or assumed |
 | `lookups` | every catalog request: host, path, status and time |
 
 </details>
-<details><summary><code>card</code>: corners, cornersBy, foil, foilBy, foilLook, foilLookBy, pictureBox, pictureBoxBy, border, borderBy, frame, frameBy, texture, textureBy, pt, measuredBy</summary>
+<details><summary><code>card</code>: corners, cornersBy, foil, foilBy, foilLook, foilLookBy, pictureBox, pictureBoxBy, border, borderBy, frame, frameBy, texture, textureBy, pt, format, formatBy, stock, stockBy, finish, finishBy, measuredBy</summary>
 
 | Field | What it holds |
 | --- | --- |
@@ -217,7 +221,13 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `texture` | its front's surface: textured (raised ridges, embossed in the model from the photo's own lines) or smooth |
 | `textureBy` | how that was found: vision or assumed |
 | `pt` | a thick card's thickness in points, when given |
-| `measuredBy` | where its size came from: standard or given; its thickness: standard, given or pt |
+| `format` | its size of card: standard, small (Yu-Gi-Oh! and Japanese size) or other |
+| `formatBy` | how that was found: vision or assumed |
+| `stock` | its stock: standard, or thick (a patch, relic or acrylic card) |
+| `stockBy` | how that was found: vision or assumed |
+| `finish` | its front's finish: glossy or matte |
+| `finishBy` | how that was found: vision or assumed |
+| `measuredBy` | where its size came from: its format (as the models see it) or given; its thickness: standard, thick, given or pt |
 
 </details>
 <details><summary><code>lettering</code>: text, font, fontLicense, color, measuredBy</summary>
@@ -236,19 +246,23 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | Field | What it holds |
 | --- | --- |
 | `grader` | who graded it: psa, bgs, cgc, sgc or tag, from its QR code or its label |
-| `cert` | its certification number |
-| `verifyUrl` | the grader's page for this cert, from its QR code |
+| `cert` | its certification number: from its QR code or barcode, else as read off its label (identifiedBy.cert says which, and whether both agreed) |
+| `verifyUrl` | the grader's page for this cert: its QR code's link, else built from the grader and the cert (PSA, CGC, BGS) |
 | `holder` | the holder it was built as (psa, cgc-tall…) |
-| `inside` | the card and the label inside: each one's size, middle and what placed it; the card's corners, foil and its pattern, border and texture; where the label's hologram is |
+| `inside` | the card and the label inside: each one's size, middle and what placed it; the card's corners, foil and its pattern, border and texture; the label's finish (foil or paper) and where its hologram is; and the grader's logo on the insert, where it was found |
 | `measuredBy` | where its size came from: the holder table, or measured |
 
 </details>
-<details><summary><code>box</code>: barcode, measuredBy</summary>
+<details><summary><code>box</code>: barcode, measuredBy, rounding, roundingBy, finish, finishBy</summary>
 
 | Field | What it holds |
 | --- | --- |
 | `barcode` | its product barcode (UPC or EAN) and its kind, when a photo shows one |
-| `measuredBy` | where each of its sizes came from: measured, or the vision models' estimate |
+| `measuredBy` | where each of its sizes came from: measured, photos (its proportions there, scaled by a measured size or the estimate), or the vision models' estimate |
+| `rounding` | how rounded its corners and edges are: sharp, slight, round or very |
+| `roundingBy` | how that was found: vision or assumed |
+| `finish` | its surface: glossy or matte |
+| `finishBy` | how that was found: vision or assumed |
 
 </details>
 <!-- profiles:end -->
