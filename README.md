@@ -3,8 +3,9 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/bikemeardsley/thicken/releases/latest"><img src="https://img.shields.io/github/v/release/bikemeardsley/thicken?logo=github&color=181717" alt="Latest release"></a>
   <a href="https://www.npmjs.com/package/thicken"><img src="https://img.shields.io/npm/v/thicken?color=cb3837&logo=npm" alt="npm"></a>
-  <a href="https://github.com/bikemeardsley/thicken/actions/workflows/test.yml"><img src="https://github.com/bikemeardsley/thicken/actions/workflows/test.yml/badge.svg" alt="Tests"></a>
+  <a href="https://github.com/bikemeardsley/thicken/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/bikemeardsley/thicken/test.yml?branch=main&logo=github&label=CI%20tests" alt="CI tests"></a>
   <a href="https://registry.modelcontextprotocol.io/?q=thicken"><img src="https://img.shields.io/badge/MCP_Registry-111111?logo=modelcontextprotocol&logoColor=white" alt="In the official MCP Registry"></a>
   <a href="https://skills.sh/bikemeardsley/thicken/thicken"><img src="https://img.shields.io/badge/skills.sh-111111" alt="On skills.sh"></a>
   <a href="https://cursor.directory/plugins/thicken"><img src="https://img.shields.io/badge/cursor.directory-111111?logo=cursor&logoColor=white" alt="On cursor.directory"></a>
