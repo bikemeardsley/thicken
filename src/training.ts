@@ -1,8 +1,10 @@
 // Training mode, off unless THICKEN_DATASET names a folder. Then every question put to the vision models is
 // kept there as a training example, for tuning a model to take the roster's first seat: the image exactly as
 // sent, and a line in metadata.jsonl with the prompt, each model's answer and the label (the settled answer, its
-// corners snapped onto the real edges), all in the image's own 0-1000 pixels. That is the layout Hugging Face's
-// imagefolder loader reads. Thicken only collects; the training happens elsewhere.
+// corners snapped onto the real edges), all in the image's own 0-1000 pixels. Each profile's faces go in a folder
+// of their own (slab/, book/), and which-object-is-it questions in identify/, each folder the layout Hugging Face's
+// imagefolder loader reads, so a model can be tuned on one profile alone. Thicken only collects; the training
+// happens elsewhere.
 //
 // Each line also says what it's a question about, for splitting a set by object and checking it by hand: the run
 // and the object (its profile and what its codes said: a cert, an ISBN), the photo it came from (file, page, video
@@ -37,7 +39,6 @@ async function once(dir: string, jpeg: Buffer): Promise<string> {
  * object, `roles` what the build made of each photo (the sidecar's pictures), and `failed` why it stopped, if it did.
  */
 export function keepRun(answered: (object | undefined)[], run: { thicken: string; object: object; roles?: { file: string; page?: number; time?: number; role: string }[]; failed?: string }): Promise<void> {
-  const dir = process.env.THICKEN_DATASET!;
   const id = randomUUID();
   const at = new Date().toISOString();
   // One run at a time, so lines from runs side by side never interleave.
@@ -46,6 +47,7 @@ export function keepRun(answered: (object | undefined)[], run: { thicken: string
       const kept = answer && held.get(answer);
       if (!kept) continue;
       const { jpeg, picture, sent, example } = kept;
+      const dir = path.join(process.env.THICKEN_DATASET!, (example as { profile?: string }).profile || 'identify');
       const { file, page, time } = picture.source;
       const file_name = await once(dir, jpeg);
       const original = `.originals/${await once(path.join(dir, '.originals'),
