@@ -14,6 +14,8 @@ import { mapping, type Picture, straighten } from './image.ts';
 const AROUND = 2; // px each way: a pixel's neighborhood is 5 x 5
 const CLUSTERS = 6;
 const SAMPLES = 3000; // pixels sampled to learn from
+const REACH = 2; // of the background's own 95th-percentile stray: further, a pixel is something else (1.5 left granite on 497, 3 began trimming 364's red border)
+const REACH_FLOOR = 10; // and at least this: an even scan bed strays by its JPEG noise only
 const MOST_TRIM = 0.12; // of a part's size: the most an edge is pulled in (more, and the corners were wrong, not loose)
 const CLEAR_ROW = 0.5; // a line of the band more background than this is past the part's edge
 
@@ -94,7 +96,12 @@ export function backgroundOf(picture: Picture, known: (point: number[]) => boole
       if (known([x, y])) samples.push([...described.subarray((y * w + x) * 4, (y * w + x) * 4 + 4)]);
     }
   }
-  return { centers: clusters(samples), known: samples.length > 50 };
+  const centers = clusters(samples);
+  // How far the background strays from its own clusters: past most of that, nothing is background, whatever else it
+  // is nearer to. Speckled granite strays far; a grader's dark scan bed hardly at all, so a red label border, nearer to
+  // its dark than to the label's white middle, is still no background.
+  const own = samples.map((s) => nearest(centers, s).d).sort((a, b) => a - b);
+  return { centers, reach: Math.max(REACH_FLOOR, REACH * (own[Math.floor(0.95 * (own.length - 1))] ?? 0)), known: samples.length > 50 };
 }
 type Background = ReturnType<typeof backgroundOf>;
 
@@ -113,7 +120,8 @@ function backgroundIn(picture: Picture, background: Background, part: number[][]
   const out = new Uint8Array(picture.width * picture.height);
   for (let i = 0; i < out.length; i++) {
     const s = described.subarray(i * 4, i * 4 + 4);
-    out[i] = nearest(background.centers, s).d < nearest(part, s).d ? 1 : 0;
+    const away = nearest(background.centers, s).d;
+    out[i] = away <= background.reach && away < nearest(part, s).d ? 1 : 0;
   }
   return out;
 }

@@ -308,6 +308,20 @@ test('level: a label\'s corners that tilt its print are turned so every line of 
   assert.deepEqual(level(blank, [[0, 0], [400, 0], [400, 200], [0, 200]]), [[0, 0], [400, 0], [400, 200], [0, 200]]);
 });
 
+test('background: a label\'s own colored border, nearer the dark scan bed than its white middle, is still no background', async () => {
+  // As a grader's scan of a PSA slab (VaultFlip 364, 2026-10-25): a white label in a red border on a dark, even
+  // holder insert, its corners exactly on it. Before, the border read as background: 11% off its top, and a review line.
+  const svg = '<svg width="600" height="300"><rect width="600" height="300" fill="#3a3a3e"/>'
+    + '<rect x="100" y="60" width="400" height="120" fill="#c8202c"/><rect x="108" y="68" width="384" height="104" fill="#f6f6f4"/>'
+    + '<text x="125" y="110" font-size="24" font-family="sans-serif" fill="#111">1976 TOPPS  #1</text></svg>';
+  const [picture] = await load(await sharp(Buffer.from(svg)).png().toBuffer());
+  const given = [[100, 60], [500, 60], [500, 180], [100, 180]];
+  const background = backgroundOf(picture, (point) => !inQuad(point, grown(given, 1.06)));
+  const { trimmed, off } = tighten(picture, given, background);
+  assert.ok(trimmed.every((share) => share < 0.02), JSON.stringify(trimmed));
+  assert.deepEqual(off, []);
+});
+
 test('a face two models agreed on is kept over a sharper one only one placed, and a file name naming a face places it', () => {
   const shot = (source: object, sharpness: number) => ({ picture: { source: { file: 'IMG.png', ...source } }, sharpness, texture: { width: 600, height: 800 }, color: [90, 90, 90], stripes: 0 }) as unknown as Shot;
   const all = [shot({ face: 'front' }, 40), shot({ face: 'front', agreed: true }, 10), shot({ face: 'front', agreed: true, time: 1 }, 50)];
