@@ -1,7 +1,7 @@
 {
   "name": "thicken",
   "displayName": "thicken",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Photos in; out comes a 3D model (GLB) at the object's real size and its metadata as JSON. A profile for each kind of object; add your own.",
   "author": { "name": "Michael Beardsley" },
   "homepage": "https://github.com/bikemeardsley/thicken",
@@ -42,7 +42,7 @@
   "mcpServers": {
     "thicken": {
       "command": "npx",
-      "args": ["-y", "thicken@0.2.0", "mcp"],
+      "args": ["-y", "thicken@0.2.1", "mcp"],
       "env": {
         "THICKEN_VISION_URL": "${user_config.vision_url}",
         "THICKEN_VISION_KEY": "${user_config.vision_key}",
