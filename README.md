@@ -86,6 +86,7 @@ thicken card front.jpg back.jpg --pt 130    # a thick patch card
 thicken badge badge.png --width 50          # cut-out artwork, extruded
 thicken lettering thicken                   # the logo
 thicken batch ~/Pictures/books --preview    # a model per photo, PDF, video or folder
+thicken profiles --json                     # each profile's name, about and photo-search phrases
 ```
 
 Each run writes `<name>.glb` and `<name>.json` beside the first picture, and

@@ -45,8 +45,9 @@ every field and a TODO on each one to fill in.
   holds), `faces`
   (each in a few words, for the models to find), `reads`
   (what's printed on it worth reading: more is better), `asks` (short
-  questions with one-word answers). Optional: `note`, `unsnapped`, `generic`,
-  `shapes` (the shapes a face can have, width over height: an answer far off
+  questions with one-word answers). Optional: `search` (phrases a
+  photo-library search, CLIP such as Immich's, finds photos of it with), `note`,
+  `unsnapped`, `generic`, `shapes` (the shapes a face can have, width over height: an answer far off
   them places nothing, and the edges seat outlines them), `shows` (what a
   face always shows, from `reads`: a slab's front, its grade), and `read`
   (how its codes or pictures give it away without vision). Each is described

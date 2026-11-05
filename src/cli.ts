@@ -4,6 +4,7 @@
 // thicken preview <model.glb or folder>...
 // thicken mcp    (the MCP server on stdio, for AI agents: src/mcp.ts)
 // thicken profile new|check|contribute <name> [--from <profile>]   (a profile of your own: src/profile-tools.ts)
+// thicken profiles [--json]    (every profile; as JSON, its name, about and photo-search phrases)
 // With no profile named, thicken picks one per model (see src/thicken.ts).
 // Writes each GLB and, beside it, a JSON sidecar of the same name.
 import { existsSync } from 'node:fs';
@@ -18,6 +19,8 @@ const USAGE = `usage: thicken [${PROFILES.map((p) => p.name).join('|')}] <pictur
        thicken preview <model.glb or folder>...
        thicken mcp    (the MCP server on stdio, for AI agents)
        thicken profile new|check|contribute <name> [--from <profile>]   (a profile of your own, in ~/.thicken/profiles)
+       thicken profiles [--json]    (every profile; with --json, an array of {name, about, search}: search is the
+         phrases a photo-library search finds it with, and is left out where a profile has none)
 Profiles (src/profiles), each from:
 ${PROFILES.map((p) => `  ${p.name.padEnd(8)} ${p.input.replace(/`/g, '')}`).join('\n')}
 Options: --size WxHxD (mm; any left out are looked up or estimated), --isbn 978... (a book),
@@ -63,11 +66,12 @@ const { positionals, values } = parseArgs({
     force: { type: 'boolean' },
     help: { type: 'boolean', short: 'h' },
     from: { type: 'string' },
+    json: { type: 'boolean' },
   },
 });
-const command = ['batch', 'preview', 'mcp', 'profile'].includes(positionals[0]) ? positionals.shift() : 'make';
+const command = ['batch', 'preview', 'mcp', 'profile', 'profiles'].includes(positionals[0]) ? positionals.shift() : 'make';
 const profile = command !== 'preview' && command !== 'profile' && PROFILES.some((p) => p.name === positionals[0]) ? positionals.shift() : undefined;
-const nothingGiven = positionals.length === 0 && command !== 'mcp' && (command !== 'make' || !values.isbn);
+const nothingGiven = positionals.length === 0 && command !== 'mcp' && command !== 'profiles' && (command !== 'make' || !values.isbn);
 if (values.help || nothingGiven) {
   console.error(USAGE);
   process.exit(values.help ? 0 : 1);
@@ -120,6 +124,9 @@ try {
   if (values.corners) options.corners = JSON.parse(await readFile(values.corners, 'utf8'));
   if (command === 'profile') {
     await (await import('./profile-tools.ts')).profileCommand(positionals, values.from);
+  } else if (command === 'profiles') {
+    if (values.json) console.log(JSON.stringify(PROFILES.map(({ name, about, search }) => ({ name, about, search })), null, 2));
+    else for (const { name, about } of PROFILES) console.log(`${name.padEnd(8)} ${about}`);
   } else if (command === 'mcp') {
     await (await import('./mcp.ts')).serve(); // stdio stays open: the server answers until the agent closes it
   } else if (command === 'make') {

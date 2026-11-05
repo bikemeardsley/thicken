@@ -15,6 +15,7 @@ import { addPart, assignFaces, box, type Code, cut, type Face, type Faces, foilM
 export const book: Profile = {
   name: 'book',
   about: 'a book, hardcover or paperback',
+  search: ['a photo of a book cover', 'a book spine', 'a stack of books on a table', 'books on a shelf', 'a hardcover book', 'a paperback book', 'an open book'],
   input: 'Front cover, back, spine and page sides, in any order and any of them; or just an ISBN',
   makes: 'The book at its real size, from its ISBN\'s catalog record: a paperback softly rounded, a hardcover with boards standing past its pages',
   records: {

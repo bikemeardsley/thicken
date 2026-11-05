@@ -13,6 +13,9 @@ export const __CAMEL__: Profile = {
   name: '__NAME__',
   // What it is, in a few words: the vision models are told this when they choose a profile for a photo.
   about: 'TODO: a __NAME__, in a few words',
+  // Phrases a photo-library search (CLIP, such as Immich's smart search) finds photos of it with, used alongside about.
+  // Short and plain, best tried on real photos; leave it out if it isn't made from photos.
+  search: ['TODO: a photo of a __NAME__'],
   // For the README's table: what it's made from, and what it makes.
   input: 'TODO: Front, and any of its back and sides; its size (`--size`)',
   makes: 'TODO: what it makes, at its real size',
