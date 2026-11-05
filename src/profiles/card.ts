@@ -58,6 +58,7 @@ export function cardSize(sights: Sight[] | undefined, { sizeMm = [], pt }: { siz
 export const card: Profile = {
   name: 'card',
   about: 'a single trading card on its own, not sealed in a plastic holder',
+  search: ['a trading card', 'a sports card', 'a baseball card', 'a basketball card', 'a football card', 'a pokemon card', 'a holographic trading card', 'trading cards on a table'],
   input: 'Front, and its back',
   makes: 'A thin plate, 63.5 × 88.9 mm unless `--size` says, 0.35 mm unless `--pt` gives a thick card\'s points; its corners cut and its foil shimmering as the vision models see them',
   records: {

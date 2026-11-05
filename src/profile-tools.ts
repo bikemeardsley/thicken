@@ -29,6 +29,8 @@ export function problems(profile: Profile): string[] {
     if (!words(profile[key])) found.push(`${key} says it in a few words`);
     else if (/\bTODO\b/.test(profile[key])) found.push(`${key} still says TODO`);
   }
+  if (profile.search && !(Array.isArray(profile.search) && profile.search.every(words))) found.push('search is a list of phrases, each in a few words');
+  else if (profile.search?.some((phrase) => /\bTODO\b/.test(phrase))) found.push('search still says TODO');
   if (!Object.keys(profile.records ?? {}).length) found.push('records names the sidecar fields it writes, each in a few words');
   for (const [kind, entries] of Object.entries({ records: profile.records ?? {}, faces: profile.faces, reads: profile.reads ?? {}, asks: profile.asks ?? {} })) {
     for (const [key, what] of Object.entries(entries)) {

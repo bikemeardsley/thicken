@@ -42,6 +42,7 @@ const HOLDER_SHAPES = Object.values(HOLDERS).map(([w, h]) => w / h);
 export const slab: Profile = {
   name: 'slab',
   about: 'a graded trading card sealed in a clear plastic holder with a label',
+  search: ['a graded trading card sealed in a plastic slab', 'a PSA graded card', 'a CGC graded card', 'a PSA slab'],
   input: 'Front, and its back',
   makes: 'A clear plastic holder at its grader\'s size, with the card and the grade label inside it, each cut from the photos',
   records: {

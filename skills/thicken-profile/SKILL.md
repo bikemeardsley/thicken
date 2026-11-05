@@ -27,6 +27,8 @@ a field to fill in. Fill them from what the user knows about the object, and
 ask rather than invent:
 
 - **`about`**, a few words: the vision models choose the profile by it.
+- **`search`**, phrases a photo-library search (CLIP, such as Immich's smart
+  search) finds photos of it with. Left out if it isn't made from photos.
 - **`records`**, each sidecar field it writes, in a few words; **`reads`**,
   what's printed on it worth reading (more is better); **`faces`**, each in a
   few words, for the models to find in a photo.

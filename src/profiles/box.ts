@@ -17,6 +17,7 @@ export const box: Profile = {
   name: 'box',
   generic: true,
   about: 'a box-shaped object (a game case, a phone, a deck of cards, packaging)',
+  search: ['a game case', 'a phone box', 'a card deck box', 'product packaging'],
   input: 'Front, and any of its back and sides; its size (`--size`), or the vision models\' estimate',
   makes: 'A softly rounded box with the photos on its faces',
   records: {

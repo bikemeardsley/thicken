@@ -23,6 +23,8 @@ export interface Profile {
   name: string;
   /** What it is, in a few words: for the README, and for the vision models choosing a profile (one with faces to find). */
   about: string;
+  /** Phrases a photo-library search (CLIP, such as Immich's smart search) finds photos of it with, used alongside `about`: `thicken profiles --json` gives them. */
+  search?: string[];
   /** For the README's table of profiles: what it's made from, and what it makes. */
   input: string;
   makes: string;

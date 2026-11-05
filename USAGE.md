@@ -565,6 +565,12 @@ A profile is code, and runs with your permissions: only add files to that
 folder that you wrote or trust. One that won't load is left out, said on
 stderr.
 
+`thicken profiles` lists every profile, built-in and your own, in a line each.
+`thicken profiles --json` prints them as an array of `{name, about, search}`
+for a program to read: `search` is a profile's phrases for finding photos of
+it in a photo library (CLIP, such as Immich's smart search), and is left out
+where a profile has none. Notes about your own profiles stay on stderr.
+
 ## From an AI agent
 
 `thicken mcp` serves two tools on stdio: `thicken_make` (photos, a video,

@@ -7,7 +7,8 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
-import { prepare, toMine, toThicken } from '../src/profile-tools.ts';
+import { prepare, problems, toMine, toThicken } from '../src/profile-tools.ts';
+import { PROFILES, type Profile } from '../src/thicken.ts';
 import './helpers.ts';
 
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
@@ -35,6 +36,7 @@ test('profile tools: your own profile, from the template, works at once, is chec
   const unready = thicken(['profile', 'check', 'vinyl-record'], mine, folder);
   assert.equal(unready.status, 1, unready.stdout);
   assert.match(unready.stdout, /about still says TODO/);
+  assert.match(unready.stdout, /search still says TODO/);
   writeFileSync(file, readFileSync(file, 'utf8').replace(/'TODO: [^']*'/g, '\'a vinyl record in its sleeve\''));
   const ready = thicken(['profile', 'check', 'vinyl-record'], mine, folder);
   assert.equal(ready.status, 0, ready.stdout + ready.stderr);
@@ -61,6 +63,37 @@ test('profile tools: a built-in profile to improve is yours to change, and used 
   const tray = readFileSync(path.join(mine, 'tray.ts'), 'utf8');
   assert.ok(tray.includes('name: \'tray\'') && tray.includes('export const tray:'), 'renamed');
   assert.notEqual(thicken(['profile', 'new', 'tray'], mine, folder).status, 0, 'never written over');
+});
+
+test('profiles --json: every profile, built-in and your own, as {name, about, search}, stdout JSON alone', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const mine = path.join(folder, 'profiles');
+  assert.equal(thicken(['profile', 'new', 'vinyl-record'], mine, folder).status, 0);
+  assert.equal(thicken(['profile', 'new', 'slab'], mine, folder).status, 0); // used in place of the built-in, a note on stderr
+  const listed = thicken(['profiles', '--json'], mine, folder);
+  assert.equal(listed.status, 0, listed.stderr);
+  assert.match(listed.stderr, /your profile "slab"/);
+  const profiles: { name: string; about: string; search?: string[] }[] = JSON.parse(listed.stdout);
+  assert.deepEqual(profiles.map((p) => p.name).toSorted(), ['badge', 'book', 'box', 'card', 'lettering', 'slab', 'vinyl-record']);
+  for (const profile of profiles) assert.deepEqual(Object.keys(profile).filter((key) => key !== 'search'), ['name', 'about']);
+  const search = Object.fromEntries(profiles.map((p) => [p.name, p.search]));
+  assert.ok(search.card?.includes('a pokemon card') && search.slab?.includes('a PSA slab') && search.book?.includes('books on a shelf') && search.box?.length);
+  assert.ok(search['vinyl-record']?.length, 'from the template');
+  assert.equal(search.badge, undefined);
+  assert.equal(search.lettering, undefined);
+
+  const lines = thicken(['profiles'], '', folder);
+  assert.equal(lines.status, 0, lines.stderr);
+  assert.match(lines.stdout, /^book\s+a book, hardcover or paperback$/m);
+});
+
+test('profile check: search is a list of phrases', () => {
+  const [profile] = PROFILES;
+  assert.deepEqual(problems({ ...profile, search: [] }), []);
+  assert.match(problems({ ...profile, search: 'a book' } as unknown as Profile).join(), /search is a list/);
+  assert.match(problems({ ...profile, search: [' '] }).join(), /search is a list/);
+  assert.match(problems({ ...profile, search: ['TODO: a book'] }).join(), /search still says TODO/);
 });
 
 test('profile tools: every built-in profile, written as your own and back, is unchanged', () => {
