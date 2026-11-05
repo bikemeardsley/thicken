@@ -91,7 +91,7 @@ test('profiles --json: every profile, built-in and your own, as {name, about, se
 test('profile check: search is a list of phrases', () => {
   const [profile] = PROFILES;
   assert.deepEqual(problems({ ...profile, search: [] }), []);
-  assert.match(problems({ ...profile, search: 'a book' } as unknown as Profile).join(), /search is a list/);
+  for (const search of ['a book', '', null]) assert.match(problems({ ...profile, search } as unknown as Profile).join(), /search is a list/);
   assert.match(problems({ ...profile, search: [' '] }).join(), /search is a list/);
   assert.match(problems({ ...profile, search: ['TODO: a book'] }).join(), /search still says TODO/);
 });
