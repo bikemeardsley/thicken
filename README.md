@@ -68,7 +68,7 @@ models read the rest off the slab. What each profile records is in
 
 - [Try it](#try-it) · [From an AI agent](#from-an-ai-agent) · [How it works](#how-it-works) · [The thicken object](#the-thicken-object) · [What it makes](#what-it-makes)
 - In detail ([USAGE.md](USAGE.md)): [batch](USAGE.md#batch) · [photos](USAGE.md#photos-any-number) ·
-  [vision](USAGE.md#vision-optional) · [video](USAGE.md#video-optional) · [training mode](USAGE.md#training-mode-off-by-default) ·
+  [vision](USAGE.md#vision-optional) · [video](USAGE.md#video-optional) · [training mode](USAGE.md#training-mode-off-by-default) ([reviewed](USAGE.md#reviewed-in-label-studio-off-by-default)) ·
   [review](USAGE.md#review) · [the sidecar](USAGE.md#what-the-sidecar-records) · [previews](USAGE.md#preview) ·
   [inputs](USAGE.md#inputs) · [sizes](USAGE.md#dimensions)
 - [What leaves your machine](#what-leaves-your-machine) · [Adding a profile](#adding-a-profile) · [Security](#security) ·

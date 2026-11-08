@@ -18,7 +18,8 @@ import path from 'node:path';
 import sharp from 'sharp';
 import type { Picture } from './image.ts';
 
-export const trainingOn = () => Boolean(process.env.THICKEN_DATASET);
+// Not while photos are reviewed (src/reviews.ts): those are kept there alone, never in this folder.
+export const trainingOn = () => Boolean(process.env.THICKEN_DATASET) && !process.env.THICKEN_REVIEWS;
 
 /** A question's example, held by the answer it settled (a Sight or an Identity) until the run knows what came of it. */
 export interface Held { jpeg: Buffer; picture: Picture; sent: { left: number; top: number; scale: number }; example: object }

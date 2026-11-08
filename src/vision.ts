@@ -311,7 +311,7 @@ export const visionRecord = (sights?: Sight[], identity?: Identity) => {
 };
 
 /** A picture letterboxed into SIZE x SIZE, as JPEG, and the ways between its pixels and the picture's. */
-async function letterbox(picture: Picture) {
+export async function letterbox(picture: Picture) {
   const { width, height } = picture;
   const scale = SIZE / Math.max(width, height);
   const [left, top] = [(SIZE - Math.round(width * scale)) / 2, (SIZE - Math.round(height * scale)) / 2];
@@ -384,7 +384,7 @@ export interface Evidence {
 const CLEARLY = 0.1; // how much better one place must fit its shape and edges to win a tie on the answers
 
 /** Whether four corners run clockwise on screen (y down): twice their signed area, by the shoelace formula, is positive. */
-const clockwise = (corners: number[][]) => corners.reduce((sum, p, k) => sum + p[0] * corners[(k + 1) % 4][1] - corners[(k + 1) % 4][0] * p[1], 0) > 0;
+export const clockwise = (corners: number[][]) => corners.reduce((sum, p, k) => sum + p[0] * corners[(k + 1) % 4][1] - corners[(k + 1) % 4][0] * p[1], 0) > 0;
 const side = (a: number[], b: number[]) => Math.hypot(b[0] - a[0], b[1] - a[1]);
 /** A face's shape, width over height, in its own reading order. */
 const shapeOf = ([tl, tr, br, bl]: number[][]) => (side(tl, tr) + side(bl, br)) / (side(tl, bl) + side(tr, br));
