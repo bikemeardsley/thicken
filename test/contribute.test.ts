@@ -191,7 +191,7 @@ test('contribute: a photo the relay refuses is dropped silently, and logged wher
   assert.deepEqual([r.asked.filter(({ method }) => method === 'DELETE').length, await lines()], [0, []], 'nothing to delete on the relay');
 });
 
-test('contribute: an unreachable or busy relay leaves the photos in the outbox, sent oldest first next run', async (t) => {
+test('contribute: an unreachable or busy relay leaves the photos in the outbox, sent next run, and the same photo only once', async (t) => {
   process.env.THICKEN_CONTRIBUTE = 'yes';
   let [down, busy] = [true, true];
   const r = relay({
@@ -203,11 +203,13 @@ test('contribute: an unreachable or busy relay leaves the photos in the outbox, 
   await contribute(sidecar, 'cli'); // no answer from the relay at all
   assert.deepEqual([r.posts().length, await outbox()], [0, 1]);
   down = false;
-  await contribute(sidecar, 'cli'); // a 503 to the first: it and the rest wait
-  assert.deepEqual([r.posts().length, await outbox(), (await lines()).length], [1, 2, 0]);
+  await contribute(sidecar, 'cli'); // a 503: it waits, and the same photo made again isn't queued twice
+  assert.deepEqual([r.posts().length, await outbox(), (await lines()).length], [1, 1, 0]);
   busy = false;
   await contribute(sidecar, 'cli');
-  assert.deepEqual([r.posts().length, await outbox(), (await lines()).length], [4, 0, 3]);
+  assert.deepEqual([r.posts().length, await outbox(), (await lines()).length], [2, 0, 1]);
+  await contribute((await box()).sidecar, 'cli'); // made once more: already sent, so nothing goes
+  assert.deepEqual([r.posts().length, (await lines()).length], [2, 1]);
 });
 
 test('contribute: a relay that has closed for good (410) ends it, and empties the outbox', async (t) => {

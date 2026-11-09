@@ -26,22 +26,23 @@ headers, and nothing is logged (`observability` is off).
 An upload is checked in this order and stops at the first failure:
 
 1. Not accepting: 503 `{reason}` (410 once ended for good).
-2. The rate limiter (5 a minute) or a day cap (`PER_PREFIX_DAY`, `PER_ASN_DAY`, `GLOBAL_DAY`): 429. Every attempt counts
-   toward the caps, refused ones too, before anything is read, so the caps also bound what the checks below cost. A
-   client is keyed on its IPv4 address or IPv6 /64, stored only as `HMAC-SHA256(IP_SALT, …)`, 16 hex. Once
-   `SPIKE_HOUR` photos are accepted within an hour, the next one sets `paused=auto` for an hour and gets 503.
+2. The rate limiter (5 a minute): 429. A client is keyed on its IPv4 address or IPv6 /64, stored only as
+   `HMAC-SHA256(IP_SALT, …)`, 16 hex. Once `SPIKE_HOUR` photos are accepted within an hour, the next one sets the
+   KV key `spike` for an hour (its own key, so it never overwrites a pause by hand or an incident) and gets 503.
 3. Content-Length missing or over 1.5 MB, or more bytes than that arriving: 413.
 4. `meta` isn't exactly `{v, thicken, consent, profile, faces}` (profile book, box, card or slab; up to 8 faces of 4
    corners in 0..1000; at most 4 KB): 400 `{reason:"meta"}`.
 5. Not `FF D8 FF`, or the Images binding doesn't read a JPEG: 415. A side over 1024: 413.
 6. An exact SHA-256 repeat: 201 with an id that names nothing and nothing stored, so no one holding a copy of a photo
    can learn that it was contributed before.
-7. The known-abuse hash lists (below). A match: 422 `{reason:"rejected"}` and an incident. Every list erring: 503.
-8. Re-encoded to a JPEG at quality 90. The Images binding keeps no metadata but an EXIF copyright tag (its default).
-9. Workers AI (`@cf/cloudflare/clef-flash`, zero data retention) answers three yes/no questions with probabilities:
+7. A day cap (`PER_PREFIX_DAY`, `PER_ASN_DAY`, `GLOBAL_DAY`): 429. Every well-formed attempt counts from here, refused
+   ones too, so the caps bound what the checks below cost; a malformed one never reaches them.
+8. The known-abuse hash lists (below). A match: 422 `{reason:"rejected"}` and an incident. Every list erring: 503.
+9. Re-encoded to a JPEG at quality 90. The Images binding keeps no metadata but an EXIF copyright tag (its default).
+10. Workers AI (`@cf/cloudflare/clef-flash`, zero data retention) answers three yes/no questions with probabilities:
    422 `{reason:"sexual"}` at `SEXUAL_MAX` or more, `"face"` at `FACE_MAX` or more, `"topic"` under `TOPIC_MIN`. An
    error is 503.
-10. Stored as `inbox/<id>.jpg` and `inbox/<id>.json`, with a D1 row: 201 `{id}`.
+11. Stored as `inbox/<id>.jpg` and `inbox/<id>.json`, with a D1 row: 201 `{id}`.
 
 What it keeps: the inbox for 180 days (an R2 lifecycle rule); D1's photo rows (SHA-256, prefix hash, ASN) and
 rejections for 180 days, and day counters for 2 (a daily Cron Trigger); forgotten ids and incidents until deleted by

@@ -57,7 +57,7 @@ export default {
 async function closed(env: E): Promise<string | null> {
   if (!env.IP_SALT || !configured(env).length) return 'not open';
   const flag = await env.FLAGS.get('paused');
-  return flag === 'ended' ? 'ended' : flag ? 'paused' : null;
+  return flag === 'ended' ? 'ended' : flag || (await env.FLAGS.get('spike')) ? 'paused' : null;
 }
 
 async function upload(req: Request, env: E): Promise<Response> {
@@ -65,21 +65,20 @@ async function upload(req: Request, env: E): Promise<Response> {
   const reason = await closed(env);
   if (reason) return json({ reason }, reason === 'ended' ? 410 : 503);
 
-  // 2. Rate limits, keyed on the hashed /32 or /64, before anything is read or checked: every attempt counts toward
-  // the day caps, refused ones too, so the caps also bound what the checks below cost.
+  // 2. The per-minute limit, keyed on the hashed /32 or /64, before anything is read. The day caps come at 7, once
+  // an upload is well formed and about to cost the checks.
   const ip = req.headers.get('cf-connecting-ip') ?? '';
   const asn = Number(req.cf?.asn) || 0;
   const prefix = await prefixOf(req, env);
   if (!(await env.RATE.limit({ key: prefix })).success) return json({ reason: 'rate limit' }, 429);
-  const caps = [env.PER_PREFIX_DAY, env.PER_ASN_DAY, env.GLOBAL_DAY].map(Number);
-  if (!(await counted(env, [`p:${prefix}`, `a:${asn}`, 'all'], caps))) return json({ reason: 'rate limit' }, 429);
   const now = new Date();
   const at = now.toISOString();
   const hour = await env.DB.prepare('SELECT count(*) AS n FROM photos WHERE at > ?')
     .bind(new Date(now.getTime() - 3_600_000).toISOString())
     .first<number>('n');
   if ((hour ?? 0) >= Number(env.SPIKE_HOUR)) {
-    await env.FLAGS.put('paused', 'auto', { expirationTtl: 3600 }); // lifts itself after an hour
+    // Its own key, lifting itself after an hour, so it never overwrites or outlasts a pause set by hand or an incident.
+    await env.FLAGS.put('spike', 'auto', { expirationTtl: 3600 });
     return json({ reason: 'paused' }, 503);
   }
 
@@ -112,7 +111,11 @@ async function upload(req: Request, env: E): Promise<Response> {
   const sha256 = hex(await crypto.subtle.digest('SHA-256', bytes));
   if (await env.DB.prepare('SELECT 1 FROM photos WHERE sha256 = ?').bind(sha256).first()) return json({ id: crypto.randomUUID() }, 201);
 
-  // 7. Not known CSAM. A match is preserved for a year (18 U.S.C. § 2258A(h)) and reported by hand (README.md).
+  // 7. The day caps. Every well-formed attempt counts from here, refused ones too, so they bound what the checks cost.
+  const caps = [env.PER_PREFIX_DAY, env.PER_ASN_DAY, env.GLOBAL_DAY].map(Number);
+  if (!(await counted(env, [`p:${prefix}`, `a:${asn}`, 'all'], caps))) return json({ reason: 'rate limit' }, 429);
+
+  // 8. Not known CSAM. A match is preserved for a year (18 U.S.C. § 2258A(h)) and reported by hand (README.md).
   let lists: { matched: string[]; answered: string[] };
   try {
     lists = await known(bytes, env);
@@ -130,7 +133,7 @@ async function upload(req: Request, env: E): Promise<Response> {
     return json({ reason: 'rejected' }, 422);
   }
 
-  // 8. Re-encoded, which drops the metadata; only these bytes from here on. 9. The Workers AI checks.
+  // 9. Re-encoded, which drops the metadata; only these bytes from here on. 10. The Workers AI checks.
   let clean: Uint8Array;
   let scores: { sexual: number; face: number; topic: number };
   try {
@@ -152,7 +155,7 @@ async function upload(req: Request, env: E): Promise<Response> {
     return json({ reason: rejected }, 422);
   }
 
-  // 10. Stored: the row first, so the same photo sent twice at once is stored once.
+  // 11. Stored: the row first, so the same photo sent twice at once is stored once.
   const id = crypto.randomUUID();
   const row = await env.DB.prepare('INSERT INTO photos (id, sha256, at, prefix, asn) VALUES (?, ?, ?, ?, ?) ON CONFLICT (sha256) DO NOTHING RETURNING id')
     .bind(id, sha256, at, prefix, asn)
@@ -317,7 +320,7 @@ async function admin(req: Request, env: E, route: string): Promise<Response> {
     return empty(204);
   }
   if (req.method === 'POST' && route === 'resume') {
-    await env.FLAGS.delete('paused');
+    await Promise.all([env.FLAGS.delete('paused'), env.FLAGS.delete('spike')]);
     return empty(204);
   }
   if (get && (route === 'incidents' || route === 'rejections')) {

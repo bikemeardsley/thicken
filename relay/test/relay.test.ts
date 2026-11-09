@@ -103,6 +103,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await base.DB.batch(['photos', 'counters', 'incidents', 'forgotten', 'rejections'].map((t) => base.DB.prepare(`DELETE FROM ${t}`)));
   await base.FLAGS.delete('paused');
+  await base.FLAGS.delete('spike');
   const all = await keys();
   if (all.length) await base.INBOX.delete(all);
   scores = { sexual: 0.01, face: 0.02, topic: 0.97 };
@@ -363,8 +364,17 @@ describe('POST /thicken/v1/photos', () => {
       const res = await post({ ip: '198.51.100.3', asn: 3 }, over);
       expect(res.status).toBe(503);
       expect(await res.json()).toEqual({ reason: 'paused' });
-      expect(await base.FLAGS.get('paused')).toBe('auto');
+      expect(await base.FLAGS.get('spike')).toBe('auto');
+      expect(await base.FLAGS.get('paused')).toBeNull(); // its own key: it never overwrites a pause by hand or an incident
       expect(await (await get('/status')).json()).toEqual({ accepting: false, reason: 'paused' });
+      expect((await send('POST', '/admin/resume', ADMIN)).status).toBe(204);
+      expect(await (await get('/status')).json()).toEqual({ accepting: true });
+    });
+
+    it('counts only well-formed attempts toward the day caps: a malformed flood locks no one out', async () => {
+      const over = { PER_PREFIX_DAY: 1 };
+      for (let i = 0; i < 3; i++) expect((await post({ meta: { ...META, v: 2 } }, over)).status).toBe(400);
+      expect((await post({}, over)).status).toBe(201);
     });
   });
 

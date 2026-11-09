@@ -5,7 +5,7 @@
 // a terminal, by an MCP client that can ask (elicitation), or at install as THICKEN_CONTRIBUTE; the answer is kept in
 // ~/.thicken/config.json. Only for thicken's own book, box, card and slab profiles, never a user's own, and never for
 // Mike's own runs (THICKEN_REVIEWS, THICKEN_DATASET).
-import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { appendFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -109,14 +109,20 @@ export async function contribute(sidecar: Sidecar, via: 'cli' | 'mcp', ask?: () 
     if (said !== 'yes') return undefined;
 
     // This run's photos join the outbox, which is sent oldest first: what a busy or unreachable relay left last time.
+    // A frame already sent, refused or waiting (the same photo made again) isn't sent twice.
     const outbox = home('outbox');
     await mkdir(outbox, { recursive: true });
+    const log = (await readFile(home('contributed.jsonl'), 'utf8').catch(() => '')).split('\n').filter(Boolean);
+    const known = new Set([...log.map((line) => JSON.parse(line).sha256), ...(await readdir(outbox)).map((name) => name.slice(name.indexOf('-') + 1, -5))]);
     const roles = (sidecar.pictures ?? []) as { file: string; page?: number; time?: number; role: string }[];
     for (const [i, picture] of run.pictures.entries()) {
       const { file, page, time } = picture.source;
       // A photo the build left unused (an interior page, a stray shot) isn't one the model was made from.
       if (roles.length && !roles.some((r) => r.file === file && r.page === page && r.time === time && r.role !== 'unused')) continue;
       const frame = await letterbox(picture);
+      const sha256 = createHash('sha256').update(frame.jpeg).digest('hex');
+      if (known.has(sha256)) continue;
+      known.add(sha256);
       const sight = run.sights?.[i];
       const answered = new Set(sight?.answers.filter((a) => !a.error).map(({ model }) => model));
       const faces = (sight?.faces ?? []).map(({ face, corners, by }) => ({
@@ -126,7 +132,7 @@ export async function contribute(sidecar: Sidecar, via: 'cli' | 'mcp', ask?: () 
       }));
       const meta = { v: 1, thicken: (sidecar.build as { thicken: string }).thicken, consent: prompt, profile: run.profile, faces };
       const local = path.resolve(run.inputs.find((input) => path.basename(input) === file) ?? file);
-      await writeFile(path.join(outbox, `${Date.now()}-${randomUUID()}.json`), JSON.stringify({ meta, file: local, jpeg: frame.jpeg.toString('base64') }));
+      await writeFile(path.join(outbox, `${Date.now()}-${sha256}.json`), JSON.stringify({ meta, file: local, jpeg: frame.jpeg.toString('base64') }));
     }
     const names = (await readdir(outbox)).filter((name) => name.endsWith('.json')).sort();
     const kept = names.filter((name) => Date.now() - parseInt(name, 10) < OUTBOX_DAYS * 86_400_000).slice(-OUTBOX_MAX);
@@ -151,7 +157,8 @@ export async function contribute(sidecar: Sidecar, via: 'cli' | 'mcp', ask?: () 
       if (code !== 201 && (code < 400 || code >= 500 || code === 429)) break;
       // Sent, or refused (any other 4xx) and dropped: either way logged, where `thicken contribute list` shows it.
       const { id = null, reason } = await response!.json().catch(() => ({}));
-      const line = { id: code === 201 ? id : null, at: new Date().toISOString(), profile: meta.profile, file, ...(code !== 201 && { rejected: String(reason ?? code) }) };
+      const sha256 = name.slice(name.indexOf('-') + 1, -5);
+      const line = { id: code === 201 ? id : null, at: new Date().toISOString(), profile: meta.profile, file, sha256, ...(code !== 201 && { rejected: String(reason ?? code) }) };
       await appendFile(home('contributed.jsonl'), `${JSON.stringify(line)}\n`);
       await rm(path.join(outbox, name), { force: true });
     }
