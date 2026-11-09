@@ -16,7 +16,6 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { hold } from './contribute.ts';
 import { codes, load, VIDEO, type Picture } from './image.ts';
-import { reviewAll, reviewsOn } from './reviews.ts';
 import { keepRun, trainingOn } from './training.ts';
 import { findBench, identify, lookAll, readOf, visionOn, visionRecord, type Identity, type Sight } from './vision.ts';
 
@@ -216,9 +215,7 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
   // With a vision roster, the models find each photo's faces, which are cut out and straightened (src/vision.ts);
   // then any a person placed (--corners, --cropped) take the place of theirs.
   const looked = visionOn() && (Object.keys(profile.faces).length || profile.reads) ? await lookAll(pictures, profile) : undefined;
-  // Training mode, reviewed: a person settles every photo's faces in Label Studio, and the build takes theirs (src/reviews.ts).
-  const reviewed = looked && reviewsOn() && Object.keys(profile.faces).length ? await reviewAll(pictures, looked, profile, VERSION) : looked;
-  const sights = options.corners || (options.cropped && reviewed) ? byHand(pictures, reviewed, options) : reviewed;
+  const sights = options.corners || (options.cropped && looked) ? byHand(pictures, looked, options) : looked;
   // What the codes said of the object (a cert, an ISBN), and what it was made from (each photo's folder and name, no
   // more of its path), for the training set's lines: an object with no code is told by its photos.
   const { recognized: _, use: __, ...said } = facts;

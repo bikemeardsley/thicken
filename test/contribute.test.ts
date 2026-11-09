@@ -35,7 +35,7 @@ before(async () => {
     .jpeg().withMetadata({ exif: { IFD0: { Copyright: 'secret-owner' } } }).toFile(photo);
 });
 beforeEach(async () => {
-  for (const key of ['THICKEN_CONTRIBUTE', 'THICKEN_REVIEWS', 'THICKEN_DATASET', 'THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key];
+  for (const key of ['THICKEN_CONTRIBUTE', 'THICKEN_DATASET', 'THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key];
   process.env.THICKEN_CONTRIBUTE_URL = 'http://relay.test/thicken';
   await rm(thickenHome(), { recursive: true, force: true });
 });
@@ -142,16 +142,14 @@ test('contribute: yes sends each photo as the 1000 x 1000 frame the models saw, 
   assert.deepEqual([more.length, line.profile, line.file, await outbox()], [0, 'box', photo, 0]);
 });
 
-test('contribute: never a profile the corner model doesn\'t learn (a badge), nor with THICKEN_REVIEWS or THICKEN_DATASET set', async (t) => {
+test('contribute: never a profile the corner model doesn\'t learn (a badge), nor in training mode (THICKEN_DATASET set)', async (t) => {
   process.env.THICKEN_CONTRIBUTE = 'yes';
   const r = relay();
   t.after(r.restore);
   await contribute((await thicken([fixture('badge.png')], { widthMm: 35, depthMm: 2 })).sidecar, 'cli');
-  for (const key of ['THICKEN_REVIEWS', 'THICKEN_DATASET']) {
-    process.env[key] = path.join(folder, key);
-    await contribute((await box()).sidecar, 'cli');
-    delete process.env[key];
-  }
+  process.env.THICKEN_DATASET = path.join(folder, 'practice');
+  await contribute((await box()).sidecar, 'cli');
+  delete process.env.THICKEN_DATASET;
   assert.equal(r.asked.length, 0);
 });
 

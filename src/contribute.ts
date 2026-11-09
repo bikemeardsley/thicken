@@ -4,7 +4,7 @@
 // else of the photo, the run or the machine (PRIVACY.md#contributing-photos). The question is put once: by the CLI at
 // a terminal, by an MCP client that can ask (elicitation), or at install as THICKEN_CONTRIBUTE; the answer is kept in
 // ~/.thicken/config.json. Only for thicken's own book, box, card and slab profiles, never a user's own, and never for
-// Mike's own runs (THICKEN_REVIEWS, THICKEN_DATASET).
+// Mike's own runs (THICKEN_DATASET: training mode).
 import { createHash } from 'node:crypto';
 import { appendFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -72,7 +72,7 @@ const CORNERED = ['book', 'box', 'card', 'slab']; // the corner model's objects
 
 /** Held for a run of one of thicken's own profiles (`builtIn`: from src/profiles, never one of the user's) the model learns from. */
 export function hold(sidecar: object, profile: string, builtIn: boolean, inputs: string[], pictures: Picture[], sights?: Sight[]): void {
-  if (relay() && builtIn && CORNERED.includes(profile) && !process.env.THICKEN_REVIEWS && !process.env.THICKEN_DATASET) {
+  if (relay() && builtIn && CORNERED.includes(profile) && !process.env.THICKEN_DATASET) {
     held.set(sidecar, { profile, inputs, pictures, sights });
   }
 }
@@ -127,7 +127,7 @@ export async function contribute(sidecar: Sidecar, via: 'cli' | 'mcp', ask?: () 
       const answered = new Set(sight?.answers.filter((a) => !a.error).map(({ model }) => model));
       const faces = (sight?.faces ?? []).map(({ face, corners, by }) => ({
         face, corners: corners.map((p) => frame.toSent(p).map((v) => Math.min(Math.max(Math.round(v), 0), 1000))),
-        // Scored as training mode scores a face (src/reviews.ts): the part of the seats that answered which agreed on it.
+        // The part of the seats that answered which agreed on it.
         ...(answered.size && !by.includes('given') && { score: Math.round((by.filter((m) => answered.has(m)).length / answered.size) * 100) / 100 }),
       }));
       const meta = { v: 1, thicken: (sidecar.build as { thicken: string }).thicken, consent: prompt, profile: run.profile, faces };

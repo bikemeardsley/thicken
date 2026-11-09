@@ -1,9 +1,10 @@
-// Mike's side of contributing photos (PRIVACY.md, "Contributing photos"), run by hand from thicken's folder:
-// `node relay/pull.ts`. Each run:
+// Mike's side of contributing photos (PRIVACY.md, "Contributing photos"): `node relay/pull.ts`, by hand or nightly,
+// from any folder (it reads the .env beside relay/). Unattended: it asks nothing, and exits 1 on any failure. Each run:
 // - drops the copy here, its line and its Label Studio task, of every photo its contributor forgot (thicken contribute
 //   forget) since the last pull, reviewed or not, and of every unreviewed one the relay no longer holds (its 180 days);
-// - records each review submitted since the last run as a line of review.jsonl, training mode's line (src/reviews.ts)
-//   with "source": "contributed", and deletes a rejected photo from the relay, from Label Studio and from here;
+// - records each review submitted since the last run as a line of review.jsonl, "source": "contributed" (its format:
+//   WendellResearch-AI's experiments/003-thicken-corners/thicken-training-mode.md, "Contributed photos"), and deletes a
+//   rejected photo from the relay, from Label Studio and from here;
 // - brings the relay's new photos here, each checked again with sharp, and adds each to Label Studio, in
 //   `003 · <profile> faces · contributed photos`, its contributor's faces as the proposal.
 // Settings, from thicken's .env: THICKEN_INBOX_URL, the relay with its /thicken (https://contribute.wendellresearch.ai/thicken);
@@ -16,14 +17,14 @@ import { appendFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/pro
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
-import { addTask, api, decision, project, studio, type Annotation } from '../src/reviews.ts';
+import { addTask, api, decision, project, studio, type Annotation } from '../src/label-studio.ts';
 import { PROFILES } from '../src/thicken.ts';
 
 const MARGIN_MS = 86_400_000; // forgotten ids are asked for from a day before the last pull: two clocks, and a repeat deletes nothing
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/; // the relay's ids, and nothing else, name files here
 const INSTRUCTIONS = `<p>Photos people contributed to help train thicken, each as their thicken sent it, its faces as their
 vision models proposed them. Anyone can send any corners: trust none. Experiment 003's review guidelines (v4) apply, as for
-thicken runs. <b>keep</b> once every face sits on its face; <b>reject</b> a photo that can't give a good label or shouldn't be
+training mode. <b>keep</b> once every face sits on its face; <b>reject</b> a photo that can't give a good label or shouldn't be
 here. Tick <b>someone else in frame</b> for anyone but a hand or arm holding it. A reject, or anyone else in frame, is
 deleted from the relay, from Label Studio and from the inbox folder at the next pull.</p>`;
 
@@ -173,7 +174,8 @@ export async function pull() {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  if (existsSync('.env')) process.loadEnvFile(); // thicken's .env, as the CLI reads it
+  const env = fileURLToPath(new URL('../.env', import.meta.url)); // thicken's .env, whatever folder it's run from
+  if (existsSync(env)) process.loadEnvFile(env);
   await pull().catch((error) => {
     process.stderr.write(`pull: ${(error as Error).message}\n`);
     process.exitCode = 1;

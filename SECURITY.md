@@ -26,10 +26,7 @@ attacker gains.
   picture, or where `-o` says; a batch writes into `<folder>/thicken/`;
   `--preview` adds `<name>.preview.png`. Training mode, only when
   `THICKEN_DATASET` is set, writes the images it sent and a `metadata.jsonl`
-  into that folder. With `THICKEN_REVIEWS` set, it writes each reviewed
-  photo (metadata stripped) and a `review.jsonl` there, and sends the photo to
-  the Label Studio `LABEL_STUDIO_URL` names, with `LABEL_STUDIO_API_KEY`,
-  which it never writes anywhere. A video's frames go to a temporary folder
+  into that folder. A video's frames go to a temporary folder
   that is removed afterwards. Contributing photos keeps your answer in
   `~/.thicken/config.json`, the photos you contributed in
   `~/.thicken/contributed.jsonl`, and those still to send in

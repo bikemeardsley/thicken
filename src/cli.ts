@@ -48,9 +48,7 @@ Vision: with THICKEN_VISION_URL (an OpenAI-compatible endpoint), THICKEN_VISION_
 THICKEN_VISION_MODELS (primary,peer,backups...) set, or in a .env file here, photos needn't be
 cropped: the models find each face, and it is cut out and straightened.
 Training mode (off by default): with THICKEN_DATASET=<folder> also set, every question put to
-the vision models is kept there as a training example. With THICKEN_REVIEWS=<folder>,
-LABEL_STUDIO_URL and LABEL_STUDIO_API_KEY set, a person reviews every face the models propose
-in that Label Studio before the build, which takes their corners, and each review is kept there.
+the vision models is kept there as a training example.
 Contributing photos (off unless you say yes): thicken asks once whether to send the photos you
 make models from, as the 1000 x 1000 frames the vision models see with the corners found in
 them, to train the corner model it uses (PRIVACY.md#contributing-photos). thicken contribute

@@ -68,7 +68,7 @@ models read the rest off the slab. What each profile records is in
 
 - [Try it](#try-it) · [From an AI agent](#from-an-ai-agent) · [How it works](#how-it-works) · [The thicken object](#the-thicken-object) · [What it makes](#what-it-makes)
 - In detail ([USAGE.md](USAGE.md)): [batch](USAGE.md#batch) · [photos](USAGE.md#photos-any-number) ·
-  [vision](USAGE.md#vision-optional) · [video](USAGE.md#video-optional) · [training mode](USAGE.md#training-mode-off-by-default) ([reviewed](USAGE.md#reviewed-in-label-studio-off-by-default)) ·
+  [vision](USAGE.md#vision-optional) · [video](USAGE.md#video-optional) · [training mode](USAGE.md#training-mode-off-by-default) ·
   [contributing photos](USAGE.md#contributing-photos-to-help-train-thicken) ·
   [review](USAGE.md#review) · [the sidecar](USAGE.md#what-the-sidecar-records) · [previews](USAGE.md#preview) ·
   [inputs](USAGE.md#inputs) · [sizes](USAGE.md#dimensions)
@@ -369,7 +369,7 @@ lists what thicken touches: files, the network, and the programs it runs.
 | Straightening faces | Adapt, don't depend | [jlouthan/perspective-transform](https://github.com/jlouthan/perspective-transform) (MIT): the 4-point homography; the resampling over sharp's pixels is ours. sharp has no perspective warp, and OpenCV.js is megabytes for one. |
 | Snapping corners to edges | Write | `snap` in src/image.ts moves a model's corners (about 1% off) onto the real edges. It samples brightness steps along each side, takes the line they support nearest the model's, and fits it by least squares, in about 70 ms a face. [puffinsoft/jscanify](https://github.com/puffinsoft/jscanify)'s corner ranking was read; a line fit near the model's corners was enough. |
 | Lettering's font | Dependency | [opentypejs/opentype.js](https://github.com/opentypejs/opentype.js) (MIT) reads it: the words' outlines, kerned. The font is [Titan One](https://github.com/google/fonts/tree/main/ofl/titanone) by Rodrigo Fuenzalida, shipped unmodified under the SIL Open Font License 1.1 (`fonts/OFL.txt`; "Titan" is its Reserved Font Name). |
-| Reviewing proposals (training mode) | Use | [HumanSignal/label-studio](https://github.com/HumanSignal/label-studio) (Apache-2.0), your own server, over its API (src/reviews.ts): no SDK. |
+| Reviewing contributed photos | Use | [HumanSignal/label-studio](https://github.com/HumanSignal/label-studio) (Apache-2.0), the author's own server, over its API (src/label-studio.ts, relay/pull.ts): no SDK. |
 | Contributing photos | Write | The frame the vision models already get, one POST each; the question by `node:readline`, or by the MCP SDK's elicitation (already a dependency). |
 | The contribute relay | Use | A Cloudflare Worker (`relay/`, not in the npm package) on R2, D1, KV, the Images binding and Workers AI's `clef-flash` for its checks; built and tested with [cloudflare/workers-sdk](https://github.com/cloudflare/workers-sdk) (MIT or Apache-2.0) and [vitest-dev/vitest](https://github.com/vitest-dev/vitest) (MIT) as `relay/`'s own dev dependencies. |
 | Known-abuse checks | Use | Free hash-list services for hosting providers, each used once its key is set: [Arachnid Shield](https://projectarachnid.ca/en/), [PhotoDNA Cloud](https://www.microsoft.com/en-us/photodna/cloudservice), [Offlimits' Hash Check Service](https://hashcheckservice.nl/) and NCMEC's hash sharing. |

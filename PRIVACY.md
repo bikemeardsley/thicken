@@ -34,9 +34,7 @@ The photos, PDFs and videos you give it are read locally. It writes each
 model and its JSON sidecar where you tell it. Sidecars record the lookups made,
 never an API key, GPS location or serial number. Training mode, only when you
 set `THICKEN_DATASET`, saves the images it sent and their metadata into that
-folder. Its reviewed half, only when you set `THICKEN_REVIEWS`, sends each
-photo to the Label Studio you name for you to review, and saves the photo,
-stripped of its metadata, and your review into that folder. Your answer about
+folder. Your answer about
 contributing photos is kept in `~/.thicken/config.json`, and the photos you
 contributed are listed in `~/.thicken/contributed.jsonl` (each one's id, time,
 profile and file name, or why it was refused), which is never sent.

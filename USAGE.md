@@ -6,7 +6,7 @@ Everything in detail; the [README](README.md) has the short version.
 - [Photos: any number](#photos-any-number)
 - [Vision (optional)](#vision-optional)
 - [Video (optional)](#video-optional)
-- [Training mode (off by default)](#training-mode-off-by-default), [reviewed in Label Studio](#reviewed-in-label-studio-off-by-default)
+- [Training mode (off by default)](#training-mode-off-by-default)
 - [Contributing photos to help train thicken](#contributing-photos-to-help-train-thicken)
 - [Review](#review)
 - [What the sidecar records](#what-the-sidecar-records)
@@ -335,7 +335,7 @@ fine-tuning a model of your own to take the roster's first seat. It is off
 unless you name a folder for them:
 
 ```
-THICKEN_DATASET=../thicken-dataset  # outside the repo: it holds your photos
+THICKEN_DATASET=../my-dataset  # outside the repo: it holds your photos
 ```
 
 - Every question put to the roster (which object it is, where each face is)
@@ -360,62 +360,10 @@ THICKEN_DATASET=../thicken-dataset  # outside the repo: it holds your photos
   `card/`), and the questions about which object it is in `identify/`, so
   a model can be tuned on one profile alone. Each folder is the layout
   Hugging Face's `imagefolder` loader reads:
-  `load_dataset("imagefolder", data_dir="../thicken-dataset/slab")`.
+  `load_dataset("imagefolder", data_dir="../my-dataset/slab")`.
 - thicken only collects. Training a model on the examples, and serving it
   where the roster can reach it, happen elsewhere.
 - With no vision roster nothing is asked, so nothing is collected.
-
-### Reviewed in Label Studio (off by default)
-
-A model trained on what the vision models said learns their mistakes too. With
-this on, a person reviews every face they propose, in your own
-[Label Studio](https://labelstud.io) (1.23 tested), before thicken builds
-from it, and each review is kept as a training row. It needs a vision roster
-or bench, and is meant for whoever trains the model, not for everyday use:
-
-```
-THICKEN_REVIEWS=C:/thicken-data/training-mode  # outside every repo: it holds your photos
-LABEL_STUDIO_URL=http://127.0.0.1:8150          # your Label Studio (its default is http://localhost:8080)
-LABEL_STUDIO_API_KEY=...                        # Account & Settings > Personal Access Token there
-```
-
-- For each photo the models looked at, thicken adds a task to the project
-  `003 · <profile> faces · thicken runs` (made the first time): the photo as
-  the models were sent it, their faces as editable polygons with a yellow dot
-  on each one's corner 1, and each face's confidence, shown above the photo and
-  on each polygon. Today that's the share of the seats that answered which
-  agreed on the face; it's kept and shown, and nothing uses it. A tab opens on
-  the first task, the links are printed, and thicken waits.
-- There, as in experiment 003's review guidelines: drag corners (never
-  edges), delete a face that isn't there, draw a missing one from its corner 1
-  (its own top left) clockwise, box anything covering the object as `hand` or
-  `other`, tick **keep** or **reject**, and submit. Tick **someone else in
-  frame** for anyone but a hand or arm holding it.
-- thicken builds from what you submitted: your corners, unsnapped, in place of
-  the models'; none from a photo you rejected, which is then used whole; the
-  models' own from one you skipped, which keeps nothing.
-- Each decision goes to `review.jsonl` in `THICKEN_REVIEWS`, beside the photo
-  as sent (`frames/`, 1000 × 1000) and as loaded (`photos/`, upright, at most
-  2048 px a side), both pixels only (no EXIF, GPS or other metadata). A photo
-  with someone else in frame goes to `held/` instead, laid out the same way,
-  and isn't trained on until you decide.
-- A line is experiment 003's review line, `group`, `verdict` (`keep`, `fix`
-  or `reject`), `faces` (`[{face, corners}]`, a keep's too), `obstructions`
-  (`[{what, box}]`) and `at`, plus: `file_name` and `photo`; `frame`
-  (`letterbox-1000`: every corner and box is in the image as sent) and `sent`
-  (`left`, `top`, `scale`: a photo pixel's place there is `x × scale + left`,
-  `y × scale + top`); `photoSize`, `original` (the original's size, upright)
-  and `shrink` (photo pixels per original pixel); `source` (file, page, video
-  time); the `profile`; the `proposal` (the models asked, each face with its
-  `by`, `agreed` and `score`, the faces left `disputed`, and every model's own
-  answer); the `thicken` version, the `run`, and `labelStudio` (its project,
-  task and annotation).
-- While it's on, `THICKEN_DATASET` keeps nothing: a reviewed photo stays out
-  of that folder.
-- `THICKEN_REVIEWS` can't be a folder named `exam`: a photo the models have
-  seen is never an exam's.
-- Label Studio keeps its own copy of each photo, in its database: delete the
-  task there to remove it.
 
 ## Contributing photos to help train thicken
 
@@ -461,8 +409,8 @@ once, whether to contribute yours to it. Nothing is sent unless you say yes.
   [your own](#your-own-profiles)), the 1000 × 1000 frame the vision models were
   sent, and a note with thicken's version, the date of the question you said
   yes to, the profile, and the faces in the frame with their corners. Nothing
-  of a badge or lettering, and nothing from a run with `THICKEN_DATASET` or
-  `THICKEN_REVIEWS` set. Never a file name, camera details, location or
+  of a badge or lettering, and nothing from a run with `THICKEN_DATASET`
+  set (training mode). Never a file name, camera details, location or
   anything else from the sidecar ([PRIVACY.md](PRIVACY.md#contributing-photos)).
 - **It never holds up a build** for longer than its timeouts: 5 s to ask
   whether the upload point is taking photos, 15 s for each photo. It sends
