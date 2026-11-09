@@ -77,7 +77,8 @@ code in `relay/`.
 - **What it keeps:** in an EU bucket, the photo re-encoded (no metadata
   left), the note, the time, a keyed hash of the address (of an IPv6
   address, its first half), the network's number (ASN), the user agent and
-  the checks' scores. A photo nobody reviewed is deleted after 180 days. It
+  the checks' scores; of a photo its contributor forgot, only its id. A photo
+  nobody reviewed is deleted after 180 days. It
   never logs a request's body or a full IP address, except for a known-abuse
   match (below), and it sends no CORS headers.
 - **What it refuses:** too much from one address, one network or everyone in

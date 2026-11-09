@@ -27,13 +27,19 @@ test('pull: new photos go to Label Studio; a keep is a row, a reject and a forgo
   const meta = (profile: string, face: string) => ({ v: 1, thicken: '0.3.0', consent: '2026-11-08', profile, faces: [{ face, corners, score: 0.5 }, { face: 'nonsense', corners }] });
   const at = new Date().toISOString();
   const [keep, reject, bad, forget] = ['1b0e5a2c-8f3d-4c1e-9a7b-2d4e6f8a0b1c', '2b0e5a2c-8f3d-4c1e-9a7b-2d4e6f8a0b1c', '3b0e5a2c-8f3d-4c1e-9a7b-2d4e6f8a0b1c', '4b0e5a2c-8f3d-4c1e-9a7b-2d4e6f8a0b1c'];
-  // The relay's inbox: each photo and its record, the meta beside the relay's own fields.
+  // The relay's inbox: each photo and its record, the meta beside the relay's own fields; and the ids forgotten.
   const relay = new Map<string, { jpg: Buffer; json: object }>([
-    [keep, { jpg: jpeg, json: { ...meta('book', 'front'), at, asn: 1136, prefix: '0123456789abcdef', ua: 'thicken/0.3.0' } }],
+    [keep, { jpg: jpeg, json: { meta: meta('book', 'front'), at, asn: 1136, prefix: '0123456789abcdef', ua: 'thicken/0.3.0' } }],
     [reject, { jpg: jpeg, json: { meta: meta('box', 'top'), at } }],
-    [bad, { jpg: png, json: { ...meta('card', 'front'), at } }],
-    [forget, { jpg: jpeg, json: { ...meta('slab', 'front'), at } }],
+    [bad, { jpg: png, json: { meta: meta('card', 'front'), at } }],
+    [forget, { jpg: jpeg, json: { meta: meta('slab', 'front'), at } }],
   ]);
+  const forgotten: string[] = [];
+  const asked: string[] = []; // the forgotten routes asked for
+  const contributor = (id: string) => { // thicken contribute forget
+    relay.delete(id);
+    forgotten.push(id);
+  };
   const deleted: string[] = [];
   const projects: { id: number; title: string }[] = [];
   const tasks = new Map<string, number>(); // by group
@@ -50,6 +56,10 @@ test('pull: new photos go to Label Studio; a keep is a row, a reject and a forgo
       const ids = [...relay.keys()];
       if (route === 'inbox?cursor=') return Response.json({ ids: [...ids.slice(0, 2), '../escape'], cursor: 'two' });
       if (route === 'inbox?cursor=two') return Response.json({ ids: ids.slice(2) });
+      if (route.startsWith('forgotten')) {
+        asked.push(route);
+        return Response.json({ ids: forgotten });
+      }
       const [, id, kind] = /^photos\/([^/.]+)(?:\.(jpg|json))?$/.exec(route) ?? [];
       if (method === 'DELETE') {
         deleted.push(id);
@@ -103,7 +113,7 @@ test('pull: new photos go to Label Studio; a keep is a row, a reject and a forgo
   // 2. One kept, one rejected, one forgotten before review.
   annotations.set(tasks.get(`contributed:${keep}`)!, annotated([polygon(corners, 'front')], 'keep'));
   annotations.set(tasks.get(`contributed:${reject}`)!, annotated([], 'reject'));
-  relay.delete(forget);
+  contributor(forget);
   assert.deepEqual(await pull(), { added: 0, kept: 1, rejected: 1, dropped: 1 });
   const rows = (await readFile(path.join(inbox, 'review.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
   assert.deepEqual(rows.map(({ group, verdict, source }) => [group, verdict, source]), [[`contributed:${keep}`, 'keep', 'contributed'], [`contributed:${reject}`, 'reject', 'contributed']]);
@@ -117,12 +127,23 @@ test('pull: new photos go to Label Studio; a keep is a row, a reject and a forgo
   assert.deepEqual(removed, [tasks.get(`contributed:${reject}`), tasks.get(`contributed:${forget}`)]);
   assert.deepEqual(await readdir(path.join(inbox, 'waiting')), []);
 
-  // 3. The kept photo forgotten by its contributor: its frame, task and line go; the reject's line stays.
+  // 3. The kept photo, once the relay's 180 days are up, stays: gone from the relay isn't forgotten.
   relay.delete(keep);
+  assert.deepEqual(await pull(), { added: 0, kept: 0, rejected: 0, dropped: 0 });
+  assert.equal(existsSync(frame(keep)), true);
+
+  // 4. Forgotten by its contributor, then or any time later: its frame, task and line go; the reject's line stays.
+  contributor(keep);
   assert.deepEqual(await pull(), { added: 0, kept: 0, rejected: 0, dropped: 1 });
   assert.equal(existsSync(frame(keep)), false);
   assert.equal(removed.at(-1), tasks.get(`contributed:${keep}`));
   assert.deepEqual((await readFile(path.join(inbox, 'review.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line).group), [`contributed:${reject}`]);
+  // Each pull asks for the ids forgotten since a day before the last one: all of them, the first time.
+  assert.equal(asked[0], 'forgotten');
+  assert.ok(asked.slice(1).every((route) => {
+    const since = Date.parse(decodeURIComponent(route.split('since=')[1]));
+    return Date.now() - since > 86_000_000 && Date.now() - since < 87_000_000;
+  }), asked.join(', '));
   for (const file of [...await readdir(inbox, { recursive: true })].filter((f) => /\.(json|jsonl)$/.test(f))) {
     assert.ok(!(await readFile(path.join(inbox, file), 'utf8')).includes('secret'), `${file} holds no token`);
   }

@@ -1,7 +1,7 @@
 // Mike's side of contributing photos (PRIVACY.md, "Contributing photos"), run by hand from thicken's folder:
 // `node relay/pull.ts`. Each run:
-// - drops the copy here, and the Label Studio task, of every photo the relay no longer holds: one its contributor
-//   forgot (thicken contribute forget), or one 180 days old that was never reviewed (the relay's lifecycle rule);
+// - drops the copy here, its line and its Label Studio task, of every photo its contributor forgot (thicken contribute
+//   forget) since the last pull, reviewed or not, and of every unreviewed one the relay no longer holds (its 180 days);
 // - records each review submitted since the last run as a line of review.jsonl, training mode's line (src/reviews.ts)
 //   with "source": "contributed", and deletes a rejected photo from the relay, from Label Studio and from here;
 // - brings the relay's new photos here, each checked again with sharp, and adds each to Label Studio, in
@@ -19,7 +19,7 @@ import sharp from 'sharp';
 import { addTask, api, decision, project, studio, type Annotation } from '../src/reviews.ts';
 import { PROFILES } from '../src/thicken.ts';
 
-const KEPT_MS = 180 * 86_400_000; // the relay's lifecycle rule on inbox/: a kept photo gone sooner was forgotten
+const MARGIN_MS = 86_400_000; // forgotten ids are asked for from a day before the last pull: two clocks, and a repeat deletes nothing
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/; // the relay's ids, and nothing else, name files here
 const INSTRUCTIONS = `<p>Photos people contributed to help train thicken, each as their thicken sent it, its faces as their
 vision models proposed them. Anyone can send any corners: trust none. Experiment 003's review guidelines (v4) apply, as for
@@ -83,9 +83,13 @@ export async function pull() {
   const told: string[] = [];
 
   // Forgotten after review: its line goes too. A model already trained on it keeps what it learned.
+  const state = path.join(root, 'pull.json');
+  const started = Date.now();
+  const since: string | undefined = existsSync(state) ? JSON.parse(await readFile(state, 'utf8')).forgottenSince : undefined;
+  const forgotten = new Set<string>((await (await relay('GET', `forgotten${since ? `?since=${encodeURIComponent(since)}` : ''}`)).json()).ids);
   const rows = existsSync(log) ? (await readFile(log, 'utf8')).split('\n').filter(Boolean).map((line) => JSON.parse(line)) : [];
   const idOf = (row: { group: string }) => row.group.slice('contributed:'.length);
-  const forgot = rows.filter((row) => row.verdict !== 'reject' && !listed.has(idOf(row)) && Date.now() - Date.parse(row.contributedAt) < KEPT_MS);
+  const forgot = rows.filter((row) => forgotten.has(idOf(row)));
   for (const row of forgot) {
     await rm(frame(idOf(row)), { force: true });
     await unlist(row.labelStudio.task);
@@ -99,7 +103,7 @@ export async function pull() {
   const done = { added: 0, kept: 0, rejected: 0, dropped: forgot.length };
   const open = new Set<number>(); // projects with photos waiting
   for (const [id, p] of pending) {
-    if (!listed.has(id)) { // forgotten, or 180 days unreviewed
+    if (!listed.has(id)) { // forgotten before review, or 180 days unreviewed
       await drop(id, p.task);
       done.dropped++;
       continue;
@@ -130,7 +134,7 @@ export async function pull() {
     if (known.has(id)) continue;
     const jpeg = Buffer.from(await (await relay('GET', `photos/${id}.jpg`)).arrayBuffer());
     const record = await (await relay('GET', `photos/${id}.json`)).json();
-    const meta = record.meta ?? record; // the contributor's meta, nested or beside the relay's own fields
+    const { meta } = record; // the contributor's, beside the relay's own fields
     const kind = PROFILES.find((p) => p.name === meta.profile && Object.keys(p.faces).length);
     const why = kind ? await check(jpeg) : `no profile "${meta.profile}" with faces here`;
     if (why || !kind) {
@@ -159,6 +163,7 @@ export async function pull() {
     done.added++;
   }
 
+  await writeFile(state, JSON.stringify({ forgottenSince: new Date(started - MARGIN_MS).toISOString() }));
   process.stderr.write([
     `pull: ${done.added} new, ${done.kept} kept, ${done.rejected} rejected and deleted, ${done.dropped} no longer on the relay and deleted here`,
     ...told, ...[...open].map((id) => `review in Label Studio, then pull again: ${studio()}/projects/${id}/data`),

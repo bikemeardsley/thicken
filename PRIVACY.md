@@ -39,7 +39,7 @@ photo to the Label Studio you name for you to review, and saves the photo,
 stripped of its metadata, and your review into that folder. Your answer about
 contributing photos is kept in `~/.thicken/config.json`, and the photos you
 contributed are listed in `~/.thicken/contributed.jsonl` (each one's id, time,
-profile and file name), which is never sent.
+profile and file name, or why it was refused), which is never sent.
 [SECURITY.md](SECURITY.md) has the full detail.
 
 ## Contributing photos
@@ -58,8 +58,9 @@ does. This section is the notice the EU's GDPR asks for (Art. 13).
   [open an issue](https://github.com/bikemeardsley/thicken/issues), or write
   privately through a
   [security advisory](https://github.com/bikemeardsley/thicken/security/advisories/new).
-- **What is sent:** for each photo of a book, box, card or slab you make a
-  model from, once the model is written, the 1000 × 1000 JPEG frame thicken
+- **What is sent:** for each photo you make a model from with thicken's own
+  book, box, card or slab profile (never one of your own profiles), once the
+  model is written, the 1000 × 1000 JPEG frame thicken
   shows the vision models (the photo scaled to fit, with gray bars, without
   its EXIF data), and a note: thicken's version, the date of the question you
   said yes to, the profile, and the faces found in the frame with their
@@ -80,7 +81,8 @@ does. This section is the notice the EU's GDPR asks for (Art. 13).
   abuse material, re-encoded (which strips any metadata left), and then
   refused if an image model finds it sexual, finds a face in it, or doesn't
   see a book, card, slab or box. These checks decide on their own. thicken
-  sends silently: `thicken contribute list` shows what was taken.
+  sends silently: `thicken contribute list` shows each photo it sent, and
+  the reason for any that was refused.
 - **Why, and on what basis:** to train the corner model thicken uses, on
   photos the author has reviewed one by one. The basis is your consent (GDPR
   Art. 6(1)(a)), which is also what the ePrivacy Directive (Art. 5(3)) asks
@@ -113,14 +115,14 @@ does. This section is the notice the EU's GDPR asks for (Art. 13).
   corner models thicken uses train on it, and every year he checks whether
   they still do. The upload point's own record of a photo (its id, SHA-256
   hash, time, hashed address and network) is deleted with it when you forget
-  it or he rejects it.
+  it or he rejects it, and otherwise expires on its own. Of a photo you
+  forget, it keeps only the id, so that his copy can follow.
 - **Your rights:** stop any time with `thicken contribute off`; that doesn't
   undo what was sent before. `thicken contribute list` shows what you
   contributed, and `thicken contribute forget <id>` (or `--all`) deletes it
-  from the upload point; the author's copy goes the next time he collects
-  photos, if that's within 180 days of contributing it. After that, ask him
-  on GitHub. A model already trained on a photo can't unlearn it, but no
-  later one trains on it. To see what is held about a photo, or for your
+  from the upload point at once, and the author's copy and his review of it
+  the next time he collects photos, however long after. A model already
+  trained on a photo can't unlearn it, but no later one trains on it. To see what is held about a photo, or for your
   other rights under the GDPR (to correct, restrict, or get a copy), ask on
   GitHub with the photo's id; the private route keeps the id to you and him.
 - **Complaints:** in the EU, you may complain to the data protection

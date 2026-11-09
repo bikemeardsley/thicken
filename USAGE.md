@@ -455,8 +455,9 @@ once, whether to contribute yours to it. Nothing is sent unless you say yes.
 - **Your answer** is kept in `~/.thicken/config.json`. `THICKEN_CONTRIBUTE`
   set to `yes` or `no`, as the plugins set it, wins over it; `ask`, or unset,
   leaves it to the file. No answer means no.
-- **What goes.** Once a model and its sidecar are written: for each photo of
-  a book, box, card or slab, the 1000 × 1000 frame the vision models were
+- **What goes.** Once a model and its sidecar are written: for each photo
+  made with thicken's own book, box, card or slab profile (never one of
+  [your own](#your-own-profiles)), the 1000 × 1000 frame the vision models were
   sent, and a note with thicken's version, the date of the question you said
   yes to, the profile, and the faces in the frame with their corners. Nothing
   of a badge or lettering, and nothing from a run with `THICKEN_DATASET` or
@@ -465,7 +466,7 @@ once, whether to contribute yours to it. Nothing is sent unless you say yes.
 - **It never holds up a build** for longer than its timeouts: 5 s to ask
   whether the upload point is taking photos, 15 s for each photo. It sends
   silently, refusals included: `thicken contribute list` shows what was
-  taken.
+  taken, and each refused photo with the reason.
 - **Offline, busy or paused,** a photo waits in `~/.thicken/outbox/`, 50 at
   most and for 30 days at most, and goes at the start of the next run's
   sending. If the upload point closes for good, thicken stops and empties the
@@ -481,8 +482,8 @@ once, whether to contribute yours to it. Nothing is sent unless you say yes.
 | --- | --- |
 | `thicken contribute` | Says whether contributing is on, and where that answer came from |
 | `thicken contribute on`, `off` | Turns it on or off |
-| `thicken contribute list` | Lists what you contributed, from `~/.thicken/contributed.jsonl`: each photo's id, time, profile and file, kept on your machine only |
-| `thicken contribute forget <id>`, `--all` | Deletes those photos from the upload point and from the list; works with contributing off |
+| `thicken contribute list` | Lists what you contributed, from `~/.thicken/contributed.jsonl`: each photo's id, time, profile and file, or why it was refused, kept on your machine only |
+| `thicken contribute forget <id>`, `--all` | Deletes those photos from the upload point and from the list, and the author's copy and review when he next collects photos; works with contributing off |
 
 ## Review
 
