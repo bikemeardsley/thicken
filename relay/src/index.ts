@@ -14,7 +14,7 @@ const FORGET_DAY = 500; // forgets a network may send a day: --all for a long-ti
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 const empty = (status: number) => new Response(null, { status });
 const text = (s: string) => new TextEncoder().encode(s);
-const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
+const hex = (b: ArrayBuffer) => new Uint8Array(b).toHex();
 
 export default {
   async fetch(req: Request, env: E): Promise<Response> {
@@ -249,12 +249,10 @@ async function prefixOf(req: Request, env: E): Promise<string> {
 
 // Three yes/no questions to clef-flash, each answered with the probability of yes.
 async function ask(env: E, jpeg: Uint8Array) {
-  let bin = '';
-  for (let i = 0; i < jpeg.length; i += 0x8000) bin += String.fromCharCode(...jpeg.subarray(i, i + 0x8000));
   const r = (await env.AI.run('@cf/cloudflare/clef-flash', {
     model: 'clef-flash',
     state: 'A photo someone contributed to train a model that finds the corners of objects.',
-    images: [{ content_type: 'image/jpeg', base64: btoa(bin) }],
+    images: [{ content_type: 'image/jpeg', base64: jpeg.toBase64() }],
     questions: {
       sexual: { type: 'noul', instructions: 'Does the image show nudity or sexual content?' },
       face: {

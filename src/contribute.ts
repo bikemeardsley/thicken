@@ -37,13 +37,8 @@ const OUTBOX_DAYS = 30;
 const home = (...parts: string[]) => path.join(homedir(), '.thicken', ...parts);
 type Said = 'yes' | 'no' | 'ended';
 
-async function config(): Promise<{ contribute?: { answer: Said; prompt: string; at: string; via: string } }> {
-  try {
-    return JSON.parse(await readFile(home('config.json'), 'utf8'));
-  } catch {
-    return {};
-  }
-}
+const config = (): Promise<{ contribute?: { answer: Said; prompt: string; at: string; via: string } }> =>
+  readFile(home('config.json'), 'utf8').then(JSON.parse).catch(() => ({}));
 
 /** Keeps the answer, beside anything else in config.json. */
 async function answer(said: Said, via: string): Promise<void> {

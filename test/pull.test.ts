@@ -9,7 +9,7 @@ import { mock, test } from 'node:test';
 import sharp from 'sharp';
 import './helpers.ts';
 import { pull } from '../relay/pull.ts';
-import type { Annotation } from '../src/label-studio.ts';
+import type { Annotation } from '../relay/label-studio.ts';
 
 const corners = [[126, 70], [882, 54], [928, 971], [120, 955]];
 const polygon = (points: number[][], face: string) => ({ from_name: 'faces', type: 'polygonlabels', original_width: 1000, original_height: 1000,

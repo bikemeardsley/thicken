@@ -1,7 +1,7 @@
-// Label Studio (src/label-studio.ts): a person's submitted review as a decision, as experiment 003 exports them.
+// Label Studio (relay/label-studio.ts): a person's submitted review as a decision, as experiment 003 exports them.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { decision, fourCorners, type Annotation } from '../src/label-studio.ts';
+import { decision, fourCorners, type Annotation } from '../relay/label-studio.ts';
 
 const shown = [[126, 70], [882, 54], [928, 971], [120, 955]];
 const polygon = (corners: number[][], face = 'front') => ({ from_name: 'faces', type: 'polygonlabels', original_width: 1000, original_height: 1000,

@@ -17,7 +17,7 @@ import { appendFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/pro
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
-import { addTask, api, decision, project, studio, type Annotation } from '../src/label-studio.ts';
+import { addTask, api, decision, project, studio, type Annotation } from './label-studio.ts';
 import { PROFILES } from '../src/thicken.ts';
 
 const MARGIN_MS = 86_400_000; // forgotten ids are asked for from a day before the last pull: two clocks, and a repeat deletes nothing

@@ -1,4 +1,4 @@
-// Label Studio, for reviewing contributed photos (relay/pull.ts): your own server (LABEL_STUDIO_URL,
+// Label Studio, for reviewing contributed photos (pull.ts, beside it; neither ships on npm): your own server (LABEL_STUDIO_URL,
 // LABEL_STUDIO_API_KEY), a project for each profile's photos from one source, each photo a task with its faces as an
 // editable proposal, and a submitted review read back as a decision in the shape experiment 003's label_studio.py
 // exports (WendellResearch-AI).
@@ -6,7 +6,7 @@
 // Every corner and box is in the frame thicken sends (`letterbox-1000`): the photo letterboxed into 1000 x 1000
 // (vision.ts letterbox). Corner 1 is the face's own top left, then clockwise.
 import { setTimeout as sleep } from 'node:timers/promises';
-import { clockwise, type Kind } from './vision.ts';
+import { clockwise, type Kind } from '../src/vision.ts';
 
 const SIZE = 1000;
 const AREA_LOST = 0.1; // label_studio.py's: how much of a polygon's area its four corners may leave out
