@@ -37,6 +37,13 @@
       "description": "Your own quota for book sizes; without one, Google Books is asked on the shared keyless quota. Sent only to Google Books.",
       "sensitive": true,
       "default": ""
+    },
+    "contribute": {
+      "type": "string",
+      "title": "Contribute photos to the corner model thicken uses?",
+      "description": "yes sends the photos you make models from, as the 1000 x 1000 frames the vision models see, to train the corner model thicken uses: no account or name attached, released as CC0, reviewed by thicken's author before any use; not sent: file names, camera details, location. You must be 16 or older and the photos must be yours. no never sends them; ask leaves it to thicken's own question. Change it any time: thicken contribute off. Details: https://github.com/bikemeardsley/thicken/blob/main/PRIVACY.md#contributing-photos",
+      "options": ["yes", "no", "ask"],
+      "default": "ask"
     }
   },
   "mcpServers": {
@@ -47,7 +54,8 @@
         "THICKEN_VISION_URL": "${user_config.vision_url}",
         "THICKEN_VISION_KEY": "${user_config.vision_key}",
         "THICKEN_VISION_MODELS": "${user_config.vision_models}",
-        "GOOGLE_BOOKS_API_KEY": "${user_config.google_books_key}"
+        "GOOGLE_BOOKS_API_KEY": "${user_config.google_books_key}",
+        "THICKEN_CONTRIBUTE": "${user_config.contribute}"
       },
       "startup_timeout_sec": 120
     }
