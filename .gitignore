@@ -11,10 +11,9 @@ out/
 # but the samples, which are meant to be downloaded
 !examples/*.glb
 
-# Diagrams made with archify, kept locally
-.archify/
-# Flow diagrams, kept locally
+# Flow diagrams and the graphify knowledge graph, kept locally
 docs/diagrams/
+graphify-out/
 
 # Codex plugin upload (see .claude/CLAUDE.md)
 thicken-codex.zip
