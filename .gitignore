@@ -13,6 +13,8 @@ out/
 
 # Diagrams made with archify, kept locally
 .archify/
+# The author's own training mode, drawn for him only
+docs/diagrams/training-mode-flow.svg
 
 # Codex plugin upload (see .claude/CLAUDE.md)
 thicken-codex.zip

@@ -423,6 +423,8 @@ The corner model thicken uses finds the corners of books, cards, slabs and
 boxes in photos, and it learns from photos like yours. thicken can ask you,
 once, whether to contribute yours to it. Nothing is sent unless you say yes.
 
+<img src="docs/diagrams/contribute-flow.svg" width="820" alt="From your yes to training: thicken frames each photo and sends it to the relay, which runs eleven checks in turn and keeps what passes in an EU inbox; thicken's author pulls new photos into Label Studio and reviews each one, and only reviewed rows train the corner model. You can forget a photo at any time.">
+
 - **Not yet.** Until its upload point opens, thicken asks nothing and sends
   nothing.
 - **The question.** The CLI asks it once, when it runs on a terminal (stdin
