@@ -8,11 +8,9 @@
 //     [--height 300] [--zoom 100] [--tilt 75] [--frames 90] [--fps 15] [--exposure 1.0] [--environment neutral|legacy]
 //     [--shadow 0.6] [--lean=-6] [--bob 0.008] [--turn=1|-1]   (spin: its lean in degrees, bob as a share of its
 //     height, and which way it turns; a negative number goes after an =, or it's read as an option)
-import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { parseArgs } from 'node:util';
 import sharp from 'sharp';
-import { launch } from '../src/preview.ts';
+import { launch, serve } from '../src/preview.ts';
 
 const { positionals: [model, out], values } = parseArgs({
   allowPositionals: true,
@@ -42,7 +40,6 @@ const MOTIONS: Record<string, (t: number) => { roll: number; pitch: number; yaw:
 const motion = MOTIONS[values.motion];
 if (!motion) throw new Error(`--motion is one of ${Object.keys(MOTIONS).join(', ')}`);
 
-const VIEWER = createRequire(import.meta.url).resolve('@google/model-viewer/dist/model-viewer.min.js');
 const PAGE = `<!doctype html><meta charset="utf-8">
 <style>html,body{margin:0;background:transparent}model-viewer{width:${width}px;height:${height}px;background:transparent}</style>
 <script type="module" src="/model-viewer.js"></script>
@@ -53,13 +50,7 @@ const PAGE = `<!doctype html><meta charset="utf-8">
 const browser = await launch();
 try {
   const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 2 });
-  await page.route('http://thicken.local/**', (route) => {
-    const { pathname } = new URL(route.request().url());
-    if (pathname === '/model-viewer.js') return route.fulfill({ path: VIEWER, contentType: 'text/javascript' });
-    if (pathname === '/model.glb') return route.fulfill({ body: readFileSync(model), contentType: 'model/gltf-binary' });
-    return route.fulfill({ body: PAGE, contentType: 'text/html' });
-  });
-  await page.goto('http://thicken.local/');
+  await serve(page, PAGE, () => model);
   await page.waitForFunction(() => (document.querySelector('model-viewer') as { modelIsVisible?: boolean } | null)?.modelIsVisible);
   // The camera's distance from the model's size: far enough for its longest diagonal to fit the lens at --zoom 100.
   const size = await page.evaluate(() => (document.querySelector('model-viewer') as unknown as { getDimensions(): { x: number; y: number; z: number } }).getDimensions());

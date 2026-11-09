@@ -6,8 +6,8 @@
 // has them.
 import { Document } from '@gltf-transform/core';
 import sharp from 'sharp';
-import { addPart, assignFaces, backgroundOf, cardFoil, clearMaterial, colorMaterial, cut, borderAsk, borderFoil, grown, inQuad, level, tighten, type Faces, type Foil, foilAsk, FRAME, FRAME_FACE, labelFinishAsk, labelFinishOf, patternAsk, textureAsk, textureOf, unseenPattern, foiled, foilKind, foilLook, foilMap, lookName, mapping, type Picture, PICTURE_BOX, pictureMaterial, pictureRecord, plate, pooled, type Profile, readOf, type Region, regionIn, regionOf, ring, rounded, type Scanned, shots, sidesUnknown, type Sight, straighten, subjectBox, texture, toGlb } from '../kit.ts';
-import { CARD_MM, CARD_READS, CARDSTOCK, cardSize, CORNERS_ASK, cornersOf, FORMAT_ASK, STOCK_ASK } from './card.ts';
+import { addPart, assignFaces, backgroundOf, clearMaterial, colorMaterial, cut, borderAsk, grown, inQuad, level, tighten, type Faces, type Foil, foilAsk, FRAME_FACE, labelFinishAsk, labelFinishOf, patternAsk, textureAsk, foiled, foilMap, mapping, type Picture, pictureMaterial, pictureRecord, plate, pooled, type Profile, readOf, type Region, regionOf, ring, rounded, type Scanned, shots, sidesUnknown, type Sight, straighten, subjectBox, texture, toGlb } from '../kit.ts';
+import { CARD_MM, CARD_READS, CARDSTOCK, cardSize, CORNERS_ASK, cornersOf, FORMAT_ASK, shineOf, STOCK_ASK } from './card.ts';
 
 // A grader's QR code points at its own verification page, which says whose holder this is.
 const GRADER_SITES: Record<string, string> = { 'psacard.com': 'psa', 'beckett.com': 'bgs', 'cgccards.com': 'cgc', 'gosgc.com': 'sgc', 'taggrading.com': 'tag' };
@@ -104,12 +104,13 @@ export const slab: Profile = {
   build: async (pictures, { options, facts, sights }) => {
     const label = { grader: facts.grader as string | undefined, cert: facts.cert as string | undefined, verifyUrl: facts.verifyUrl as string | undefined };
     // With no QR code to say whose holder it is, the grader the models read off the label.
-    const said = String(readOf(sights).read.grader ?? '').toLowerCase();
+    const seen = readOf(sights).read;
+    const said = String(seen.grader ?? '').toLowerCase();
     const read = Object.keys(HOLDERS).find((holder) => !holder.includes('-') && said.includes(holder)) ?? (said.includes('beckett') ? 'bgs' : undefined);
     const grader = options.holder ?? label.grader ?? read;
     // The cert more than one way: from a code (a QR code or a cert barcode), and as read off the label, which every
     // slab prints, QR code or not (a BGS label has none). Both said, they agree or they don't; the code's wins.
-    const printed = String(readOf(sights).read.cert ?? '').replace(/[\s-]/g, '').toUpperCase();
+    const printed = String(seen.cert ?? '').replace(/[\s-]/g, '').toUpperCase();
     const onLabel = CERT.test(printed) ? printed : undefined;
     const certBy = label.cert && onLabel ? (label.cert === onLabel ? `${facts.certFrom} and label` : 'disputed') : label.cert ? facts.certFrom : onLabel ? 'label' : undefined;
     const cert = label.cert ?? onLabel;
@@ -335,8 +336,6 @@ async function make(
     }
     return [{ side, picture, mirror, found, agreed, background, toPhoto: mapping(holderQuad, quad), toHolder: mapping(quad, holderQuad) }];
   });
-  const unused = roles.filter((role) => role === 'unused').length;
-  if (unused) warnings.push(`${unused} picture(s) not used: none looked like another shot of a face`);
 
   // Where the card and label are: where the models put them, averaged over the sides whose outline two models agreed
   // on (one model's alone can be well off, and everything inside is measured against it), or over every side if
@@ -397,25 +396,9 @@ async function make(
     if (hologram) holograms[side] = regionOf(hologram, at('label'));
   }
 
-  // The card's foil, as the models see it through the front (src/foil.ts), its picture box placed within the card.
-  const foil = foilKind(sights, 'front');
-  const fronts = sights?.filter(({ faces }) => faces.some(({ face }) => face === 'front'));
-  const artBox = regionIn(fronts, 'art', 'card');
-  const [cardW, cardH] = [rects.card.x1 - rects.card.x0, rects.card.y1 - rects.card.y0];
-  const box = artBox ?? (cardH > cardW ? PICTURE_BOX : undefined); // the standard box is a portrait card's
-  if ((foil === 'holo' || foil === 'reverse') && !artBox && box) review.push(`the card's picture box (the models didn't find it: its ${foil} foil is placed where a standard Pokémon card's box is)`);
-  const boxed = foil === 'full' || ((foil === 'holo' || foil === 'reverse') && box !== undefined);
-  if ((foil === 'holo' || foil === 'reverse') && !box) review.push(`the card's foil (the models say ${foil}, but found no picture box on this sideways card: left off)`);
-  // A foil border and an emboss, as on a raw card (src/profiles/card.ts).
-  const border = borderFoil(sights, 'front');
-  const frameFound = regionIn(fronts, 'frame', 'card');
-  const frame = border === 'foil' ? frameFound ?? FRAME : undefined;
-  const surface = textureOf(sights, 'front');
-  const relief = surface === 'textured' ? pictured.front?.card : undefined;
-  const shines = boxed || Boolean(frame);
-  const { look, lookBy } = foilLook(sights, 'front');
-  if (shines && lookBy === 'assumed') review.push(unseenPattern(pictures.some(({ source }) => source.time !== undefined)).replace('the foil\'s', 'the card\'s foil\'s'));
-  const foils: Record<string, Foil> = shines || relief ? { 'card-front': await cardFoil(boxed ? foil! : 'none', box ?? PICTURE_BOX, cardH / cardW, look, { frame, relief }) } : {};
+  // The card's foil, as the models see it through the front (src/profiles/card.ts), its picture box placed within the card.
+  const shine = await shineOf(sights, 'card', (rects.card.y1 - rects.card.y0) / (rects.card.x1 - rects.card.x0), pictured.front?.card, pictures, review);
+  const foils: Record<string, Foil> = shine.map ? { 'card-front': shine.map } : {};
   const labelAspect = (rects.label.y1 - rects.label.y0) / (rects.label.x1 - rects.label.x0);
   for (const [side, region] of Object.entries(holograms)) foils[`label-${side}`] = await foilMap([region], labelAspect);
 
@@ -479,7 +462,7 @@ async function make(
   return {
     glb: await toGlb(doc, mesh),
     sidecar: {
-      profile: 'slab', holder, ...label,
+      holder, ...label,
       widthMm: w, heightMm: h, depthMm: size[2], measuredBy: sizeMm.length ? 'measured' : 'table',
       faces: { front: 'photo', back: pictured.back ? 'photo' : 'color' } satisfies Faces,
       // The card and label inside: their size, where their middles are (mm from the holder's middle, y up), and what placed them.
@@ -487,12 +470,7 @@ async function make(
         const r = rects[part];
         return [part, {
           widthMm: round(r.x1 - r.x0), heightMm: round(r.y1 - r.y0), atMm: [round((r.x0 + r.x1) / 2), round((r.y0 + r.y1) / 2)], placedBy: placedBy[part],
-          ...(part === 'card' && {
-            corners, cornersBy, foil: foil ?? 'none', foilBy: foil ? 'vision' : 'assumed', ...(shines && { foilLook: lookName(look), foilLookBy: lookBy }),
-            ...((foil === 'holo' || foil === 'reverse') && box && { pictureBox: rounded(box), pictureBoxBy: artBox ? 'vision' : 'layout' }),
-            border: border ?? 'plain', borderBy: border ? 'vision' : 'assumed', ...(frame && { frame: rounded(frame), frameBy: frameFound ? 'vision' : 'layout' }),
-            texture: surface ?? 'smooth', textureBy: surface ? 'vision' : 'assumed',
-          }),
+          ...(part === 'card' && { corners, cornersBy, ...shine.fields }),
           // Its finish, by grader; and where its hologram is, on each side it was found, in fractions of that side's label picture.
           ...(part === 'label' && { finish: finish ?? 'paper', finishBy: finish ? 'vision' : 'assumed' }),
           ...(part === 'label' && Object.keys(holograms).length && { hologram: Object.fromEntries(Object.entries(holograms).map(([side, region]) => [side, rounded(region)])) }),

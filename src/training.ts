@@ -21,7 +21,7 @@ import type { Picture } from './image.ts';
 export const trainingOn = () => Boolean(process.env.THICKEN_DATASET);
 
 /** A question's example, held by the answer it settled (a Sight or an Identity) until the run knows what came of it. */
-export interface Held { jpeg: Buffer; picture: Picture; sent: { left: number; top: number; scale: number }; example: object }
+interface Held { jpeg: Buffer; picture: Picture; sent: { left: number; top: number; scale: number }; example: object }
 export const held = new WeakMap<object, Held>();
 
 let writing = Promise.resolve();

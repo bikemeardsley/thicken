@@ -132,11 +132,10 @@ try {
   } else if (command === 'make') {
     const { out, sidecar } = await build(positionals, values.out);
     if (sidecar.review.length) console.log(`  to review: ${sidecar.review.join('; ')}`);
-    const preview = values.preview ? await previewer() : undefined;
-    if (preview) {
-      await preview.render(out)
-        .then((png) => console.log(`  preview: ${png}`), (error: Error) => console.warn(`  warning: no preview: ${error.message}`))
-        .finally(() => preview.close());
+    // No browser and a render that failed both say why: launch()'s message names the browser it needs.
+    if (values.preview) {
+      await import('./preview.ts').then(({ previewOnce }) => previewOnce(out))
+        .then((png) => console.log(`  preview: ${png}`), (error: Error) => console.warn(`  warning: no preview: ${error.message}`));
     }
   } else if (command === 'preview') {
     const models: string[] = [];

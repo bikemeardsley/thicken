@@ -5,7 +5,7 @@
 import { Document } from '@gltf-transform/core';
 import earcut from 'earcut';
 import sharp from 'sharp';
-import { addPart, colorMaterial, emptyPart, type Picture, pictureMaterial, type Point, type Profile, toGlb, trace, unlit } from '../kit.ts';
+import { addPart, colorMaterial, emptyPart, type Picture, pictureMaterial, type Point, type Profile, signedArea, toGlb, trace, unlit, walls } from '../kit.ts';
 
 export const badge: Profile = {
   name: 'badge',
@@ -84,15 +84,7 @@ async function make({ data, width, height, transparent }: Picture, given: { widt
     }
 
     // Walls: one flat quad per edge, its own vertices so its normal stays flat.
-    points.forEach(([ax, ay], i) => {
-      const [bx, by] = points[(i + 1) % points.length];
-      const length = Math.hypot(bx - ax, by - ay);
-      if (length === 0) return;
-      const v = rim.position.length / 3;
-      rim.position.push(ax, ay, z, bx, by, z, bx, by, -z, ax, ay, -z);
-      for (let k = 0; k < 4; k++) rim.normal.push((by - ay) / length, -(bx - ax) / length, 0);
-      rim.index.push(v, v + 3, v + 2, v, v + 2, v + 1);
-    });
+    walls(rim, points, [0, 0, 0], z);
   }
 
   const doc = new Document();
@@ -104,7 +96,6 @@ async function make({ data, width, height, transparent }: Picture, given: { widt
   return {
     glb: await toGlb(doc, mesh),
     sidecar: {
-      profile: 'badge',
       widthMm: round(widthMm),
       heightMm: round((maxY - minY) * meters * 1000),
       depthMm: round(depthMm),
@@ -117,9 +108,3 @@ async function make({ data, width, height, transparent }: Picture, given: { widt
 }
 
 const cross = ([ax, ay]: Point, [bx, by]: Point, [cx, cy]: Point) => (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
-
-const signedArea = (points: Point[]) =>
-  points.reduce((sum, [x, y], i) => {
-    const [nx, ny] = points[(i + 1) % points.length];
-    return sum + x * ny - nx * y;
-  }, 0) / 2;

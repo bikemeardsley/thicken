@@ -53,8 +53,6 @@ export const box: Profile = {
     const photo = (face: Face) => (chosen[face] === undefined ? undefined : all[chosen[face]].texture);
     const front = photo('front');
     if (!front) throw new Error('a box needs a photo of its front');
-    const unused = roles.filter((role) => role === 'unused').length;
-    if (unused) warnings.push(`${unused} picture(s) not used: none looked like another shot of a face`);
 
     // Its shape from the photos, each face straightened to its own proportions: the front's width to its height, a
     // side's depth to its height, the top's width to its depth. Only the scale comes from a measured size, else the

@@ -126,8 +126,6 @@ async function make(
   const [spine, edge, top, bottom] = await Promise.all([along('spine', true), along('edge', true, false), along('top', false), along('bottom', false)]);
   const back = photo('back');
   let front = photo('front');
-  const unused = roles.filter((role) => role === 'unused').length;
-  if (unused) log.warnings.push(`${unused} picture(s) not used: none looked like another shot of a face`);
   const faces: Faces = {
     front: front ? 'photo' : 'openlibrary', back: back ? 'photo' : 'color', spine: spine ? 'photo' : 'color',
     top: top ? 'photo' : 'pages', bottom: bottom ? 'photo' : 'pages', edge: edge ? 'photo' : 'pages',
@@ -274,7 +272,7 @@ async function make(
   return {
     glb,
     sidecar: {
-      profile: 'book', isbn, ...(coverUrl && { coverUrl }),
+      isbn, ...(coverUrl && { coverUrl }),
       widthMm: round(width), heightMm: round(height), depthMm: round(depth), measuredBy,
       depthEstimates: { photos: fromPhotos && round(fromPhotos), pages: fromPages && round(fromPages) },
       pages, binding, bindingBy: seen ? 'vision' : listed ? 'catalog' : 'assumed', ...(sticker && { sticker: { ...rounded(sticker), round: sticker.round } }),
