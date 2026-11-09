@@ -246,7 +246,6 @@ describe('POST /thicken/v1/photos', () => {
       const res = await raw({ 'content-length': '1000' }, stream);
       expect(res.status).toBe(413);
       expect(await res.json()).toEqual({ reason: 'too large' });
-      expect(seen.rate).toHaveLength(0);
     });
   });
 
@@ -313,7 +312,6 @@ describe('POST /thicken/v1/photos', () => {
       info = () => ({ format: 'image/jpeg', fileSize: 10, width, height });
       const res = await post();
       expect(res.status).toBe(413);
-      expect(seen.rate).toHaveLength(0);
     });
   });
 
@@ -370,13 +368,37 @@ describe('POST /thicken/v1/photos', () => {
     });
   });
 
-  it('6. answers 409 for an exact repeat', async () => {
+  it('6. answers an exact repeat as if stored, with an id that names nothing, and keeps one copy', async () => {
     const photo = jpeg();
-    expect((await post({ photo })).status).toBe(201);
+    const first = await (await post({ photo })).json<{ id: string }>();
     const res = await post({ photo, ip: '198.51.100.9' });
-    expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ reason: 'duplicate' });
+    expect(res.status).toBe(201);
+    const { id } = await res.json<{ id: string }>();
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(id).not.toBe(first.id);
+    expect(await keys()).toEqual([`inbox/${first.id}.jpg`, `inbox/${first.id}.json`]);
     expect(seen.ai).toHaveLength(1);
+  });
+
+  it('counts refused attempts toward the day caps too, so they bound what the checks cost', async () => {
+    const over = { PER_PREFIX_DAY: 2 };
+    scores = { sexual: 0.01, face: 0.02, topic: 0.1 }; // off topic: refused after the checks
+    expect((await post({}, over)).status).toBe(422);
+    expect((await post({}, over)).status).toBe(422);
+    expect((await post({}, over)).status).toBe(429);
+    expect(seen.ai).toHaveLength(2);
+  });
+
+  it('takes up to 8 faces, as many as slab names, and not 9', async () => {
+    const corners = META.faces[0].corners;
+    const faces = (n: number) => Array.from({ length: n }, (_, i) => ({ face: `f${i}`, corners }));
+    expect((await post({ meta: { ...META, profile: 'slab', faces: faces(8) } })).status).toBe(201);
+    expect((await post({ meta: { ...META, profile: 'slab', faces: faces(9) } })).status).toBe(400);
+  });
+
+  it('answers an upload 410 once contributing has ended for good', async () => {
+    await base.FLAGS.put('paused', 'ended');
+    expect((await post()).status).toBe(410);
   });
 
   describe('7. known CSAM', () => {
@@ -549,6 +571,16 @@ describe('DELETE /thicken/v1/photos/:id', () => {
     const id = crypto.randomUUID();
     expect((await send('DELETE', `/photos/${id}`)).status).toBe(204);
     expect(await rows('forgotten')).toEqual([{ id, at: expect.any(String) }]);
+  });
+
+  it('takes at most 500 forgets a day from one network', async () => {
+    await base.DB.prepare("INSERT INTO counters (day, key, n) SELECT ?, 'd:' || ?, 500").bind(new Date().toISOString().slice(0, 10), 'x').run();
+    const first = await call(new Request(`${API}/photos/${crypto.randomUUID()}`, { method: 'DELETE', headers: { 'cf-connecting-ip': '203.0.113.7' } }));
+    expect(first.status).toBe(204);
+    const [{ key }] = (await rows('counters')).filter((r) => r.key !== 'd:x');
+    await base.DB.prepare('UPDATE counters SET n = 500 WHERE key = ?').bind(key).run();
+    const over = await call(new Request(`${API}/photos/${crypto.randomUUID()}`, { method: 'DELETE', headers: { 'cf-connecting-ip': '203.0.113.7' } }));
+    expect(over.status).toBe(429);
   });
 
   it('is rate-limited like POST', async () => {

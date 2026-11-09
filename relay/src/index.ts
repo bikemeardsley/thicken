@@ -9,6 +9,8 @@ const API = '/thicken/v1/';
 const MAX = 1.5 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const PROFILES = ['book', 'box', 'card', 'slab'];
+const FACES = 8; // the most a contributing profile names (slab)
+const FORGET_DAY = 500; // forgets a network may send a day: --all for a long-time contributor, not a flood of made-up ids
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 const empty = (status: number) => new Response(null, { status });
 const text = (s: string) => new TextEncoder().encode(s);
@@ -26,7 +28,12 @@ export default {
     }
     if (route === 'photos' && req.method === 'POST') return upload(req, env);
     if (id && req.method === 'DELETE') {
-      if (env.IP_SALT && !(await env.RATE.limit({ key: await prefixOf(req, env) })).success) return json({ reason: 'rate limit' }, 429);
+      if (env.IP_SALT) {
+        const prefix = await prefixOf(req, env);
+        if (!(await env.RATE.limit({ key: prefix })).success || !(await counted(env, [`d:${prefix}`], [FORGET_DAY]))) {
+          return json({ reason: 'rate limit' }, 429);
+        }
+      }
       return remove(env, id, true);
     }
     if (route.startsWith('admin/') && (await isAdmin(req, env))) return admin(req, env, route.slice(6));
@@ -56,13 +63,31 @@ async function closed(env: E): Promise<string | null> {
 async function upload(req: Request, env: E): Promise<Response> {
   // 1. Accepting.
   const reason = await closed(env);
-  if (reason) return json({ reason }, 503);
+  if (reason) return json({ reason }, reason === 'ended' ? 410 : 503);
 
-  // 2. Size, declared and counted.
+  // 2. Rate limits, keyed on the hashed /32 or /64, before anything is read or checked: every attempt counts toward
+  // the day caps, refused ones too, so the caps also bound what the checks below cost.
+  const ip = req.headers.get('cf-connecting-ip') ?? '';
+  const asn = Number(req.cf?.asn) || 0;
+  const prefix = await prefixOf(req, env);
+  if (!(await env.RATE.limit({ key: prefix })).success) return json({ reason: 'rate limit' }, 429);
+  const caps = [env.PER_PREFIX_DAY, env.PER_ASN_DAY, env.GLOBAL_DAY].map(Number);
+  if (!(await counted(env, [`p:${prefix}`, `a:${asn}`, 'all'], caps))) return json({ reason: 'rate limit' }, 429);
+  const now = new Date();
+  const at = now.toISOString();
+  const hour = await env.DB.prepare('SELECT count(*) AS n FROM photos WHERE at > ?')
+    .bind(new Date(now.getTime() - 3_600_000).toISOString())
+    .first<number>('n');
+  if ((hour ?? 0) >= Number(env.SPIKE_HOUR)) {
+    await env.FLAGS.put('paused', 'auto', { expirationTtl: 3600 }); // lifts itself after an hour
+    return json({ reason: 'paused' }, 503);
+  }
+
+  // 3. Size, declared and counted.
   const body = await read(req);
   if (!body) return json({ reason: 'too large' }, 413);
 
-  // 3. The meta.
+  // 4. The meta.
   let form: FormData;
   try {
     form = await new Response(body, { headers: { 'content-type': req.headers.get('content-type') ?? '' } }).formData();
@@ -73,7 +98,7 @@ async function upload(req: Request, env: E): Promise<Response> {
   const meta = parseMeta(typeof part === 'string' ? part : part ? await part.text() : '');
   if (!meta) return json({ reason: 'meta' }, 400);
 
-  // 4. A JPEG, no side over 1024.
+  // 5. A JPEG, no side over 1024.
   const photo = form.get('photo');
   if (!photo || typeof photo === 'string') return json({ reason: 'not a JPEG' }, 415);
   const bytes = new Uint8Array(await photo.arrayBuffer());
@@ -82,31 +107,10 @@ async function upload(req: Request, env: E): Promise<Response> {
   if (!info || info.format !== 'image/jpeg' || !('width' in info)) return json({ reason: 'not a JPEG' }, 415);
   if (info.width > 1024 || info.height > 1024) return json({ reason: 'too large' }, 413);
 
-  // 5. Rate limits, keyed on the hashed /32 or /64.
-  const ip = req.headers.get('cf-connecting-ip') ?? '';
-  const asn = Number(req.cf?.asn) || 0;
-  const prefix = await prefixOf(req, env);
-  if (!(await env.RATE.limit({ key: prefix })).success) return json({ reason: 'rate limit' }, 429);
-  const now = new Date();
-  const at = now.toISOString();
-  const day = at.slice(0, 10);
-  const keys = [`p:${prefix}`, `a:${asn}`, 'all'];
-  const caps = [env.PER_PREFIX_DAY, env.PER_ASN_DAY, env.GLOBAL_DAY].map(Number);
-  const { results } = await env.DB.prepare('SELECT key, n FROM counters WHERE day = ? AND key IN (?, ?, ?)')
-    .bind(day, ...keys)
-    .all<{ key: string; n: number }>();
-  if (results.some((r) => r.n >= caps[keys.indexOf(r.key)])) return json({ reason: 'rate limit' }, 429);
-  const hour = await env.DB.prepare('SELECT count(*) AS n FROM photos WHERE at > ?')
-    .bind(new Date(now.getTime() - 3_600_000).toISOString())
-    .first<number>('n');
-  if ((hour ?? 0) >= Number(env.SPIKE_HOUR)) {
-    await env.FLAGS.put('paused', 'auto');
-    return json({ reason: 'paused' }, 503);
-  }
-
-  // 6. Not a repeat.
+  // 6. Not a repeat. A repeat is answered as if stored, with an id that names nothing, so the answer can't tell
+  // anyone holding a copy of a photo that it was contributed before.
   const sha256 = hex(await crypto.subtle.digest('SHA-256', bytes));
-  if (await env.DB.prepare('SELECT 1 FROM photos WHERE sha256 = ?').bind(sha256).first()) return json({ reason: 'duplicate' }, 409);
+  if (await env.DB.prepare('SELECT 1 FROM photos WHERE sha256 = ?').bind(sha256).first()) return json({ id: crypto.randomUUID() }, 201);
 
   // 7. Not known CSAM. A match is preserved for a year (18 U.S.C. § 2258A(h)) and reported by hand (README.md).
   let lists: { matched: string[]; answered: string[] };
@@ -148,18 +152,25 @@ async function upload(req: Request, env: E): Promise<Response> {
     return json({ reason: rejected }, 422);
   }
 
-  // 10. Stored.
+  // 10. Stored: the row first, so the same photo sent twice at once is stored once.
   const id = crypto.randomUUID();
+  const row = await env.DB.prepare('INSERT INTO photos (id, sha256, at, prefix, asn) VALUES (?, ?, ?, ?, ?) ON CONFLICT (sha256) DO NOTHING RETURNING id')
+    .bind(id, sha256, at, prefix, asn)
+    .first();
+  if (!row) return json({ id: crypto.randomUUID() }, 201);
   await env.INBOX.put(`inbox/${id}.jpg`, clean, { httpMetadata: { contentType: 'image/jpeg' } });
   await env.INBOX.put(`inbox/${id}.json`, JSON.stringify({ meta, at, asn, prefix, ua, scores }), {
     httpMetadata: { contentType: 'application/json' },
   });
-  const bump = env.DB.prepare('INSERT INTO counters (day, key, n) VALUES (?, ?, 1) ON CONFLICT (day, key) DO UPDATE SET n = n + 1');
-  await env.DB.batch([
-    env.DB.prepare('INSERT INTO photos (id, sha256, at, prefix, asn) VALUES (?, ?, ?, ?, ?)').bind(id, sha256, at, prefix, asn),
-    ...keys.map((k) => bump.bind(day, k)),
-  ]);
   return json({ id }, 201);
+}
+
+// Counts one attempt against each key's cap for today, atomically; false once any is over its cap.
+async function counted(env: E, keys: string[], caps: number[]): Promise<boolean> {
+  const day = new Date().toISOString().slice(0, 10);
+  const bump = env.DB.prepare('INSERT INTO counters (day, key, n) VALUES (?, ?, 1) ON CONFLICT (day, key) DO UPDATE SET n = n + 1 RETURNING n');
+  const done = await env.DB.batch<{ n: number }>(keys.map((key) => bump.bind(day, key)));
+  return done.every((r, i) => (r.results[0]?.n ?? 0) <= caps[i]);
 }
 
 // The body, or null when Content-Length is missing or over MAX, or more bytes than that arrive.
@@ -194,7 +205,7 @@ function parseMeta(s: string): Meta | null {
     typeof m.thicken === 'string' && m.thicken.length <= 32 && /^\d+\.\d+\.\d+(-[\w.]+)?$/.test(m.thicken) &&
     typeof m.consent === 'string' && /^\d{4}-\d\d-\d\d$/.test(m.consent) &&
     PROFILES.includes(m.profile as string) &&
-    Array.isArray(m.faces) && m.faces.length <= 6 && m.faces.every(face);
+    Array.isArray(m.faces) && m.faces.length <= FACES && m.faces.every(face);
   return ok ? m : null;
 }
 
@@ -285,7 +296,7 @@ async function isAdmin(req: Request, env: E): Promise<boolean> {
 async function admin(req: Request, env: E, route: string): Promise<Response> {
   const get = req.method === 'GET';
   if (get && route === 'inbox') {
-    const list = await env.INBOX.list({ prefix: 'inbox/', cursor: new URL(req.url).searchParams.get('cursor') ?? undefined });
+    const list = await env.INBOX.list({ prefix: 'inbox/', cursor: new URL(req.url).searchParams.get('cursor') || undefined });
     const ids = list.objects.map((o) => o.key.slice(6)).filter((k) => k.endsWith('.json')).map((k) => k.slice(0, -5));
     return json(list.truncated ? { ids, cursor: list.cursor } : { ids });
   }

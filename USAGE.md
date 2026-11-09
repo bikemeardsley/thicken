@@ -453,7 +453,8 @@ once, whether to contribute yours to it. Nothing is sent unless you say yes.
   only if you say yes. Claude Code's plugin asks when you enable it
   (`contribute`), and the Gemini CLI extension when you install it.
 - **Your answer** is kept in `~/.thicken/config.json`. `THICKEN_CONTRIBUTE`
-  set to `yes` or `no`, as the plugins set it, wins over it; `ask`, or unset,
+  set to `yes` or `no`, as the plugins set it, wins over it, except that a
+  no you saved (`thicken contribute off`) always stands; `ask`, or unset,
   leaves it to the file. No answer means no.
 - **What goes.** Once a model and its sidecar are written: for each photo
   made with thicken's own book, box, card or slab profile (never one of

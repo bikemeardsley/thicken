@@ -11,7 +11,7 @@ has its own `package.json` and lock, its tests run offline in the Workers runtim
 | --- | --- |
 | `GET /thicken/v1/status` | `{"accepting":true}`, or `{"accepting":false,"reason":"paused"\|"not open"}`. 410 `{"reason":"ended"}` means stop for good. |
 | `POST /thicken/v1/photos` | Multipart `photo` (JPEG) and `meta` (JSON). 201 `{id}`, or the first failure below. |
-| `DELETE /thicken/v1/photos/:id` | Always 204, so it can't tell whether an id exists. Rate-limited like POST. |
+| `DELETE /thicken/v1/photos/:id` | Always 204, so it can't tell whether an id exists. Rate-limited like POST, and at most 500 a day from one network. Any well-formed id is recorded as forgotten, so a forget after the relay's 180 days still reaches Mike's copy. |
 | `GET /thicken/v1/admin/inbox?cursor=` | `{ids, cursor?}`, the cursor only when there's more. |
 | `GET /thicken/v1/admin/photos/:id.jpg` and `.json` | The re-encoded photo, and `{meta, at, asn, prefix, ua, scores}`. |
 | `DELETE /thicken/v1/admin/photos/:id` | Deletes a photo (a reject at review). Not recorded as forgotten. |
@@ -25,15 +25,17 @@ headers, and nothing is logged (`observability` is off).
 
 An upload is checked in this order and stops at the first failure:
 
-1. Not accepting: 503 `{reason}`.
-2. Content-Length missing or over 1.5 MB, or more bytes than that arriving: 413.
-3. `meta` isn't exactly `{v, thicken, consent, profile, faces}` (profile book, box, card or slab; up to 6 faces of 4
+1. Not accepting: 503 `{reason}` (410 once ended for good).
+2. The rate limiter (5 a minute) or a day cap (`PER_PREFIX_DAY`, `PER_ASN_DAY`, `GLOBAL_DAY`): 429. Every attempt counts
+   toward the caps, refused ones too, before anything is read, so the caps also bound what the checks below cost. A
+   client is keyed on its IPv4 address or IPv6 /64, stored only as `HMAC-SHA256(IP_SALT, …)`, 16 hex. Once
+   `SPIKE_HOUR` photos are accepted within an hour, the next one sets `paused=auto` for an hour and gets 503.
+3. Content-Length missing or over 1.5 MB, or more bytes than that arriving: 413.
+4. `meta` isn't exactly `{v, thicken, consent, profile, faces}` (profile book, box, card or slab; up to 8 faces of 4
    corners in 0..1000; at most 4 KB): 400 `{reason:"meta"}`.
-4. Not `FF D8 FF`, or the Images binding doesn't read a JPEG: 415. A side over 1024: 413.
-5. The rate limiter (5 a minute) or a day cap (`PER_PREFIX_DAY`, `PER_ASN_DAY`, `GLOBAL_DAY`): 429. A client is keyed on
-   its IPv4 address or IPv6 /64, stored only as `HMAC-SHA256(IP_SALT, …)`, 16 hex. Once `SPIKE_HOUR` photos are
-   accepted within an hour, the next one sets `paused=auto` and gets 503.
-6. An exact SHA-256 repeat: 409.
+5. Not `FF D8 FF`, or the Images binding doesn't read a JPEG: 415. A side over 1024: 413.
+6. An exact SHA-256 repeat: 201 with an id that names nothing and nothing stored, so no one holding a copy of a photo
+   can learn that it was contributed before.
 7. The known-abuse hash lists (below). A match: 422 `{reason:"rejected"}` and an incident. Every list erring: 503.
 8. Re-encoded to a JPEG at quality 90. The Images binding keeps no metadata but an EXIF copyright tag (its default).
 9. Workers AI (`@cf/cloudflare/clef-flash`, zero data retention) answers three yes/no questions with probabilities:
