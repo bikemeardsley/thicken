@@ -5,12 +5,14 @@
 // thicken mcp    (the MCP server on stdio, for AI agents: src/mcp.ts)
 // thicken profile new|check|contribute <name> [--from <profile>]   (a profile of your own: src/profile-tools.ts)
 // thicken profiles [--json]    (every profile; as JSON, its name, about and photo-search phrases)
+// thicken contribute [on|off|list|forget <id>|forget --all]   (photos for the corner model thicken uses: src/contribute.ts)
 // With no profile named, thicken picks one per model (see src/thicken.ts).
 // Writes each GLB and, beside it, a JSON sidecar of the same name.
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
+import { contribute, contributeCommand, question } from './contribute.ts';
 import { batchItems, PROFILES, type Options, type Sidecar } from './thicken.ts';
 import { inputsKey, make, sidecarOf } from './write.ts';
 
@@ -21,6 +23,7 @@ const USAGE = `usage: thicken [${PROFILES.map((p) => p.name).join('|')}] <pictur
        thicken profile new|check|contribute <name> [--from <profile>]   (a profile of your own, in ~/.thicken/profiles)
        thicken profiles [--json]    (every profile; with --json, an array of {name, about, search}: search is the
          phrases a photo-library search finds it with, and is left out where a profile has none)
+       thicken contribute [on|off|list|forget <id>|forget --all]   (photos for the corner model thicken uses)
 Profiles (src/profiles), each from:
 ${PROFILES.map((p) => `  ${p.name.padEnd(8)} ${p.input.replace(/`/g, '')}`).join('\n')}
 Options: --size WxHxD (mm; any left out are looked up or estimated), --isbn 978... (a book),
@@ -47,7 +50,13 @@ cropped: the models find each face, and it is cut out and straightened.
 Training mode (off by default): with THICKEN_DATASET=<folder> also set, every question put to
 the vision models is kept there as a training example. With THICKEN_REVIEWS=<folder>,
 LABEL_STUDIO_URL and LABEL_STUDIO_API_KEY set, a person reviews every face the models propose
-in that Label Studio before the build, which takes their corners, and each review is kept there.`;
+in that Label Studio before the build, which takes their corners, and each review is kept there.
+Contributing photos (off unless you say yes): thicken asks once whether to send the photos you
+make models from, as the 1000 x 1000 frames the vision models see with the corners found in
+them, to train the corner model it uses (PRIVACY.md#contributing-photos). thicken contribute
+says what you answered; on or off changes it, and off wins over THICKEN_CONTRIBUTE=yes (the
+plugin's or extension's install question); list shows what was sent; forget <id> deletes one
+from the relay, forget --all every one.`;
 
 // Settings such as the vision roster can live in a .env file where thicken is run.
 if (existsSync('.env')) process.loadEnvFile();
@@ -69,11 +78,12 @@ const { positionals, values } = parseArgs({
     help: { type: 'boolean', short: 'h' },
     from: { type: 'string' },
     json: { type: 'boolean' },
+    all: { type: 'boolean' },
   },
 });
-const command = ['batch', 'preview', 'mcp', 'profile', 'profiles'].includes(positionals[0]) ? positionals.shift() : 'make';
+const command = ['batch', 'preview', 'mcp', 'profile', 'profiles', 'contribute'].includes(positionals[0]) ? positionals.shift() : 'make';
 const profile = command !== 'preview' && command !== 'profile' && PROFILES.some((p) => p.name === positionals[0]) ? positionals.shift() : undefined;
-const nothingGiven = positionals.length === 0 && command !== 'mcp' && command !== 'profiles' && (command !== 'make' || !values.isbn);
+const nothingGiven = positionals.length === 0 && command !== 'mcp' && command !== 'profiles' && command !== 'contribute' && (command !== 'make' || !values.isbn);
 if (values.help || nothingGiven) {
   console.error(USAGE);
   process.exit(values.help ? 0 : 1);
@@ -99,6 +109,8 @@ async function build(files: string[], to?: string) {
   const { out, sidecar } = await make(files, options, to);
   console.log(`${out}: ${sidecar.profile}, ${sidecar.widthMm} × ${sidecar.heightMm} × ${sidecar.depthMm} mm`);
   for (const warning of sidecar.warnings) console.warn(`  warning: ${warning}`);
+  // Its photos contributed, if the user said yes; asked here first only at a terminal, never in CI (src/contribute.ts).
+  await contribute(sidecar, 'cli', process.stdin.isTTY && process.stdout.isTTY && !process.env.CI ? question : undefined);
   return { out, sidecar };
 }
 
@@ -129,6 +141,8 @@ try {
   } else if (command === 'profiles') {
     if (values.json) console.log(JSON.stringify(PROFILES.map(({ name, about, search }) => ({ name, about, search })), null, 2));
     else for (const { name, about } of PROFILES) console.log(`${name.padEnd(8)} ${about}`);
+  } else if (command === 'contribute') {
+    await contributeCommand(positionals, values.all);
   } else if (command === 'mcp') {
     await (await import('./mcp.ts')).serve(); // stdio stays open: the server answers until the agent closes it
   } else if (command === 'make') {

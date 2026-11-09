@@ -15,7 +15,8 @@
         { "name": "THICKEN_VISION_URL", "description": "An OpenAI-compatible vision endpoint (optional): photos needn't be cropped", "isRequired": false },
         { "name": "THICKEN_VISION_KEY", "description": "The vision endpoint's key", "isRequired": false, "isSecret": true },
         { "name": "THICKEN_VISION_MODELS", "description": "The endpoint's model names, comma-separated, primary first", "isRequired": false },
-        { "name": "GOOGLE_BOOKS_API_KEY", "description": "Your own Google Books quota, for book sizes", "isRequired": false, "isSecret": true }
+        { "name": "GOOGLE_BOOKS_API_KEY", "description": "Your own Google Books quota, for book sizes", "isRequired": false, "isSecret": true },
+        { "name": "THICKEN_CONTRIBUTE", "description": "Contribute the photos you make models from to the corner model thicken uses: yes or no; ask, or unset, leaves it to thicken's own question (PRIVACY.md#contributing-photos)", "isRequired": false, "choices": ["yes", "no", "ask"], "default": "ask" }
       ]
     }
   ]

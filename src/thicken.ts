@@ -14,6 +14,7 @@ import { registerHooks } from 'node:module';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { hold } from './contribute.ts';
 import { codes, load, VIDEO, type Picture } from './image.ts';
 import { reviewAll, reviewsOn } from './reviews.ts';
 import { keepRun, trainingOn } from './training.ts';
@@ -255,7 +256,7 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
     ...(visionOn() || !Object.keys(profile.faces).length ? [] : [NO_VISION]),
   ];
   const printed = readOf(sights);
-  return {
+  const made = {
     glb: built.glb,
     sidecar: {
       ...own,
@@ -271,6 +272,10 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
       build: { thicken: VERSION, createdAt: new Date().toISOString(), ms: Math.round(performance.now() - started), glbBytes: built.glb.length },
     },
   };
+  // Held for contributing its photos, if the user says yes, once the model is written (src/contribute.ts): only a
+  // built-in profile's, never one of the user's own, even one named as a built-in.
+  hold(made.sidecar, profile.name, builtIn.includes(profile), inputs, pictures, sights);
+  return made;
 }
 
 /**

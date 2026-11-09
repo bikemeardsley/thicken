@@ -4,5 +4,12 @@
   "description": "thicken: photos in; out comes a 3D model at the object's real size and its metadata as JSON.",
   "mcpServers": {
     "thicken": { "command": "npx", "args": ["-y", "thicken@0.3.0", "mcp"] }
-  }
+  },
+  "settings": [
+    {
+      "name": "Contribute photos to the corner model thicken uses? (yes, no, or empty to be asked)",
+      "description": "yes sends the photos you make models from, as the 1000 x 1000 frames the vision models see, to train the corner model thicken uses: no account or name attached, released as CC0, reviewed by thicken's author before any use; not sent: file names, camera details, location. You must be 16 or older and the photos must be yours. no never sends them; empty leaves it to thicken's own question. Change it any time: thicken contribute off. Details: https://github.com/bikemeardsley/thicken/blob/main/PRIVACY.md#contributing-photos",
+      "envVar": "THICKEN_CONTRIBUTE"
+    }
+  ]
 }
