@@ -1,0 +1,37 @@
+// The relay that receives contributed photos (README.md). Deployed by .github/workflows/relay.yml, never by hand.
+// The two ids marked "Mike fills in" are placeholders until he creates the D1 database and the KV namespace.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "thicken-contribute",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "contribute.wendellresearch.ai", "custom_domain": true }],
+  // Daily: expires what D1 keeps (the `scheduled` handler).
+  "triggers": { "crons": ["30 3 * * *"] },
+  // Off, so no request (and no IP in its headers) is kept in Workers Logs.
+  "observability": { "enabled": false },
+  "r2_buckets": [{ "binding": "INBOX", "bucket_name": "thicken-contribute", "jurisdiction": "eu" }],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "thicken-contribute", "database_id": "00000000-0000-0000-0000-000000000000" } // Mike fills in
+  ],
+  "kv_namespaces": [
+    { "binding": "FLAGS", "id": "00000000000000000000000000000000" } // Mike fills in
+  ],
+  "ai": { "binding": "AI", "remote": true },
+  "images": { "binding": "IMAGES" },
+  "ratelimits": [{ "name": "RATE", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } }],
+  // Knobs: thresholds for the Workers AI checks, and caps on accepted photos.
+  "vars": {
+    "SEXUAL_MAX": 0.15,
+    "FACE_MAX": 0.3,
+    "TOPIC_MIN": 0.5,
+    "PER_PREFIX_DAY": 30,
+    "PER_ASN_DAY": 200,
+    "GLOBAL_DAY": 150,
+    "SPIKE_HOUR": 60
+  }
+  // Secrets, set with `wrangler secret put`: ADMIN_TOKEN and IP_SALT, plus those of each hash list in use (at least
+  // one): HASHCHECK_URL/HASHCHECK_KEY, ARACHNID_USER/ARACHNID_KEY, PHOTODNA_KEY (and PHOTODNA_URL), NCMEC_USER/NCMEC_KEY.
+}
