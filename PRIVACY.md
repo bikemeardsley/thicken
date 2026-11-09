@@ -115,8 +115,9 @@ does. This section is the notice the EU's GDPR asks for (Art. 13).
   corner models thicken uses train on it, and every year he checks whether
   they still do. The upload point's own record of a photo (its id, SHA-256
   hash, time, hashed address and network) is deleted with it when you forget
-  it or he rejects it, and otherwise expires on its own. Of a photo you
-  forget, it keeps only the id, so that his copy can follow.
+  it or he rejects it, and otherwise after 180 days. Its daily counts of
+  uploads per hashed address go after two days. Of a photo you forget, it
+  keeps only the id, so that his copy can follow.
 - **Your rights:** stop any time with `thicken contribute off`; that doesn't
   undo what was sent before. `thicken contribute list` shows what you
   contributed, and `thicken contribute forget <id>` (or `--all`) deletes it

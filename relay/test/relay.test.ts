@@ -540,9 +540,15 @@ describe('DELETE /thicken/v1/photos/:id', () => {
     expect(await rows('forgotten')).toHaveLength(1);
   });
 
-  it.each([crypto.randomUUID(), 'not-an-id', '..%2Fincidents'])('answers 204 for %s too, and remembers nothing', async (id) => {
+  it.each(['not-an-id', '..%2Fincidents'])('answers 204 for %s too, and remembers nothing', async (id) => {
     expect((await send('DELETE', `/photos/${id}`)).status).toBe(204);
     expect(await rows('forgotten')).toEqual([]);
+  });
+
+  it('remembers an id it no longer has (expired after 180 days), so the copies made of it still go', async () => {
+    const id = crypto.randomUUID();
+    expect((await send('DELETE', `/photos/${id}`)).status).toBe(204);
+    expect(await rows('forgotten')).toEqual([{ id, at: expect.any(String) }]);
   });
 
   it('is rate-limited like POST', async () => {

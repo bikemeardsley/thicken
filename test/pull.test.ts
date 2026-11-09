@@ -58,7 +58,7 @@ test('pull: new photos go to Label Studio; a keep is a row, a reject and a forgo
       if (route === 'inbox?cursor=two') return Response.json({ ids: ids.slice(2) });
       if (route.startsWith('forgotten')) {
         asked.push(route);
-        return Response.json({ ids: forgotten });
+        return Response.json(forgotten.map((id) => ({ id, at: '2026-11-08T00:00:00.000Z' }))); // as the relay answers
       }
       const [, id, kind] = /^photos\/([^/.]+)(?:\.(jpg|json))?$/.exec(route) ?? [];
       if (method === 'DELETE') {

@@ -259,13 +259,14 @@ async function ask(env: E, jpeg: Uint8Array) {
 }
 
 // Deletes a photo and its row; always 204, so it can't tell whether an id exists. Never touches incidents/. A
-// contributor's delete (forget) of a photo that existed is kept in `forgotten`, so Mike's copies go too (pull.ts).
+// contributor's delete (forget) is kept in `forgotten` whether or not the relay still has the photo, so Mike's copies
+// go too (pull.ts), even after the 180 days that expire the relay's own.
 async function remove(env: E, id: string, forget = false): Promise<Response> {
   if (UUID.test(id)) {
     await env.INBOX.delete([`inbox/${id}.jpg`, `inbox/${id}.json`]);
-    const remember = env.DB.prepare('INSERT INTO forgotten (id, at) SELECT id, ? FROM photos WHERE id = ?');
+    const remember = env.DB.prepare('INSERT OR IGNORE INTO forgotten (id, at) VALUES (?, ?)');
     await env.DB.batch([
-      ...(forget ? [remember.bind(new Date().toISOString(), id)] : []),
+      ...(forget ? [remember.bind(id, new Date().toISOString())] : []),
       env.DB.prepare('DELETE FROM photos WHERE id = ?').bind(id),
     ]);
   }

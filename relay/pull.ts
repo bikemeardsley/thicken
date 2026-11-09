@@ -86,7 +86,8 @@ export async function pull() {
   const state = path.join(root, 'pull.json');
   const started = Date.now();
   const since: string | undefined = existsSync(state) ? JSON.parse(await readFile(state, 'utf8')).forgottenSince : undefined;
-  const forgotten = new Set<string>((await (await relay('GET', `forgotten${since ? `?since=${encodeURIComponent(since)}` : ''}`)).json()).ids);
+  const gone: { id: string }[] = await (await relay('GET', `forgotten${since ? `?since=${encodeURIComponent(since)}` : ''}`)).json();
+  const forgotten = new Set(gone.map(({ id }) => id));
   const rows = existsSync(log) ? (await readFile(log, 'utf8')).split('\n').filter(Boolean).map((line) => JSON.parse(line)) : [];
   const idOf = (row: { group: string }) => row.group.slice('contributed:'.length);
   const forgot = rows.filter((row) => forgotten.has(idOf(row)));
