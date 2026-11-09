@@ -1,0 +1,16 @@
+{
+  "name": "thicken-contribute-relay",
+  "private": true,
+  "description": "The Cloudflare Worker that receives the photos thicken's users contribute (README.md). Not part of the npm package.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "check": "wrangler types && tsc"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.6.0",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0",
+    "wrangler": "4.158.0"
+  }
+}
