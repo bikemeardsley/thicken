@@ -41,7 +41,7 @@ export const browser = {
   },
 };
 
-const studio = () => (process.env.LABEL_STUDIO_URL || 'http://localhost:8080').replace(/\/$/, '');
+export const studio = () => (process.env.LABEL_STUDIO_URL || 'http://localhost:8080').replace(/\/$/, '');
 let auth: string | undefined;
 
 /** A personal access token is a refresh token, traded for a short-lived access token; a legacy token goes as it is. */
@@ -55,7 +55,7 @@ async function signIn(): Promise<string> {
 }
 
 /** Label Studio's API: the token never in an error. */
-async function api(method: string, route: string, body?: object): Promise<any> {
+export async function api(method: string, route: string, body?: object): Promise<any> {
   for (let tries = 1; ; tries++) {
     auth ??= await signIn();
     const response = await fetch(`${studio()}${route}`, {
@@ -69,12 +69,15 @@ async function api(method: string, route: string, body?: object): Promise<any> {
   }
 }
 
-/** One project for each profile's photos, as experiment 003 names them, its faces and guidelines kept up to date. */
-async function project(kind: Kind): Promise<number> {
+/**
+ * One project for each profile's photos from one source (thicken runs, or contributed photos: relay/pull.ts), as
+ * experiment 003 names them, its faces and guidelines kept up to date.
+ */
+export async function project(kind: Kind, from = 'thicken runs', about?: { description: string; instructions: string }): Promise<number> {
   const faces = Object.keys(kind.faces).sort().map((face) => `<Label value="${face}"/>`).join('');
   const fields = {
-    title: `003 · ${kind.name} faces · thicken runs`, show_instruction: true, expert_instruction: INSTRUCTIONS,
-    description: `Photos thicken looked at in training mode, reviewed before each build. Decisions go to ${path.resolve(process.env.THICKEN_REVIEWS!, 'review.jsonl')}.`,
+    title: `003 · ${kind.name} faces · ${from}`, show_instruction: true, expert_instruction: about?.instructions ?? INSTRUCTIONS,
+    description: about?.description ?? `Photos thicken looked at in training mode, reviewed before each build. Decisions go to ${path.resolve(process.env.THICKEN_REVIEWS!, 'review.jsonl')}.`,
     label_config: `<View>
   <Header value="$title"/>
   <Text name="confidence" value="$confidence"/>
@@ -140,6 +143,24 @@ export function decision(a: Annotation, proposal: Face[]) {
   return line('fix', faces);
 }
 
+/**
+ * A task for a frame (1000 x 1000), its faces an editable proposal: each a polygon with its score, and a read-only dot
+ * on its corner 1, which Label Studio doesn't mark. Its id.
+ */
+export async function addTask(project: number, jpeg: Buffer, data: { group: string; title: string; confidence: string },
+  faces: { face: string; corners: number[][]; score: number }[], model_version: string): Promise<number> {
+  const pct = (v: number) => (v * 100) / SIZE;
+  const region = { to_name: 'image', original_width: SIZE, original_height: SIZE };
+  const task = await api('POST', '/api/tasks', { project, data: { image: `data:image/jpeg;base64,${jpeg.toString('base64')}`, ...data } });
+  await api('POST', '/api/predictions', { task: task.id, model_version, score: faces.length ? faces.reduce((sum, f) => sum + f.score, 0) / faces.length : 0, result: [
+    ...faces.map((f, k) => ({ ...region, id: `face${k}`, from_name: 'faces', type: 'polygonlabels', score: f.score,
+      value: { points: f.corners.map(([x, y]) => [pct(x), pct(y)]), closed: true, polygonlabels: [f.face] } })),
+    ...faces.map((f, k) => ({ ...region, id: `corner${k}`, from_name: 'corner1', type: 'keypointlabels', readonly: true,
+      value: { x: pct(f.corners[0][0]), y: pct(f.corners[0][1]), width: 0.8, keypointlabels: ['corner 1'] } })),
+  ] });
+  return task.id;
+}
+
 /** The task's latest submitted annotation as a decision, once there is one; undefined if it was skipped. */
 async function decided(task: number, proposal: Face[]) {
   for (let told = ''; ; await sleep(POLL_MS)) {
@@ -182,22 +203,12 @@ export async function reviewAll(pictures: Picture[], sights: Sight[], kind: Kind
     };
     const name = `${createHash('sha256').update(frame.jpeg).digest('hex').slice(0, 16)}.jpg`;
     const { file, page, time } = pictures[i].source;
-    const pct = (v: number) => (v * 100) / SIZE;
-    const region = { to_name: 'image', original_width: SIZE, original_height: SIZE };
-    const task = await api('POST', '/api/tasks', { project: id, data: {
-      image: `data:image/jpeg;base64,${frame.jpeg.toString('base64')}`, group: `training-mode:${name}`,
-      title: `${file}${page ? ` page ${page}` : ''}${time === undefined ? '' : ` at ${time} s`}`,
+    const task = await addTask(id, frame.jpeg, {
+      group: `training-mode:${name}`, title: `${file}${page ? ` page ${page}` : ''}${time === undefined ? '' : ` at ${time} s`}`,
       confidence: [...faces.map((f) => `${f.face} ${f.score} (${f.agreed ? 'agreed' : 'unchecked'}: ${f.by.join(', ')})`),
         ...sight.disputed.map((face) => `${face} disputed, left out`)].join('; ') || 'nothing settled: draw what you see, or reject',
-    } });
-    // Each face as an editable polygon with its confidence, and a read-only dot on its corner 1, which Label Studio doesn't mark.
-    await api('POST', '/api/predictions', { task: task.id, model_version, score: faces.length ? faces.reduce((sum, f) => sum + f.score, 0) / faces.length : 0, result: [
-      ...faces.map((f, k) => ({ ...region, id: `face${k}`, from_name: 'faces', type: 'polygonlabels', score: f.score,
-        value: { points: f.corners.map(([x, y]) => [pct(x), pct(y)]), closed: true, polygonlabels: [f.face] } })),
-      ...faces.map((f, k) => ({ ...region, id: `corner${k}`, from_name: 'corner1', type: 'keypointlabels', readonly: true,
-        value: { x: pct(f.corners[0][0]), y: pct(f.corners[0][1]), width: 0.8, keypointlabels: ['corner 1'] } })),
-    ] });
-    asked.push({ task: task.id, frame, proposal, name, picture: pictures[i] });
+    }, faces, model_version);
+    asked.push({ task, frame, proposal, name, picture: pictures[i] });
   }
   const link = (task: number) => `${studio()}/projects/${id}/data?task=${task}`;
   if (asked.length) browser.open(link(asked[0].task));

@@ -7,6 +7,7 @@ Everything in detail; the [README](README.md) has the short version.
 - [Vision (optional)](#vision-optional)
 - [Video (optional)](#video-optional)
 - [Training mode (off by default)](#training-mode-off-by-default), [reviewed in Label Studio](#reviewed-in-label-studio-off-by-default)
+- [Contributing photos to help train thicken](#contributing-photos-to-help-train-thicken)
 - [Review](#review)
 - [What the sidecar records](#what-the-sidecar-records)
 - [Preview](#preview)
@@ -415,6 +416,73 @@ LABEL_STUDIO_API_KEY=...                        # Account & Settings > Personal 
   seen is never an exam's.
 - Label Studio keeps its own copy of each photo, in its database: delete the
   task there to remove it.
+
+## Contributing photos to help train thicken
+
+The corner model thicken uses finds the corners of books, cards, slabs and
+boxes in photos, and it learns from photos like yours. thicken can ask you,
+once, whether to contribute yours to it. Nothing is sent unless you say yes.
+
+- **Not yet.** Until its upload point opens, thicken asks nothing and sends
+  nothing.
+- **The question.** The CLI asks it once, when it runs on a terminal (stdin
+  and stdout, and not in CI):
+
+  ```
+  Contribute photos to the corner model thicken uses?
+
+  That model finds the corners of books, cards, slabs and boxes
+  in photos, and it learns from photos like yours. No account or
+  name is attached; you release your rights in them as CC0;
+  thicken's author reviews each one before any use.
+  Not sent: file names, camera details, location.
+
+  You must be 16 or older and the photos must be yours.
+  Change it any time: thicken contribute off
+  Details: https://github.com/bikemeardsley/thicken/blob/main/PRIVACY.md#contributing-photos
+
+  Contribute photos? (yes/no):
+  ```
+
+  Only `yes`, `y`, `no` or `n` count, in any case. Anything else, Enter
+  alone included, asks again.
+- **From an agent.** The first `thicken_make` asks it through the agent, if
+  the agent can put a question to you (MCP elicitation), with nothing ticked:
+  your yes or no is kept, and dismissing it asks again next session. An agent
+  that can't gets a note to ask you instead, and runs `thicken contribute on`
+  only if you say yes. Claude Code's plugin asks when you enable it
+  (`contribute`), and the Gemini CLI extension when you install it.
+- **Your answer** is kept in `~/.thicken/config.json`. `THICKEN_CONTRIBUTE`
+  set to `yes` or `no`, as the plugins set it, wins over it; `ask`, or unset,
+  leaves it to the file. No answer means no.
+- **What goes.** Once a model and its sidecar are written: for each photo of
+  a book, box, card or slab, the 1000 × 1000 frame the vision models were
+  sent, and a note with thicken's version, the date of the question you said
+  yes to, the profile, and the faces in the frame with their corners. Nothing
+  of a badge or lettering, and nothing from a run with `THICKEN_DATASET` or
+  `THICKEN_REVIEWS` set. Never a file name, camera details, location or
+  anything else from the sidecar ([PRIVACY.md](PRIVACY.md#contributing-photos)).
+- **It never holds up a build** for longer than its timeouts: 5 s to ask
+  whether the upload point is taking photos, 15 s for each photo. It sends
+  silently, refusals included: `thicken contribute list` shows what was
+  taken.
+- **Offline, busy or paused,** a photo waits in `~/.thicken/outbox/`, 50 at
+  most and for 30 days at most, and goes at the start of the next run's
+  sending. If the upload point closes for good, thicken stops and empties the
+  outbox.
+- **What happens to them.** The upload point checks each photo for known
+  child sexual abuse material, re-encodes it (which strips any metadata
+  left), and refuses one that's sexual, shows a face, or isn't of a book,
+  card, slab or box. thicken's author then reviews every photo in Label
+  Studio before any is used: the ones he keeps train the corner model, a
+  rejected one is deleted, and one not reviewed in 180 days is deleted.
+
+| Command | What it does |
+| --- | --- |
+| `thicken contribute` | Says whether contributing is on, and where that answer came from |
+| `thicken contribute on`, `off` | Turns it on or off |
+| `thicken contribute list` | Lists what you contributed, from `~/.thicken/contributed.jsonl`: each photo's id, time, profile and file, kept on your machine only |
+| `thicken contribute forget <id>`, `--all` | Deletes those photos from the upload point and from the list; works with contributing off |
 
 ## Review
 

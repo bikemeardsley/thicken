@@ -69,6 +69,7 @@ models read the rest off the slab. What each profile records is in
 - [Try it](#try-it) · [From an AI agent](#from-an-ai-agent) · [How it works](#how-it-works) · [The thicken object](#the-thicken-object) · [What it makes](#what-it-makes)
 - In detail ([USAGE.md](USAGE.md)): [batch](USAGE.md#batch) · [photos](USAGE.md#photos-any-number) ·
   [vision](USAGE.md#vision-optional) · [video](USAGE.md#video-optional) · [training mode](USAGE.md#training-mode-off-by-default) ([reviewed](USAGE.md#reviewed-in-label-studio-off-by-default)) ·
+  [contributing photos](USAGE.md#contributing-photos-to-help-train-thicken) ·
   [review](USAGE.md#review) · [the sidecar](USAGE.md#what-the-sidecar-records) · [previews](USAGE.md#preview) ·
   [inputs](USAGE.md#inputs) · [sizes](USAGE.md#dimensions)
 - [What leaves your machine](#what-leaves-your-machine) · [Adding a profile](#adding-a-profile) · [Security](#security) ·
@@ -315,7 +316,10 @@ endpoint sees every photo. With `THICKEN_BENCH_URL` naming a
 collection, the photos go to that gateway, which forwards each to the
 providers of every seat it picks. The only other calls out are a book's catalog
 lookups (Open Library, the Library of Congress, Google Books), which send its
-ISBN, or the title and author the models read off it; never a photo.
+ISBN, or the title and author the models read off it; never a photo. If you
+say yes to [contributing photos](USAGE.md#contributing-photos-to-help-train-thicken)
+to the corner model thicken uses, each photo's 1000 × 1000 frame and its
+faces' corners go to thicken's upload point ([PRIVACY.md](PRIVACY.md#contributing-photos)).
 
 Nothing else is sent anywhere, and nothing is fetched at run time but those
 lookups: previews draw with model-viewer served from your own disk.
