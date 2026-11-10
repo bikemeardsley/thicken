@@ -61,7 +61,8 @@ and deploys nothing, and the live relay (once deployed) answers "not open" until
    npx wrangler d1 create thicken-contribute --jurisdiction eu
    npx wrangler kv namespace create FLAGS
    ```
-   Put the D1 `database_id` and the KV `id` in `wrangler.jsonc` in place of the zeros.
+   Their ids are in `wrangler.jsonc` (D1's `database_id`, KV's `id`); a new database or namespace needs its own put
+   there.
 2. **The tables:** `npx wrangler d1 execute thicken-contribute --remote --file schema.sql`.
 3. **The lifecycle rule,** on `inbox/` only. `incidents/` must have none.
    ```sh

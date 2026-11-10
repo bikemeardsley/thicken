@@ -1,6 +1,6 @@
 # Deploys the relay that receives contributed photos (relay/README.md) when relay/ changes on main, after its own tests
 # pass. Nobody deploys from a session. Repo secrets: CLOUDFLARE_API_TOKEN (scopes in relay/README.md) and
-# CLOUDFLARE_ACCOUNT_ID. Until both are set and wrangler.jsonc has real ids, it says so and deploys nothing.
+# CLOUDFLARE_ACCOUNT_ID. Until both are set, it says so and deploys nothing.
 name: relay
 on:
   push:
@@ -18,14 +18,13 @@ jobs:
     outputs:
       go: ${{ steps.ready.outputs.go }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - id: ready
         env:
           TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          if [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ] || grep -q '"00000000' relay/wrangler.jsonc; then
-            echo "::notice::Relay not deployed: set the repo secrets and fill in relay/wrangler.jsonc's ids first (relay/README.md)."
+          if [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ]; then
+            echo "::notice::Relay not deployed: set the repo secrets first (relay/README.md)."
           else
             echo "go=1" >> "$GITHUB_OUTPUT"
           fi

@@ -1,5 +1,4 @@
 // The relay that receives contributed photos (README.md). Deployed by .github/workflows/relay.yml, never by hand.
-// The two ids marked "Mike fills in" are placeholders until he creates the D1 database and the KV namespace.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "thicken-contribute",
@@ -14,11 +13,9 @@
   "observability": { "enabled": false },
   "r2_buckets": [{ "binding": "INBOX", "bucket_name": "thicken-contribute", "jurisdiction": "eu" }],
   "d1_databases": [
-    { "binding": "DB", "database_name": "thicken-contribute", "database_id": "00000000-0000-0000-0000-000000000000" } // Mike fills in
+    { "binding": "DB", "database_name": "thicken-contribute", "database_id": "073594bf-1d92-4668-b34c-b37d77a4680d" }
   ],
-  "kv_namespaces": [
-    { "binding": "FLAGS", "id": "00000000000000000000000000000000" } // Mike fills in
-  ],
+  "kv_namespaces": [{ "binding": "FLAGS", "id": "7c19e1eafa014e4f9f9d284066b93fe2" }],
   "ai": { "binding": "AI", "remote": true },
   "images": { "binding": "IMAGES" },
   "ratelimits": [{ "name": "RATE", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } }],
