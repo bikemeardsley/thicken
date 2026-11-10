@@ -20,9 +20,11 @@
   "images": { "binding": "IMAGES" },
   "ratelimits": [{ "name": "RATE", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } }],
   // Knobs: thresholds for the Workers AI checks, day caps on well-formed attempts, and the spike pause on accepted photos.
+  // Not yet calibrated (Mike, 2026-11-10): sexual refused aggressively, a face more leniently, since Mike's review
+  // rejects any person left; adjust from GET admin/rejections and the scores kept with each photo.
   "vars": {
-    "SEXUAL_MAX": 0.15,
-    "FACE_MAX": 0.3,
+    "SEXUAL_MAX": 0.05,
+    "FACE_MAX": 0.6,
     "TOPIC_MIN": 0.5,
     "PER_PREFIX_DAY": 30,
     "PER_ASN_DAY": 200,

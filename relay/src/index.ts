@@ -258,7 +258,8 @@ async function ask(env: E, jpeg: Uint8Array) {
       sexual: { type: 'noul', instructions: 'Does the image show nudity or sexual content?' },
       face: {
         type: 'noul',
-        instructions: 'Is a human face visible, even partly or in a reflection? A hand or arm holding the object is not a face.',
+        instructions:
+          'Is a real person\'s face visible, even partly or in a reflection? A face printed or drawn on the object, such as on a cover or a card, does not count. A hand or arm holding the object is not a face.',
       },
       topic: { type: 'noul', instructions: 'Is this a photo of a physical book, trading card, graded card slab or box?' },
     },
