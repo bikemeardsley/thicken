@@ -37,7 +37,8 @@ An upload is checked in this order and stops at the first failure:
    can learn that it was contributed before.
 7. A day cap (`PER_PREFIX_DAY`, `PER_ASN_DAY`, `GLOBAL_DAY`): 429. Every well-formed attempt counts from here, refused
    ones too, so the caps bound what the checks below cost; a malformed one never reaches them.
-8. The known-abuse hash lists (below). A match: 422 `{reason:"rejected"}` and an incident. Every list erring: 503.
+8. The known-abuse hash lists set up, if any (below). A match: 422 `{reason:"rejected"}` and an incident. Every one
+   erring: 503. With none set up, the upload goes on to the Workers AI checks.
 9. Re-encoded to a JPEG at quality 90. The Images binding keeps no metadata but an EXIF copyright tag (its default).
 10. Workers AI (`@cf/cloudflare/clef-flash`, zero data retention) answers three yes/no questions with probabilities:
    422 `{reason:"sexual"}` at `SEXUAL_MAX` or more, `"face"` at `FACE_MAX` or more, `"topic"` under `TOPIC_MIN`. An
@@ -51,7 +52,7 @@ hand. Only an incident keeps a full IP.
 ## Setting it up
 
 Everything here is Mike's to do, once, with his own `npx wrangler login`. Until it's done, the deploy workflow says so
-and deploys nothing, and the live relay (once deployed) answers "not open" until a hash list is configured.
+and deploys nothing, and the live relay (once deployed) answers "not open" until `IP_SALT` is set.
 
 1. **Storage, in the EU.** R2's jurisdiction is part of its binding (`"jurisdiction": "eu"` in `wrangler.jsonc`). D1's
    is set when the database is created and can't change later; it has no setting in `wrangler.jsonc`. KV holds only the
@@ -74,14 +75,16 @@ and deploys nothing, and the live relay (once deployed) answers "not open" until
    - `ADMIN_TOKEN` and `IP_SALT`, each a fresh random string
      (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`). `ADMIN_TOKEN` is also thicken's
      `THICKEN_INBOX_TOKEN` in its `.env`, for pull.ts. Changing `IP_SALT` resets the day caps.
-   - The hash lists in use (next step).
+   - The hash lists in use, if any (step 7).
 6. **The deploy token.** In the Cloudflare dashboard, create an API token from the "Edit Cloudflare Workers" template,
    limited to Mike's account and the `wendellresearch.ai` zone. If a deploy can't attach the custom domain, add
    Zone · DNS · Edit for that zone. Save it as the repo secret `CLOUDFLARE_API_TOKEN`, and the account id as
    `CLOUDFLARE_ACCOUNT_ID`. Then merge (or run the workflow by hand) to deploy.
-7. **The hash lists.** Apply for each; every one that's configured is asked, in parallel, with a 5 s timeout each. A
-   match on any is a match; with none, the upload goes on if at least one list answered. The relay opens once one list
-   is configured.
+7. **The hash lists, optional.** Each is gated: access is applied for, and may not be granted to a one-person
+   operator. The relay opens without any (US law asks a provider to report what it learns of, not to scan:
+   18 U.S.C. § 2258A(f)), and then the Workers AI checks and Mike's review of every photo are the guard. Every one
+   that's configured is asked, in parallel, with a 5 s timeout each. A match on any is a match; with none, the upload
+   goes on if at least one list answered.
    | List | Apply | Secrets | Code |
    | --- | --- | --- | --- |
    | Offlimits Hash Check Service (NL) | hashcheckservice.nl | `HASHCHECK_URL`, `HASHCHECK_KEY` | To write in `src/known.ts` from its docs |
@@ -90,7 +93,7 @@ and deploys nothing, and the live relay (once deployed) answers "not open" until
    | NCMEC Hash Sharing (US) | esp.ncmec.org (ESP registration) | `NCMEC_USER`, `NCMEC_KEY` | To write in `src/known.ts` once there's access |
 
    Set a list's secrets only once its code is written: until then it errs on every photo, which stops intake if it's
-   the only list.
+   the only list. Offlimits serves Dutch and EU providers and has no open sign-up, so it's unlikely for a US operator.
 8. **Calibrating the thresholds** on Mike's own photos, before opening: point a local thicken at the relay
    (`THICKEN_CONTRIBUTE_URL`), contribute a few dozen of his own frames, including ones with a hand, a reflection, a
    face, and off-topic ones, and read the scores in `GET /thicken/v1/admin/rejections` and in each kept photo's JSON.

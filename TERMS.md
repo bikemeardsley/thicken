@@ -20,8 +20,8 @@ only the following.
   [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/); that covers
   only your rights, not a publisher's in a printed cover or card. The author
   may refuse or delete any photo, and nothing is paid for them. The upload
-  point's automated checks refuse a photo that matches known child sexual
-  abuse material, that is sexual, that shows a face, or that isn't of a
+  point's automated checks refuse a photo that matches a list of known child
+  sexual abuse material it is set up with, that is sexual, that shows a face, or that isn't of a
   book, card, slab or box; a match is reported as the law requires.
 - **No liability.** To the extent the law allows, the author is not liable
   for any loss or damage arising from its use.

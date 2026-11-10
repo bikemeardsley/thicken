@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { cloudflareTest } from '@cloudflare/vitest-plugin';
 import { defineConfig } from 'vitest/config';
 
-// Offline: R2, D1 and KV are local; AI, Images, the rate limiter and both hash lists are stubbed in the tests.
+// Offline: R2, D1 and KV are local; AI, Images, the rate limiter and the hash lists are stubbed in the tests.
 export default defineConfig({
   plugins: [
     cloudflareTest({

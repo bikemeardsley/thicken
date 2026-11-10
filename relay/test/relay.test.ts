@@ -140,16 +140,12 @@ describe('GET /thicken/v1/status', () => {
     expect(res.headers.get('access-control-allow-origin')).toBeNull();
   });
 
-  it.each(Object.entries(SECRETS))('opens with %s as the only list', async (_, names) => {
-    const only = { ...NONE, ...Object.fromEntries(names.map((k) => [k, 'set'])) };
-    expect(await (await get('/status', {}, only)).json()).toEqual({ accepting: true });
-    for (const k of names) expect(await (await get('/status', {}, { ...only, [k]: '' })).json()).toEqual({ accepting: false, reason: 'not open' });
+  it('is accepting with no hash list set up', async () => {
+    expect(await (await get('/status', {}, NONE)).json()).toEqual({ accepting: true });
   });
 
-  it.each<[string, Over]>([
-    ['no hash list', NONE],
-    ['no IP_SALT', { IP_SALT: undefined }],
-  ])('is "not open" with %s', async (_, over) => {
+  it('is "not open" without IP_SALT', async () => {
+    const over = { IP_SALT: undefined };
     expect(await (await get('/status', {}, over)).json()).toEqual({ accepting: false, reason: 'not open' });
     const res = await post({}, over);
     expect(res.status).toBe(503);
@@ -482,6 +478,22 @@ describe('POST /thicken/v1/photos', () => {
       const res = await post({}, { ...NONE, PHOTODNA_KEY: 'k' });
       expect(res.status).toBe(201);
       expect(seen.fetch.map((r) => r.url)).toEqual([PHOTODNA]);
+    });
+
+    it('stores with no list set up, asking none', async () => {
+      expect((await post({}, NONE)).status).toBe(201);
+      expect(seen.fetch).toHaveLength(0);
+      expect(LISTS.offlimits.check).not.toHaveBeenCalled();
+      expect(LISTS.ncmec.check).not.toHaveBeenCalled();
+      expect(seen.ai).toHaveLength(1);
+    });
+
+    it.each(Object.entries(SECRETS))('asks %s only once all its secrets are set', async (name, names) => {
+      const check = vi.spyOn(LISTS[name], 'check');
+      const only = { ...NONE, ...Object.fromEntries(names.map((k) => [k, 'set'])) };
+      expect((await post({}, only)).status).toBe(201);
+      for (const k of names) expect((await post({}, { ...only, [k]: '' })).status).toBe(201);
+      expect(check).toHaveBeenCalledTimes(1);
     });
 
     it.each<[string, () => void]>([

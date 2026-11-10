@@ -1,6 +1,6 @@
 // The relay that receives photos contributed to the corner model thicken uses (README.md). One upload is one
 // letterboxed JPEG frame and its meta; it is checked in the numbered order below and stops at the first failure.
-import { configured, known, type Lists } from './known.ts';
+import { known, type Lists } from './known.ts';
 
 type E = Env & Lists & { ADMIN_TOKEN?: string; IP_SALT?: string };
 type Meta = Record<string, unknown>;
@@ -52,10 +52,10 @@ export default {
   },
 };
 
-// Why the relay isn't accepting, or null. "not open" until at least one hash list (and the IP salt) is configured; the
-// FLAGS key `paused` is manual, auto or incident, or `ended` once contributing has ended for good (status answers 410).
+// Why the relay isn't accepting, or null. "not open" until the IP salt is set; the FLAGS key `paused` is manual, auto
+// or incident, or `ended` once contributing has ended for good (status answers 410).
 async function closed(env: E): Promise<string | null> {
-  if (!env.IP_SALT || !configured(env).length) return 'not open';
+  if (!env.IP_SALT) return 'not open';
   const flag = await env.FLAGS.get('paused');
   return flag === 'ended' ? 'ended' : flag || (await env.FLAGS.get('spike')) ? 'paused' : null;
 }
@@ -115,7 +115,8 @@ async function upload(req: Request, env: E): Promise<Response> {
   const caps = [env.PER_PREFIX_DAY, env.PER_ASN_DAY, env.GLOBAL_DAY].map(Number);
   if (!(await counted(env, [`p:${prefix}`, `a:${asn}`, 'all'], caps))) return json({ reason: 'rate limit' }, 429);
 
-  // 8. Not known CSAM. A match is preserved for a year (18 U.S.C. § 2258A(h)) and reported by hand (README.md).
+  // 8. Not known CSAM, on each hash list set up (none yet is allowed: 18 U.S.C. § 2258A(f) requires no scanning). A
+  // match is preserved for a year (§ 2258A(h)) and reported by hand (README.md).
   let lists: { matched: string[]; answered: string[] };
   try {
     lists = await known(bytes, env);

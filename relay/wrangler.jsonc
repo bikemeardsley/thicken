@@ -29,6 +29,6 @@
     "GLOBAL_DAY": 150,
     "SPIKE_HOUR": 60
   }
-  // Secrets, set with `wrangler secret put`: ADMIN_TOKEN and IP_SALT, plus those of each hash list in use (at least
-  // one): HASHCHECK_URL/HASHCHECK_KEY, ARACHNID_USER/ARACHNID_KEY, PHOTODNA_KEY (and PHOTODNA_URL), NCMEC_USER/NCMEC_KEY.
+  // Secrets, set with `wrangler secret put`: ADMIN_TOKEN and IP_SALT, plus those of each hash list in use (optional):
+  // HASHCHECK_URL/HASHCHECK_KEY, ARACHNID_USER/ARACHNID_KEY, PHOTODNA_KEY (and PHOTODNA_URL), NCMEC_USER/NCMEC_KEY.
 }

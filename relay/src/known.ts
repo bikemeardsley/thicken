@@ -1,6 +1,6 @@
 // The known-abuse hash lists (README.md). Every configured list is asked in parallel, each with its own 5 s timeout. A
-// match on any list is a match; with none, the upload goes on if at least one list answered. All erring throws, so the
-// caller fails closed.
+// match on any list is a match; with none, the upload goes on if at least one list answered, or if none is configured.
+// All configured lists erring throws, so the caller fails closed.
 export type Lists = {
   HASHCHECK_URL?: string;
   HASHCHECK_KEY?: string;
@@ -65,13 +65,11 @@ export const LISTS: Record<string, { on: (env: Lists) => boolean; check: Check }
   },
 };
 
-export const configured = (env: Lists) => Object.keys(LISTS).filter((name) => LISTS[name].on(env));
-
 export async function known(bytes: Uint8Array, env: Lists): Promise<{ matched: string[]; answered: string[] }> {
-  const names = configured(env);
+  const names = Object.keys(LISTS).filter((name) => LISTS[name].on(env));
   const settled = await Promise.allSettled(names.map((name) => LISTS[name].check(bytes, env, AbortSignal.timeout(5_000))));
   const answered = names.filter((_, i) => settled[i].status === 'fulfilled');
   const matched = names.filter((_, i) => { const s = settled[i]; return s.status === 'fulfilled' && s.value; });
-  if (!answered.length) throw new Error('no hash list answered');
+  if (names.length && !answered.length) throw new Error('no hash list answered');
   return { matched, answered };
 }

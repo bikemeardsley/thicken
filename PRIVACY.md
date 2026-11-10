@@ -75,8 +75,8 @@ does. This section is the notice the EU's GDPR asks for (Art. 13).
   (thicken and its version), the time and the checks' scores, and it counts
   uploads a day by hashed address and by network, to cap them. Of a photo
   its image model refuses, it keeps only the reason and the scores.
-- **The checks:** each photo is checked against lists of known child sexual
-  abuse material, re-encoded (which strips any metadata left), and then
+- **The checks:** each photo is checked against any lists of known child
+  sexual abuse material the upload point is set up with (below), re-encoded (which strips any metadata left), and then
   refused if an image model finds it sexual, finds a face in it, or doesn't
   see a book, card, slab or box. These checks decide on their own. thicken
   sends silently: `thicken contribute list` shows each photo it sent, and

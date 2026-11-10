@@ -82,7 +82,7 @@ code in `relay/`.
   a day, an exact repeat, a match on any list of known child sexual abuse
   material it is set up with (Offlimits', Arachnid Shield's, Microsoft
   PhotoDNA's and NCMEC's), and a photo its image model finds sexual, with a
-  face in it, or of something else. If no list answers, it takes nothing. A sudden flood pauses it. A photo's id, which only its
+  face in it, or of something else. If it is set up with lists and none answers, it takes nothing. A sudden flood pauses it. A photo's id, which only its
   contributor's thicken is told, is what deletes it, and is never listed
   publicly. Its admin routes need the
   author's token; every other route answers 404.

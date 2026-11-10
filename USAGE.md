@@ -420,8 +420,8 @@ once, whether to contribute yours to it. Nothing is sent unless you say yes.
   most and for 30 days at most, and goes at the start of the next run's
   sending. If the upload point closes for good, thicken stops and empties the
   outbox.
-- **What happens to them.** The upload point checks each photo for known
-  child sexual abuse material, re-encodes it (which strips any metadata
+- **What happens to them.** The upload point checks each photo against any
+  lists of known child sexual abuse material it is set up with, re-encodes it (which strips any metadata
   left), and refuses one that's sexual, shows a face, or isn't of a book,
   card, slab or box. thicken's author then reviews every photo in Label
   Studio before any is used: the ones he keeps train the corner model, a
