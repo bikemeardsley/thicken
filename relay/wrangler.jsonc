@@ -1,0 +1,36 @@
+// The relay that receives contributed photos (README.md). Deployed by .github/workflows/relay.yml, never by hand.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "thicken-contribute",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "contribute.wendellresearch.ai", "custom_domain": true }],
+  // Daily: expires what D1 keeps (the `scheduled` handler).
+  "triggers": { "crons": ["30 3 * * *"] },
+  // Off, so no request (and no IP in its headers) is kept in Workers Logs.
+  "observability": { "enabled": false },
+  "r2_buckets": [{ "binding": "INBOX", "bucket_name": "thicken-contribute", "jurisdiction": "eu" }],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "thicken-contribute", "database_id": "073594bf-1d92-4668-b34c-b37d77a4680d" }
+  ],
+  "kv_namespaces": [{ "binding": "FLAGS", "id": "7c19e1eafa014e4f9f9d284066b93fe2" }],
+  "ai": { "binding": "AI", "remote": true },
+  "images": { "binding": "IMAGES" },
+  "ratelimits": [{ "name": "RATE", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } }],
+  // Knobs: thresholds for the Workers AI checks, day caps on well-formed attempts, and the spike pause on accepted photos.
+  // Not yet calibrated (Mike, 2026-11-10): sexual refused aggressively, a face more leniently, since Mike's review
+  // rejects any person left; adjust from GET admin/rejections and the scores kept with each photo.
+  "vars": {
+    "SEXUAL_MAX": 0.05,
+    "FACE_MAX": 0.6,
+    "TOPIC_MIN": 0.5,
+    "PER_PREFIX_DAY": 30,
+    "PER_ASN_DAY": 200,
+    "GLOBAL_DAY": 150,
+    "SPIKE_HOUR": 60
+  }
+  // Secrets, set with `wrangler secret put`: ADMIN_TOKEN and IP_SALT, plus those of each hash list in use (optional):
+  // HASHCHECK_URL/HASHCHECK_KEY, ARACHNID_USER/ARACHNID_KEY, PHOTODNA_KEY (and PHOTODNA_URL), NCMEC_USER/NCMEC_KEY.
+}

@@ -301,7 +301,7 @@ export const visionRecord = (sights?: Sight[], identity?: Identity) => {
 };
 
 /** A picture letterboxed into SIZE x SIZE, as JPEG, and the ways between its pixels and the picture's. */
-async function letterbox(picture: Picture) {
+export async function letterbox(picture: Picture) {
   const { width, height } = picture;
   const scale = SIZE / Math.max(width, height);
   const [left, top] = [(SIZE - Math.round(width * scale)) / 2, (SIZE - Math.round(height * scale)) / 2];

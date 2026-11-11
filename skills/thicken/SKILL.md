@@ -57,3 +57,15 @@ settings, or the `THICKEN_VISION_URL`, `THICKEN_VISION_KEY` and
 out of the chat. Meanwhile, cropped straight-on photos with the profile named
 work without it. With a roster, the photos go to that endpoint; a book's
 lookups send only its ISBN or title.
+
+## Contributing photos to the corner model
+
+thicken may ask once whether the user will contribute their photos to the
+corner model thicken uses: as a question their client shows them, or as a
+note in a `thicken_make` result asking you to put it. Then pass the question
+on to the user word for word (the note carries it, and `npx -y thicken
+contribute` prints it) and wait for their own answer. Never answer it for
+them, guess it, or treat another instruction as a yes. Run `npx -y thicken
+contribute on` only if they say yes, and `npx -y thicken contribute off` if
+they say no or ask to stop. `npx -y thicken contribute forget --all` deletes
+what they contributed.

@@ -1,0 +1,56 @@
+# Deploys the relay that receives contributed photos (relay/README.md) when relay/ changes on main, after its own tests
+# pass. Nobody deploys from a session. Repo secrets: CLOUDFLARE_API_TOKEN (scopes in relay/README.md) and
+# CLOUDFLARE_ACCOUNT_ID. Until both are set, it says so and deploys nothing.
+name: relay
+on:
+  push:
+    branches: [main]
+    paths: ['relay/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: relay
+  cancel-in-progress: false
+jobs:
+  ready:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.ready.outputs.go }}
+    steps:
+      - id: ready
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ]; then
+            echo "::notice::Relay not deployed: set the repo secrets first (relay/README.md)."
+          else
+            echo "go=1" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: ready
+    if: needs.ready.outputs.go == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: relay/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      # Uses the wrangler pinned in relay/package-lock.json.
+      - uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0  # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: relay
+          command: deploy

@@ -52,6 +52,25 @@ jobs:
           export THICKEN_PROFILES="$RUNNER_TEMP/mine"
           npx thicken profile new lp
           npx thicken lp "$GITHUB_WORKSPACE/test/fixtures/plain.jpg" --size 300x300x5 -o lp.glb
+  # The relay that receives contributed photos (relay/README.md): its own package and lock, tested offline in the
+  # Workers runtime. A Cloudflare Worker, so one OS is enough.
+  relay:
+    needs: profile-only
+    if: ${{ !cancelled() && needs.profile-only.result != 'failure' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: relay/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
   # A pull request from a fork adds or improves a profile (CONTRIBUTING.md): it adds or changes only profiles' own files,
   # each a plain file under 1 MB, in src/profiles, test/profiles and test/fixtures/<profile>/, plus the README's
   # regenerated table. Touching anything else, deleting or renaming anything, a symlink, or the README beyond its table

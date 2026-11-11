@@ -31,6 +31,12 @@ boxes, badges, lettering. **Start with [README.md](../README.md)**, then
   `skills/` (`thicken`, and `thicken-profile` for making profiles), copied
   to `plugin/skills/` (a test keeps them
   equal). The Claude plugin lives in `plugin/`.
+- **Contributing photos:** `thicken contribute` (src/contribute.ts) sends
+  to the relay in `relay/`, a Cloudflare Worker with its own package and
+  lock like `plugin/`, never in the npm package, deployed from main by
+  `.github/workflows/relay.yml`. `relay/pull.ts` is Mike's review side.
+  `THICKEN_CONTRIBUTE_URL` defaults to the live relay; the tests set it
+  empty (test/test.env), so none reaches it.
 - Don't add anything (images, fonts, copied code) that can't be published.
   `pokemon-cards-css` is GPL-3.0: read it, don't copy it.
 

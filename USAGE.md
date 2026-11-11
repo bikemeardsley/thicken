@@ -7,6 +7,7 @@ Everything in detail; the [README](README.md) has the short version.
 - [Vision (optional)](#vision-optional)
 - [Video (optional)](#video-optional)
 - [Training mode (off by default)](#training-mode-off-by-default)
+- [Contributing photos to help train thicken](#contributing-photos-to-help-train-thicken)
 - [Review](#review)
 - [What the sidecar records](#what-the-sidecar-records)
 - [Preview](#preview)
@@ -334,7 +335,7 @@ fine-tuning a model of your own to take the roster's first seat. It is off
 unless you name a folder for them:
 
 ```
-THICKEN_DATASET=../thicken-dataset  # outside the repo: it holds your photos
+THICKEN_DATASET=../my-dataset  # outside the repo: it holds your photos
 ```
 
 - Every question put to the roster (which object it is, where each face is)
@@ -359,10 +360,78 @@ THICKEN_DATASET=../thicken-dataset  # outside the repo: it holds your photos
   `card/`), and the questions about which object it is in `identify/`, so
   a model can be tuned on one profile alone. Each folder is the layout
   Hugging Face's `imagefolder` loader reads:
-  `load_dataset("imagefolder", data_dir="../thicken-dataset/slab")`.
+  `load_dataset("imagefolder", data_dir="../my-dataset/slab")`.
 - thicken only collects. Training a model on the examples, and serving it
   where the roster can reach it, happen elsewhere.
 - With no vision roster nothing is asked, so nothing is collected.
+
+## Contributing photos to help train thicken
+
+The corner model thicken uses finds the corners of books, cards, slabs and
+boxes in photos, and it learns from photos like yours. thicken can ask you,
+once, whether to contribute yours to it. Nothing is sent unless you say yes.
+
+- **The question.** The CLI asks it once, when it runs on a terminal (stdin
+  and stdout, and not in CI):
+
+  ```
+  Contribute photos to the corner model thicken uses?
+
+  That model finds the corners of books, cards, slabs and boxes
+  in photos, and it learns from photos like yours. No account or
+  name is attached; you release your rights in them as CC0;
+  thicken's author reviews each one before any use.
+  Not sent: file names, camera details, location.
+
+  You must be 16 or older and the photos must be yours.
+  Change it any time: thicken contribute off
+  Details: https://github.com/bikemeardsley/thicken/blob/main/PRIVACY.md#contributing-photos
+
+  Contribute photos? (yes/no):
+  ```
+
+  Only `yes`, `y`, `no` or `n` count, in any case. Anything else, Enter
+  alone included, asks again.
+- **From an agent.** The first `thicken_make` asks it through the agent, if
+  the agent can put a question to you (MCP elicitation), with nothing ticked:
+  your yes or no is kept, and dismissing it asks again next session. An agent
+  that can't gets a note to ask you instead, and runs `thicken contribute on`
+  only if you say yes. Claude Code's plugin asks when you enable it
+  (`contribute`), and the Gemini CLI extension when you install it.
+- **Your answer** is kept in `~/.thicken/config.json`. `THICKEN_CONTRIBUTE`
+  set to `yes` or `no`, as the plugins set it, wins over it, except that a
+  no you saved (`thicken contribute off`) always stands; `ask`, or unset,
+  leaves it to the file. No answer means no.
+- **What goes.** Once a model and its sidecar are written: for each photo
+  made with thicken's own book, box, card or slab profile (never one of
+  [your own](#your-own-profiles)), the 1000 × 1000 frame the vision models were
+  sent, and a note with thicken's version, the date of the question you said
+  yes to, the profile, and the faces in the frame with their corners. Nothing
+  of a badge or lettering, and nothing from a run with `THICKEN_DATASET`
+  set (training mode). Never a file name, camera details, location or
+  anything else from the sidecar ([PRIVACY.md](PRIVACY.md#contributing-photos)).
+- **It never holds up a build** for longer than its timeouts: 5 s to ask
+  whether the upload point is taking photos, 15 s for each photo. It sends
+  silently, refusals included: `thicken contribute list` shows what was
+  taken, and each refused photo with the reason.
+- **Offline, busy or paused,** a photo waits in `~/.thicken/outbox/`, 50 at
+  most and for 30 days at most, and goes at the start of the next run's
+  sending. If the upload point closes for good, thicken stops and empties the
+  outbox.
+- **What happens to them.** The upload point checks each photo against any
+  lists of known child sexual abuse material it is set up with, re-encodes it (which strips any metadata
+  left), and refuses one that's sexual, shows a person's face (not one printed
+  on the object), or isn't of a book,
+  card, slab or box. thicken's author then reviews every photo in Label
+  Studio before any is used: the ones he keeps train the corner model, a
+  rejected one is deleted, and one not reviewed in 180 days is deleted.
+
+| Command | What it does |
+| --- | --- |
+| `thicken contribute` | Says whether contributing is on, and where that answer came from |
+| `thicken contribute on`, `off` | Turns it on or off |
+| `thicken contribute list` | Lists what you contributed, from `~/.thicken/contributed.jsonl`: each photo's id, time, profile and file, or why it was refused, kept on your machine only |
+| `thicken contribute forget <id>`, `--all` | Deletes those photos from the upload point and from the list, and the author's copy and review when he next collects photos; works with contributing off |
 
 ## Review
 
