@@ -14,9 +14,9 @@ import type { Picture } from './image.ts';
 import type { Sidecar } from './thicken.ts';
 import { letterbox, type Sight } from './vision.ts';
 
-// The default becomes https://contribute.wendellresearch.ai/thicken once the relay is live and its hash checks are
-// configured. Read when used, not on import: the CLI loads .env after its imports.
-const relay = () => (process.env.THICKEN_CONTRIBUTE_URL || '').replace(/\/$/, '');
+// The relay (relay/README.md); set empty, contributing is off (the tests). Read when used, not on import: the CLI loads
+// .env after its imports.
+const relay = () => (process.env.THICKEN_CONTRIBUTE_URL ?? 'https://contribute.wendellresearch.ai/thicken').replace(/\/$/, '');
 
 const PROMPT = '2026-11-08'; // the question's version, sent with each photo as `consent`
 export const QUESTION = `Contribute photos to the corner model thicken uses?
@@ -175,7 +175,7 @@ export async function contributeCommand([what, id]: string[], all?: boolean): Pr
   }
   if (what === 'forget') {
     if (!all && !/^[0-9a-f-]{36}$/i.test(id ?? '')) throw new Error('thicken contribute forget <id> (thicken contribute list gives them), or forget --all');
-    if (!relay()) throw new Error('THICKEN_CONTRIBUTE_URL isn\'t set: it names the relay to delete them from');
+    if (!relay()) throw new Error('THICKEN_CONTRIBUTE_URL is empty: it names the relay to delete them from');
     const ids = all ? lines.flatMap((line) => line.id ?? []) : [id];
     const gone = new Set<string>();
     for (const one of ids) {

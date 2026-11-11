@@ -35,7 +35,8 @@ boxes, badges, lettering. **Start with [README.md](../README.md)**, then
   to the relay in `relay/`, a Cloudflare Worker with its own package and
   lock like `plugin/`, never in the npm package, deployed from main by
   `.github/workflows/relay.yml`. `relay/pull.ts` is Mike's review side.
-  `THICKEN_CONTRIBUTE_URL`'s default stays empty until the relay is live.
+  `THICKEN_CONTRIBUTE_URL` defaults to the live relay; the tests set it
+  empty (test/test.env), so none reaches it.
 - Don't add anything (images, fonts, copied code) that can't be published.
   `pokemon-cards-css` is GPL-3.0: read it, don't copy it.
 

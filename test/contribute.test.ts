@@ -75,7 +75,7 @@ async function session(elicit?: (request: ElicitRequest) => Promise<ElicitResult
 }
 
 test('contribute: with no relay, nothing is asked or sent', async (t) => {
-  delete process.env.THICKEN_CONTRIBUTE_URL;
+  process.env.THICKEN_CONTRIBUTE_URL = '';
   process.env.THICKEN_CONTRIBUTE = 'yes';
   const r = relay();
   t.after(r.restore);
