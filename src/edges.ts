@@ -9,7 +9,7 @@
 // slabs 4 right, 12 wrong of 22 (clear plastic on granite has a faint outer edge, its card a strong one). So it
 // votes only on faces whose edges a profile trusts (not `unsnapped`): a card's sides, not a slab's.
 import sharp from 'sharp';
-import type { Picture } from './image.ts';
+import { isQuad, type Picture } from './image.ts';
 
 const SMALL = 400; // px, the long side looked at: plenty for an outline, and quick
 const ANGLES = 180; // one a degree
@@ -115,7 +115,7 @@ export async function edgesOf(picture: Picture) {
           const points = [meet(a, c), meet(c, b), meet(b, d), meet(d, a)];
           if (points.some(([x, y]) => !(x > -0.02 * w && x < 1.02 * w && y > -0.02 * h && y < 1.02 * h))) continue;
           const quad = clockwiseFromTopLeft(points);
-          if (!convex(quad)) continue;
+          if (!isQuad(quad)) continue;
           const [across, down] = [(side(quad[0], quad[1]) + side(quad[3], quad[2])) / 2, (side(quad[0], quad[3]) + side(quad[1], quad[2])) / 2];
           const look = Math.min(across / down, down / across);
           if (!want.some((shape) => Math.abs(look / shape - 1) <= SHAPE_SLACK)) continue;
@@ -138,13 +138,4 @@ function clockwiseFromTopLeft(points: number[][]): number[][] {
   const around = [...points].sort((p, q) => Math.atan2(p[1] - my, p[0] - mx) - Math.atan2(q[1] - my, q[0] - mx));
   const first = around.reduce((best, p, k) => (p[0] + p[1] < around[best][0] + around[best][1] ? k : best), 0);
   return [...around.slice(first), ...around.slice(0, first)];
-}
-
-/** Whether a quad's corners all turn the same way. */
-function convex(quad: number[][]): boolean {
-  const turns = quad.map((p, k) => {
-    const [q, r] = [quad[(k + 1) % 4], quad[(k + 2) % 4]];
-    return Math.sign((q[0] - p[0]) * (r[1] - q[1]) - (q[1] - p[1]) * (r[0] - q[0]));
-  });
-  return turns.every((t) => t === turns[0] && t !== 0);
 }

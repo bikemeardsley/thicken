@@ -8,7 +8,7 @@ export const README = fileURLToPath(new URL('../README.md', import.meta.url));
 const [START, END] = ['<!-- profiles:start (made by npm run readme) -->', '<!-- profiles:end -->'];
 
 const cell = (text: string) => text.replace(/\|/g, '\\|');
-export const profileTable = () => [
+const profileTable = () => [
   '| Profile | What it is | From | Makes | With vision, reads |',
   '| --- | --- | --- | --- | --- |',
   ...PROFILES.map((p) => `| \`${p.name}\` | ${cell(p.about)} | ${cell(p.input)} | ${cell(p.makes)} | ${Object.keys(p.reads ?? {}).join(', ') || '–'} |`),

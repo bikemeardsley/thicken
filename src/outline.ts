@@ -3,6 +3,7 @@
 // touch it are two), in pixel coordinates (y down), plus the color just
 // inside the edge for the badge's sides. Holes inside a region are left to
 // the front face's alpha mask.
+import { signedArea } from './image.ts';
 
 export type Point = [number, number];
 
@@ -178,11 +179,7 @@ function edgeColor(
   let r = 0, g = 0, b = 0, n = 0;
   for (const points of outlines) {
     // Which side is inside: the outline's winding, from its signed area (y down).
-    const area = points.reduce((sum, [x, y], i) => {
-      const [nx, ny] = points[(i + 1) % points.length];
-      return sum + x * ny - nx * y;
-    }, 0);
-    const inward = area > 0 ? 1 : -1;
+    const inward = signedArea(points) > 0 ? 1 : -1;
     points.forEach(([px, py], i) => {
       const [ax, ay] = points[(i - 1 + points.length) % points.length];
       const [bx, by] = points[(i + 1) % points.length];

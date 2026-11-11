@@ -244,7 +244,7 @@ function outline(w: number, h: number, radius: number): number[][] {
 }
 
 /** The walls along an outline, ±z deep around `at`: facing out, or into the hole it bounds. */
-function walls(part: Part, points: number[][], [cx, cy, cz]: number[], z: number, inward = false): void {
+export function walls(part: Part, points: number[][], [cx, cy, cz]: number[], z: number, inward = false): void {
   points.forEach(([ax, ay], i) => {
     const [bx, by] = points[(i + 1) % points.length];
     const length = Math.hypot(bx - ax, by - ay);

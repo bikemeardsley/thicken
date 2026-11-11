@@ -10,6 +10,7 @@ import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import exifReader from 'exif-reader';
 import sharp, { type Sharp } from 'sharp';
 import { extractImages, getDocumentProxy } from 'unpdf';
@@ -88,13 +89,10 @@ async function upright(image: Sharp, source: Source): Promise<Picture> {
  * stays MIT), found on the PATH, and needed only for video.
  */
 async function frames(file: string): Promise<Picture[]> {
-  const run = (program: string, args: string[]) => new Promise<string>((resolve, reject) => {
-    execFile(program, ['-v', 'error', ...args], (error, stdout, stderr) => {
-      if (!error) resolve(stdout);
-      else if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        reject(new Error('reading a video needs ffmpeg installed (winget install Gyan.FFmpeg, brew install ffmpeg, or apt install ffmpeg), or leave the video out'));
-      } else reject(new Error(`${program} couldn't read ${path.basename(file)}: ${stderr.trim().split('\n').pop()}`));
-    });
+  const run = (program: string, args: string[]) => promisify(execFile)(program, ['-v', 'error', ...args]).then(({ stdout }) => stdout, (error) => {
+    throw new Error(error.code === 'ENOENT'
+      ? 'reading a video needs ffmpeg installed (winget install Gyan.FFmpeg, brew install ffmpeg, or apt install ffmpeg), or leave the video out'
+      : `${program} couldn't read ${path.basename(file)}: ${error.stderr.trim().split('\n').pop()}`);
   });
   const input = `file:${path.resolve(file)}`; // file:, so no name is ever taken for a URL or another protocol
   const probe = JSON.parse(await run('ffprobe', ['-select_streams', 'v:0', '-show_entries',
@@ -235,6 +233,12 @@ export function isQuad(corners: number[][]): boolean {
   return turns.every((t) => t > 0) || turns.every((t) => t < 0);
 }
 
+/** A polygon's signed area, by the shoelace formula: positive when its points run clockwise on screen (y down). */
+export const signedArea = (points: number[][]) => points.reduce((sum, [x, y], i) => {
+  const [nx, ny] = points[(i + 1) % points.length];
+  return sum + x * ny - nx * y;
+}, 0) / 2;
+
 /** Whether a point lies within a face's four corners. */
 export function inside([x, y]: number[], corners: number[][]): boolean {
   const sides = corners.map((p, k) => {
@@ -299,16 +303,15 @@ export function straighten(picture: Picture, corners: number[][]): Picture {
   const side = (a: number[], b: number[]) => Math.hypot(b[0] - a[0], b[1] - a[1]);
   const width = Math.max(1, Math.round((side(tl, tr) + side(bl, br)) / 2));
   const height = Math.max(1, Math.round((side(tl, bl) + side(tr, br)) / 2));
-  const [a, b, c, d, e, f, g, h] = homography([[0, 0], [width, 0], [width, height], [0, height]], corners);
+  const toPicture = mapping([[0, 0], [width, 0], [width, height], [0, height]], corners);
   const { data: from, width: w, height: hh } = picture;
   const data = Buffer.alloc(width * height * 4);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       // Pixel centers both ways: (x + 0.5, y + 0.5) out, minus 0.5 back to the picture's pixel grid.
-      const [px, py] = [x + 0.5, y + 0.5];
-      const z = g * px + h * py + 1;
-      const u = Math.min(w - 1, Math.max(0, (a * px + b * py + c) / z - 0.5));
-      const v = Math.min(hh - 1, Math.max(0, (d * px + e * py + f) / z - 0.5));
+      const [px, py] = toPicture([x + 0.5, y + 0.5]);
+      const u = Math.min(w - 1, Math.max(0, px - 0.5));
+      const v = Math.min(hh - 1, Math.max(0, py - 0.5));
       const [x0, y0] = [Math.floor(u), Math.floor(v)];
       const [x1, y1] = [Math.min(w - 1, x0 + 1), Math.min(hh - 1, y0 + 1)];
       const [fx, fy] = [u - x0, v - y0];
