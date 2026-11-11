@@ -50,13 +50,7 @@ async function made(args: z.infer<z.ZodObject<typeof makeInput>>, ask: () => Pro
   let preview: string | undefined;
   if (args.preview) {
     try {
-      const { startPreview } = await import('./preview.ts');
-      const previewer = await startPreview();
-      try {
-        preview = await previewer.render(out);
-      } finally {
-        await previewer.close();
-      }
+      preview = await (await import('./preview.ts')).previewOnce(out);
     } catch (error) {
       sidecar.warnings.push(`no preview: ${(error as Error).message}`);
     }

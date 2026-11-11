@@ -15,9 +15,9 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { hold } from './contribute.ts';
-import { codes, load, VIDEO, type Picture } from './image.ts';
+import { codes, load, signedArea, VIDEO, type Picture } from './image.ts';
 import { keepRun, trainingOn } from './training.ts';
-import { findBench, identify, lookAll, readOf, visionOn, visionRecord, type Identity, type Sight } from './vision.ts';
+import { findBench, identify, lookAll, readOf, visionOn, visionRecord, votesOn, type Identity, type Sight } from './vision.ts';
 
 /** A kind of object Thicken knows. */
 export interface Profile {
@@ -93,8 +93,7 @@ for (const { name } of mine) {
   if (builtIn.some((p) => p.name === name)) process.stderr.write(`thicken: your profile "${name}" (${MY_PROFILES}) is used in place of the built-in one\n`);
 }
 export const PROFILES: Profile[] = [...builtIn.filter((p) => !mine.some((m) => m.name === p.name)), ...mine]
-  .sort((a, b) => a.name.localeCompare(b.name))
-  .sort((a, b) => Number(Boolean(a.generic)) - Number(Boolean(b.generic)));
+  .sort((a, b) => Number(Boolean(a.generic)) - Number(Boolean(b.generic)) || a.name.localeCompare(b.name));
 
 /**
  * Lets your own profiles, wherever they are, import what the built-in ones do: thicken's parts ('thicken/kit'), a
@@ -234,9 +233,11 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
     return `${file}${page ? ` page ${page}` : ''}${time === undefined ? '' : ` at ${time} s`}`;
   };
   const own = built.sidecar;
+  const roles = (own.pictures ?? []) as { file: string; time?: number; role: string }[];
+  const unused = roles.filter(({ role }) => role === 'unused').length;
   // A video's frames are a handful of extra views: what the models doubted in one is worth a look only if it was
   // used for a face (no photo showed it), not when it's an alternate or unused.
-  const usedFrames = new Set(((own.pictures ?? []) as { file: string; time?: number; role: string }[])
+  const usedFrames = new Set(roles
     .filter(({ time, role }) => time !== undefined && !role.startsWith('alternate') && role !== 'unused').map(({ file, time }) => `${file} ${time}`));
   const worth = (i: number) => pictures[i].source.time === undefined || usedFrames.has(`${pictures[i].source.file} ${pictures[i].source.time}`);
   const unsure = [
@@ -260,6 +261,7 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
       profile: profile.name,
       sources: inputs.map((input) => path.basename(input)),
       review: [...stillToShoot(own.faces), ...(own.review ?? []), ...unsure],
+      warnings: [...(own.warnings ?? []), ...(unused ? [`${unused} picture(s) not used: none looked like another shot of a face`] : [])],
       // How each identifying fact was found, for anyone deciding how far to trust it.
       identifiedBy: { profile: named ? 'given' : identity?.profile ? 'vision' : 'recognized', ...(own.identifiedBy as object | undefined) },
       codes: recorded,
@@ -281,7 +283,7 @@ export async function thicken(inputs: string[], options: Options = {}): Promise<
  * (failing that, the name most of them gave their biggest face). A video's frames are left to the models.
  */
 function byHand(pictures: Picture[], sights: Sight[] | undefined, { corners = {}, cropped }: Options): Sight[] {
-  const area = (q: number[][]) => Math.abs(q.reduce((sum, p, k) => sum + p[0] * q[(k + 1) % 4][1] - q[(k + 1) % 4][0] * p[1], 0)) / 2;
+  const area = (q: number[][]) => Math.abs(signedArea(q));
   return pictures.map((picture, i) => {
     const sight = sights?.[i] ?? { faces: [], answers: [], disputed: [] };
     const { width: w, height: h, source } = picture;
@@ -300,10 +302,8 @@ function byHand(pictures: Picture[], sights: Sight[] | undefined, { corners = {}
     if (biggest) return { ...sight, faces: sight.faces.map((f) => (f === biggest ? { ...f, corners: whole, asSeen: whole } : f)), disputed: sight.disputed.filter((f) => f !== biggest.face) };
     // Nothing settled where: what the models called the biggest face they each saw, if most called it one thing.
     // Each model once: the name it gave its biggest face, if it gave the same each time it was asked.
-    const names = [...new Set(sight.answers.map(({ model }) => model))].flatMap((model) => {
-      const given = [...new Set(sight.answers.filter((a) => a.model === model && a.faces?.length).map(({ faces }) => faces!.reduce((a, b) => (area(b.corners) > area(a.corners) ? b : a)).face))];
-      return given.length === 1 ? given : [];
-    });
+    const names = votesOn(sight.answers, ({ faces }) => (faces?.length ? faces.reduce((a, b) => (area(b.corners) > area(a.corners) ? b : a)).face : undefined))
+      .map(({ value }) => value);
     const count = (face: string) => names.filter((n) => n === face).length;
     const [top, next] = [...new Set(names)].sort((a, b) => count(b) - count(a));
     if (!top || (next && count(next) === count(top))) return sight;

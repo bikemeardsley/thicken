@@ -149,7 +149,7 @@ test('book: pictures are placed by what they show, whatever their names, order o
   // No vision roster set: nothing asked, nothing recorded.
   assert.equal(sidecar.vision, undefined);
   assert.ok(fetch.mock.calls.every((call) => !String(call.arguments[0]).includes('/chat/completions')));
-  assert.deepEqual([sidecar.review, sidecar.warnings], [[NO_VISION], ['1 picture(s) not used: none looked like another shot of a face', 'www.googleapis.com answered 429']]);
+  assert.deepEqual([sidecar.review, sidecar.warnings], [[NO_VISION], ['www.googleapis.com answered 429', '1 picture(s) not used: none looked like another shot of a face']]);
   // Stood up, the spine and page edge measure the thickness: 60/800 and 50/800 of the 203.2 mm height.
   assert.deepEqual([sidecar.depthMm, (sidecar.measuredBy as Record<string, string>).depth], [14, 'photos']);
 

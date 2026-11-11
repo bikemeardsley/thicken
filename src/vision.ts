@@ -20,7 +20,8 @@
 // is left out for a person, never taken from whichever model was listed first (settle, below).
 import sharp from 'sharp';
 import { edgesOf } from './edges.ts';
-import { snap, type Picture } from './image.ts';
+import { signedArea, snap, type Picture } from './image.ts';
+import type { Profile } from './thicken.ts';
 import { held, trainingOn } from './training.ts';
 
 const SIZE = 1000; // photos go out letterboxed to 1000 x 1000, so pixels and a 0-1000 scale are the same numbers
@@ -31,16 +32,8 @@ const BENCH_ASKS = 2; // a collection asked again while a face is unsettled: its
 const TIMEOUT_MS = 180_000;
 const MAX_FACES = 12; // twice a box's six: more is noise, and settling compares every pair
 
-/** What the models are told about a kind of object: a profile (src/profiles). */
-/**
- * A profile: its faces, a note on how it stands, what to read off it as printed (a description, or one in a list for
- * a list), and short questions to answer as well, each answer one word.
- */
-export interface Kind {
-  name: string; about?: string; faces: Record<string, string>; note?: string;
-  reads?: Record<string, string | [string]>; asks?: Record<string, string>; unsnapped?: string[];
-  shapes?: Record<string, number[]>; shows?: Record<string, string[]>;
-}
+/** What the models are told about a kind of object: a profile's (src/profiles) faces, what to read and ask, and what settles a face. */
+export type Kind = Pick<Profile, 'name' | 'about' | 'faces' | 'note' | 'reads' | 'asks' | 'unsnapped' | 'shapes' | 'shows'>;
 type Read = Record<string, string | string[]>;
 /** One model's answer, corners in the picture's own pixels. */
 export interface Answer {
@@ -76,7 +69,7 @@ export async function findBench(): Promise<void> {
   bench = found = await looked.get(url);
 }
 async function lookFor(url: string): Promise<typeof bench> {
-  if (!url || url === 'off') return undefined;
+  if (!url) return undefined;
   try {
     const { data } = await (await fetch(`${url}/v1/models`, { signal: AbortSignal.timeout(2000) })).json() as { data?: { id: string; tags?: string[] }[] };
     const collections = (data ?? []).filter(({ id }) => id.startsWith('bench/') && !id.includes(':'));
@@ -153,12 +146,12 @@ Answer with JSON only, no prose:
  * no one giving one of `values`, is undefined, never the first given.
  */
 export function pooled(sights: Sight[] | undefined, key: string, values: string[]): string | undefined {
-  return decide((sights ?? []).flatMap(({ answers }) => votesOn(answers, key).filter(({ value }) => values.includes(value))));
+  return decide((sights ?? []).flatMap(({ answers }) => votesOn(answers, (a) => a.asked?.[key]).filter(({ value }) => values.includes(value))));
 }
-/** Each model's answer to a short question about one picture, once: none from a model that answered it two ways. */
-export function votesOn(answers: Answer[], key: string): { value: string; model: string }[] {
+/** Each model's one distinct answer about one picture, as `pick` takes it from its answers: none from a model that answered two ways. */
+export function votesOn<T>(answers: Answer[], pick: (answer: Answer) => T | undefined): { value: T; model: string }[] {
   return [...new Set(answers.map(({ model }) => model))].flatMap((model) => {
-    const given = [...new Set(answers.filter((a) => a.model === model && a.asked?.[key]).map((a) => a.asked![key]))];
+    const given = [...new Set(answers.flatMap((a) => (a.model === model ? pick(a) ?? [] : [])))];
     return given.length === 1 ? [{ value: given[0], model }] : [];
   });
 }
@@ -171,7 +164,7 @@ export async function lookAll(pictures: Picture[], kind: Kind): Promise<Sight[]>
 }
 
 /** Where a kind of object's faces are in a picture, from the roster's answers. */
-export async function look(picture: Picture, kind: Kind): Promise<Sight> {
+async function look(picture: Picture, kind: Kind): Promise<Sight> {
   const { jpeg, toPicture, toSent, sent } = await letterbox(picture);
   const prompt = facesPrompt(kind);
   const keys = Object.keys(kind.asks ?? {});
@@ -193,7 +186,7 @@ export async function look(picture: Picture, kind: Kind): Promise<Sight> {
   const back =<T extends { corners: number[][] }>(faces: T[]) => faces.map((f) => ({ ...f, corners: f.corners.map(toPicture) }));
   // Each question's answer: the one most models gave, each once (decide: a tie to the better record, else none).
   const asked = Object.fromEntries(keys.flatMap((key) => {
-    const answer = decide(votesOn(answers, key));
+    const answer = decide(votesOn(answers, (a) => a.asked?.[key]));
     return answer === undefined ? [] : [[key, answer]];
   }));
   // Snapped onto the real edges, but for faces among lines nearer than the models' slip (a slab's label: its border,
@@ -263,10 +256,7 @@ export async function identify(picture: Picture, kinds: Kind[]): Promise<Identit
   };
   // The object most models name, each once (none from a model that named two): none with a tie, so a tie asks for more.
   const most = (asked: Answer[]) => {
-    const votes = [...new Set(asked.map(({ model }) => model))].flatMap((model) => {
-      const named = [...new Set(asked.filter((a) => a.model === model && a.object).map((a) => a.object!))];
-      return named.length === 1 ? [{ value: named[0], model }] : [];
-    });
+    const votes = votesOn(asked, (a) => a.object);
     const object = decide(votes);
     return object === undefined ? undefined : { object, count: votes.filter(({ value }) => value === object).length };
   };
@@ -373,7 +363,7 @@ function parseFaces(json: any, names: string[], keys: string[] = [], reads: stri
 }
 
 /** What settles a face beside the answers (look, above), all in the image as sent. */
-export interface Evidence {
+interface Evidence {
   bounds?: number[]; // the photo within the image: left, top, right, bottom
   shapes?: Record<string, number[]>; // the shapes each face can have, width over height, upright
   shows?: Record<string, string[]>; // what a face always shows: an answer naming it reads one of these off it
@@ -383,8 +373,6 @@ export interface Evidence {
 }
 const CLEARLY = 0.1; // how much better one place must fit its shape and edges to win a tie on the answers
 
-/** Whether four corners run clockwise on screen (y down): twice their signed area, by the shoelace formula, is positive. */
-export const clockwise = (corners: number[][]) => corners.reduce((sum, p, k) => sum + p[0] * corners[(k + 1) % 4][1] - corners[(k + 1) % 4][0] * p[1], 0) > 0;
 const side = (a: number[], b: number[]) => Math.hypot(b[0] - a[0], b[1] - a[1]);
 /** A face's shape, width over height, in its own reading order. */
 const shapeOf = ([tl, tr, br, bl]: number[][]) => (side(tl, tr) + side(bl, br)) / (side(tl, bl) + side(tr, br));
@@ -430,7 +418,7 @@ export function settle(answers: Answer[], evidence: Evidence = {}): { faces: See
     // A face as the camera saw it winds clockwise in its own reading order (y down). One wound the other way is its
     // mirror image, which no photo shows (two models agreeing on one put a spine's lettering backward): it says
     // where the face is, but not which way up.
-    const each = fits.filter(({ corners }) => clockwise(corners));
+    const each = fits.filter(({ corners }) => signedArea(corners) > 0);
     const edges = outline && outlined.includes(name) ? outline : undefined;
     const lone = models(usable).length === 1; // only one model answered at all
     if (models(all).length === 1 && !lone) { // named by one model while others answered without it

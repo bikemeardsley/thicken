@@ -10,6 +10,7 @@
 // in the color it's printed. ponytail: shapes are sized to the face, not in mm; the symbols are simple stand-ins (a
 // ball, a ring, a star, a chevron, a block) for each maker's own art.
 import sharp from 'sharp';
+import type { Foil } from './glb.ts';
 
 /** A foil's look: its pattern, which kind of it, its pieces' size (a fraction of the face's width), angle, and base. */
 export interface Look { pattern: string; kind?: string; size?: number; angle?: number; density?: number; base?: 'rainbow' | 'mirror' }
@@ -87,7 +88,7 @@ export const PLAIN: Look = { pattern: 'plain' };
 export const TOPPS_RAYWAVE: Look = { pattern: 'radial', kind: 'rays', density: 64 };
 
 /** A number in [0, 1) for a piece and what's asked of it, the same every run. */
-export function hash(x: number, y: number, k: number): number {
+function hash(x: number, y: number, k: number): number {
   let n = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(k, 2246822519);
   n = Math.imul(n ^ (n >>> 13), 1274126177);
   return ((n ^ (n >>> 16)) >>> 0) / 2 ** 32;
@@ -136,7 +137,7 @@ function nearest(x: number, y: number): { i: number; j: number; d: number; secon
 
 /** What lies at (u, v) on a face `aspect` tall per wide (u across 0–1, v down 0–aspect): which piece, whether it's part of the pattern, and a set thickness or flatness for the patterns that aren't pieces. */
 interface Spot { a: number; b: number; on: boolean; t?: number; flat?: boolean }
-export function spot(look: Look, u: number, v: number, aspect: number): Spot {
+function spot(look: Look, u: number, v: number, aspect: number): Spot {
   const { kind, angle = 0 } = look;
   const size = look.size ?? PATTERNS[look.pattern]?.look.size ?? 0.05;
   const [x, y] = [u / size, v / size];
@@ -247,7 +248,7 @@ const RIDGE = 1.5;
  * pieces on a mirror base. With `heights` (raw gray, w × h), the face is embossed too: its bright-dark edges stand
  * as ridges over the whole face, foil or print, on top of the pieces' tilts.
  */
-export async function patterned(look: Look, w: number, h: number, map: Buffer, heights?: Buffer): Promise<{ map: Uint8Array; thickness: Uint8Array; facets: Uint8Array; film: boolean }> {
+export async function patterned(look: Look, w: number, h: number, map: Buffer, heights?: Buffer): Promise<Foil> {
   const [thickness, facets] = [Buffer.alloc(w * h), Buffer.alloc(w * h * 3)];
   let shines = false;
   const mirror = (look.base ?? PATTERNS[look.pattern]?.look.base) === 'mirror';

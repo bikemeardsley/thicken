@@ -7,9 +7,10 @@
 // nothing is fetched from the network.
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { chromium, type Browser } from 'playwright-core';
+import { chromium, type Browser, type Page } from 'playwright-core';
 import sharp from 'sharp';
 import { stillToShoot, type Sidecar } from './thicken.ts';
+import { sidecarOf } from './write.ts';
 
 const require = createRequire(import.meta.url);
 const VIEWER = require.resolve('@google/model-viewer/dist/model-viewer.min.js');
@@ -31,18 +32,33 @@ const PAGE = `<!doctype html><meta charset="utf-8">
 
 export const previewPath = (glb: string) => glb.replace(/(\.glb)?$/i, '.preview.png');
 
+/** Opens `html` in the page, model-viewer and the GLB `glb()` names served beside it from disk. */
+export async function serve(page: Page, html: string, glb: () => string): Promise<void> {
+  await page.route('http://thicken.local/**', (route) => {
+    const { pathname } = new URL(route.request().url());
+    if (pathname === '/model-viewer.js') return route.fulfill({ path: VIEWER, contentType: 'text/javascript' });
+    if (pathname === '/model.glb') return route.fulfill({ body: readFileSync(glb()), contentType: 'model/gltf-binary' });
+    return route.fulfill({ body: html, contentType: 'text/html' });
+  });
+  await page.goto('http://thicken.local/');
+}
+
+/** One model's preview, in a browser of its own: the path it was written to. */
+export async function previewOnce(glb: string): Promise<string> {
+  const preview = await startPreview();
+  try {
+    return await preview.render(glb);
+  } finally {
+    await preview.close();
+  }
+}
+
 /** One browser for a whole batch: render(glb) writes its preview and returns the path; close() when done. */
 export async function startPreview(): Promise<{ render(glb: string): Promise<string>; close(): Promise<void> }> {
   const browser = await launch();
   const page = await browser.newPage({ viewport: { width: 2 * VIEW_W, height: VIEW_H + CAPTION_H } });
   let model = '';
-  await page.route('http://thicken.local/**', (route) => {
-    const { pathname } = new URL(route.request().url());
-    if (pathname === '/model-viewer.js') return route.fulfill({ path: VIEWER, contentType: 'text/javascript' });
-    if (pathname === '/model.glb') return route.fulfill({ body: readFileSync(model), contentType: 'model/gltf-binary' });
-    return route.fulfill({ body: PAGE, contentType: 'text/html' });
-  });
-  await page.goto('http://thicken.local/');
+  await serve(page, PAGE, () => model);
   await page.waitForFunction(() => customElements.get('model-viewer'));
   return {
     async render(glb) {
@@ -98,7 +114,7 @@ async function drawn(screenshot: Buffer): Promise<boolean> {
 
 /** The real size, and any face that isn't the user's photo, from the sidecar beside the model. */
 function caption(glb: string): string {
-  const json = glb.replace(/(\.glb)?$/i, '.json');
+  const json = sidecarOf(glb);
   if (!existsSync(json)) return '';
   const sidecar = JSON.parse(readFileSync(json, 'utf8')) as Sidecar;
   const review = sidecar.review ?? stillToShoot(sidecar.faces); // older sidecars have faces but no review list

@@ -6,7 +6,8 @@
 // Every corner and box is in the frame thicken sends (`letterbox-1000`): the photo letterboxed into 1000 x 1000
 // (vision.ts letterbox). Corner 1 is the face's own top left, then clockwise.
 import { setTimeout as sleep } from 'node:timers/promises';
-import { clockwise, type Kind } from '../src/vision.ts';
+import { signedArea } from '../src/image.ts';
+import type { Kind } from '../src/vision.ts';
 
 const SIZE = 1000;
 const AREA_LOST = 0.1; // label_studio.py's: how much of a polygon's area its four corners may leave out
@@ -108,7 +109,7 @@ export function decision(a: Annotation, proposal: Face[]) {
   const same = (list: Face[]) => JSON.stringify(list.map(({ face, corners }) => JSON.stringify({ face, corners })).sort());
   if (same(faces) === same(proposal)) return line('keep', faces);
   // Corner order can't be checked beyond this: corner 1 is the face's own top left, which only a reader knows.
-  if (faces.some((f) => !f.face || f.corners.length !== 4 || !clockwise(f.corners))) return { error: 'a face without a name, four corners or a clockwise order' };
+  if (faces.some((f) => !f.face || f.corners.length !== 4 || signedArea(f.corners) <= 0)) return { error: 'a face without a name, four corners or a clockwise order' };
   return line('fix', faces);
 }
 
