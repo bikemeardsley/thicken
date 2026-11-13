@@ -11,6 +11,11 @@
 // time), where that photo sits in the image sent, what the build made of it, and the photo itself as loaded
 // (upright, metadata stripped) in .originals/, which the loader skips. Lines are written when the run ends, so
 // they know what came of it, a failed run included.
+//
+// Whose the photos are is the caller's to say, and each line keeps it as `origin`: THICKEN_APP, the app that ran
+// thicken, and THICKEN_PHOTOS, `own` or `third-party` (a seller's listing photos, a grader's scans). Decided
+// 2026-11-12: third-party photos may be kept as examples, marked, and never go into anything published or to the
+// relay (contribute.ts). A line with no `origin.photos` is from before then, or from a caller that didn't say.
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
@@ -19,6 +24,12 @@ import sharp from 'sharp';
 import type { Picture } from './image.ts';
 
 export const trainingOn = () => Boolean(process.env.THICKEN_DATASET);
+
+/** Whose a run's photos are, as its caller says (THICKEN_PHOTOS): anything but `own` is third-party; unset, nobody said. */
+export function photos(): 'own' | 'third-party' | undefined {
+  const said = process.env.THICKEN_PHOTOS?.trim().toLowerCase();
+  return said ? (said === 'own' ? 'own' : 'third-party') : undefined;
+}
 
 /** A question's example, held by the answer it settled (a Sight or an Identity) until the run knows what came of it. */
 interface Held { jpeg: Buffer; picture: Picture; sent: { left: number; top: number; scale: number }; example: object }
@@ -41,6 +52,8 @@ async function once(dir: string, jpeg: Buffer): Promise<string> {
 export function keepRun(answered: (object | undefined)[], run: { thicken: string; object: object; roles?: { file: string; page?: number; time?: number; role: string }[]; failed?: string }): Promise<void> {
   const id = randomUUID();
   const at = new Date().toISOString();
+  const app = process.env.THICKEN_APP?.trim() || undefined;
+  const origin = (app || photos()) && { origin: { app, photos: photos() } }; // read as the run ends, not as a line is written
   // One run at a time, so lines from runs side by side never interleave.
   const done = writing.then(async () => {
     for (const answer of answered) {
@@ -53,7 +66,7 @@ export function keepRun(answered: (object | undefined)[], run: { thicken: string
       const original = `.originals/${await once(path.join(dir, '.originals'),
         await sharp(picture.data, { raw: { width: picture.width, height: picture.height, channels: 4 } }).jpeg({ quality: 92 }).toBuffer())}`;
       const used = run.roles?.filter((r) => r.file === file && r.page === page && r.time === time).map(({ role }) => role);
-      const line = { file_name, ...example, run: id, at, thicken: run.thicken, object: run.object, source: picture.source, sent, original, ...(used && { used }), ...(run.failed && { failed: run.failed }) };
+      const line = { file_name, ...example, run: id, at, thicken: run.thicken, object: run.object, ...origin, source: picture.source, sent, original, ...(used && { used }), ...(run.failed && { failed: run.failed }) };
       await appendFile(path.join(dir, 'metadata.jsonl'), `${JSON.stringify(line)}\n`);
     }
   });

@@ -356,6 +356,22 @@ THICKEN_DATASET=../my-dataset  # outside the repo: it holds your photos
   (`failed`), and the photo itself as loaded, upright and stripped of its
   metadata, GPS included (`original`, in `.originals/`, which the loader
   skips). Lines from before 2026-10-25 have none of these.
+- **Whose the photos are** is yours to say, or the app's that runs thicken
+  for you, and each line keeps it as `origin`:
+
+  ```
+  THICKEN_PHOTOS=own       # or third-party: anything but "own" counts as third-party
+  THICKEN_APP=my-catalog   # the app that ran thicken, if one did
+  ```
+
+  Training mode is meant for photos you took. Photos that aren't yours (a
+  seller's listing photos, a grader's scans of a slab) may be kept too, as
+  long as the run says so: set `THICKEN_PHOTOS=third-party` for it, and keep
+  those lines out of anything you publish, the photos and a model's training
+  set alike. A third-party run's photos are never
+  [contributed](#contributing-photos-to-help-train-thicken) either, whatever
+  you answered. A line with no `origin.photos` is from before 2026-11-12, or
+  from a run that didn't say: check whose it is before publishing it.
 - Each profile's faces go in a folder of their own (`slab/`, `book/`,
   `card/`), and the questions about which object it is in `identify/`, so
   a model can be tuned on one profile alone. Each folder is the layout
@@ -410,6 +426,12 @@ once, whether to contribute yours to it. Nothing is sent unless you say yes.
   of a badge or lettering, and nothing from a run with `THICKEN_DATASET`
   set (training mode). Never a file name, camera details, location or
   anything else from the sidecar ([PRIVACY.md](PRIVACY.md#contributing-photos)).
+- **Only photos that are yours.** Your yes releases your own rights, so it
+  can't cover a photo someone else took. An app that hands thicken such
+  photos (a marketplace listing's, a grader's scans) sets
+  `THICKEN_PHOTOS=third-party` for those runs, and thicken then sends
+  nothing from them, whatever you answered. If you run thicken on such
+  photos yourself, set it too.
 - **It never holds up a build** for longer than its timeouts: 5 s to ask
   whether the upload point is taking photos, 15 s for each photo. It sends
   silently, refusals included: `thicken contribute list` shows what was

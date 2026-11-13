@@ -10,6 +10,8 @@ import sharp from 'sharp';
 export const fixture = (name: string) => fileURLToPath(new URL(`fixtures/${name}`, import.meta.url));
 
 delete process.env.THICKEN_DATASET; // test photos never go into a real training set
+delete process.env.THICKEN_APP; // nor does a test read whose photos the shell that ran it said they are
+delete process.env.THICKEN_PHOTOS;
 // Tests run offline: a test that needs the web stands in for it with catalog(), and any other fetch fails, so no test
 // passes or fails by what a real service answered today.
 globalThis.fetch = async (url) => {
