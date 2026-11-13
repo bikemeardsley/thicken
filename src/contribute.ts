@@ -3,8 +3,9 @@
 // letterbox: 1000 x 1000, pixels only, no metadata), with the faces found in it in that frame's pixels, and nothing
 // else of the photo, the run or the machine (PRIVACY.md#contributing-photos). The question is put once: by the CLI at
 // a terminal, by an MCP client that can ask (elicitation), or at install as THICKEN_CONTRIBUTE; the answer is kept in
-// ~/.thicken/config.json. Only for thicken's own book, box, card and slab profiles, never a user's own, and never for
-// Mike's own runs (THICKEN_DATASET: training mode).
+// ~/.thicken/config.json. Only for thicken's own book, box, card and slab profiles, never a user's own, never for
+// Mike's own runs (THICKEN_DATASET: training mode), and never photos the caller says aren't the user's
+// (THICKEN_PHOTOS=third-party, as an app sets it for a seller's or a grader's): the yes is for photos that are theirs.
 import { createHash } from 'node:crypto';
 import { appendFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -12,6 +13,7 @@ import path from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Picture } from './image.ts';
 import type { Sidecar } from './thicken.ts';
+import { photos } from './training.ts';
 import { letterbox, type Sight } from './vision.ts';
 
 // The relay (relay/README.md); set empty, contributing is off (the tests). Read when used, not on import: the CLI loads
@@ -67,7 +69,7 @@ const CORNERED = ['book', 'box', 'card', 'slab']; // the corner model's objects
 
 /** Held for a run of one of thicken's own profiles (`builtIn`: from src/profiles, never one of the user's) the model learns from. */
 export function hold(sidecar: object, profile: string, builtIn: boolean, inputs: string[], pictures: Picture[], sights?: Sight[]): void {
-  if (relay() && builtIn && CORNERED.includes(profile) && !process.env.THICKEN_DATASET) {
+  if (relay() && builtIn && CORNERED.includes(profile) && !process.env.THICKEN_DATASET && photos() !== 'third-party') {
     held.set(sidecar, { profile, inputs, pictures, sights });
   }
 }

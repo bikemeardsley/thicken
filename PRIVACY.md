@@ -34,7 +34,8 @@ The photos, PDFs and videos you give it are read locally. It writes each
 model and its JSON sidecar where you tell it. Sidecars record the lookups made,
 never an API key, GPS location or serial number. Training mode, only when you
 set `THICKEN_DATASET`, saves the images it sent and their metadata into that
-folder. Your answer about
+folder, each line marked with whose the photos are when the run says
+(`THICKEN_PHOTOS`: `own` or `third-party`). Your answer about
 contributing photos is kept in `~/.thicken/config.json`, and the photos you
 contributed are listed in `~/.thicken/contributed.jsonl` (each one's id, time,
 profile and file name, or why it was refused), which is never sent.
@@ -62,8 +63,10 @@ does. This section is the notice the EU's GDPR asks for (Art. 13).
   shows the vision models (the photo scaled to fit, with gray bars, without
   its EXIF data), and a note: thicken's version, the date of the question you
   said yes to, the profile, and the faces found in the frame with their
-  corners and a confidence score. Never a badge or lettering, and nothing
-  from a run with training mode on.
+  corners and a confidence score. Never a badge or lettering, nothing
+  from a run with training mode on, and nothing from a run whose photos an
+  app, or you, marked as someone else's (`THICKEN_PHOTOS=third-party`): your
+  yes covers only photos that are yours.
 - **What isn't:** file names or paths, camera or lens, when or where the
   photo was taken, your computer's name, or anything else from the sidecar.
   No account, name or install id is attached. A photo can still show

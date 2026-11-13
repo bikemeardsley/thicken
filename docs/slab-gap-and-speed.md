@@ -1,6 +1,7 @@
 # Slab profile: the gap between label and card, and where a run's time goes
 
-A note from VaultFlip, 2026-11-12. Not fixed, not scheduled: one PSA slab, made
+A note from VaultFlip, 2026-11-12, and at its end what was done about it the
+same day. One PSA slab, made
 with thicken 0.4.0 from a marketplace seller's two photos (front and back,
 straight-on, cropped tight to the holder). Mike saw the model and said the gap
 between the label and the card is larger than the photo shows. He is right,
@@ -122,3 +123,60 @@ What would cut it, none tried:
 mistral-small-4 answers in 4 s and was wrong on every box (the outline from
 x -288 to 1135 in an 847 px photo, team "Guardians", a holo foil): fast is not
 the same as useful, so whatever settles early should still need agreement.
+
+## What was done, 2026-11-12
+
+Checked by rebuilding this slab from its own sidecar's answers (no models
+asked again) and drawing it with `scripts/flat.ts`, which is the check section
+2 describes: `node scripts/flat.ts <model.json> <front photo> <out.png>`.
+
+Measured by hand in the front photo: the card is 678 x 952 px, so 10.68 and
+10.71 px/mm, the same both ways; the label's red border runs from y 39 to 247,
+with a pink band 10 px deep under it; the photo is cropped at the holder's
+edge (its corners show the white behind the holder's rounded ones).
+
+- **One photo, one scale.** The slab was put together from three sources that
+  each ran 1 to 2% off: a holder size from a table, corners averaged over the
+  models, and a card snapped to its size. Now the front photo gives all three
+  at the card's scale, the card's size being the one thing known exactly.
+- **The holder's edge is found in the photo** (`edgeOf`,
+  `src/profiles/slab.ts`) when the models' outline is within 2% of the photo's
+  own edges, a photo cropped to the holder: the photo's edge, or where a plain
+  backdrop gives way to the holder (this scan has 5 px of white down its right
+  and 2 along its bottom). The models' outline ran 8 to 14 px inside it. The
+  sidecar records the edge taken as `outline`.
+- **The holder is measured against the card.** 78.9 x 133.2 mm from the front
+  photo (the back, by its own card, gives 78.7 x 133.4), where the table says
+  80.5 x 136. `measuredBy` says `card`. Only on an agreed outline seen square
+  on, and within 4% of the table's size; else the table's stands, a warning
+  says so, and the card still sets the scale of what is inside
+  (`inside.card.ruler`). The table itself is unchanged: one slab.
+- **The front photo places the card and label**; the back's only what the
+  front lacks. Not their mean. Against a photo's own edge they stay where they
+  were found, not centered: this label sits 0.75 mm left of the middle.
+- The result: label 68.7 mm wide where it was 70.9 (68.4 in the photo); gap
+  10.1 mm where it was 12.2 (10.6 to 11.5 in the photo, by where the label's
+  edge is taken); the holder's margins round them as the photo has them.
+- What is left, under a millimeter each: the models' card ran 12 px short at
+  its bottom edge, so it sits 0.4 mm high and its picture loses that strip;
+  the label's bottom edge is taken at the pink band's, not the red border's.
+  Fitting a card of known size to its edges was tried for the first: right on
+  the front photo, wrong on the back (a white card back), so not kept.
+- Known limits: a strip of table as dim as the plastic, under 2% wide, is
+  taken for the holder's rim; and a phone at 25 cm sees the holder about 1%
+  big against the card 3 mm behind its face, which a scan doesn't.
+- **The second ask.** A question is asked about again only when the answers
+  leave it undecided (a tie), not whenever two seats differ; and one seat's
+  word for a side, where three or more agreed on another side in that place,
+  is no dispute (the "front in 2.jpg" line). This run would still have asked
+  twice about both photos: in each, seats put the card's frame (and on the
+  front the logo) in different places, a real dispute the second ask settled.
+  So this run's time would not change; a run whose only differences are of the
+  first two kinds is asked once.
+- **The band between the wells: tried, dropped.** A crossbar at the rim's
+  density is all but invisible on white, as the rest of the clear holder is.
+  The same photo wrapped on a box of the holder's size (`thicken box`) reads
+  as the slab, head-on. The holder's look taken from the photo is the option
+  that would close this, and it is a design decision, not made here.
+- Not done: settling as seats answer. Every seat's answer and verdict is
+  worth more than the minutes.

@@ -142,15 +142,21 @@ test('contribute: yes sends each photo as the 1000 x 1000 frame the models saw, 
   assert.deepEqual([more.length, line.profile, line.file, await outbox()], [0, 'box', photo, 0]);
 });
 
-test('contribute: never a profile the corner model doesn\'t learn (a badge), nor in training mode (THICKEN_DATASET set)', async (t) => {
+test('contribute: never a profile the corner model doesn\'t learn (a badge), nor in training mode (THICKEN_DATASET set), nor photos that aren\'t the user\'s (THICKEN_PHOTOS)', async (t) => {
   process.env.THICKEN_CONTRIBUTE = 'yes';
   const r = relay();
-  t.after(r.restore);
+  t.after(() => { r.restore(); delete process.env.THICKEN_PHOTOS; });
   await contribute((await thicken([fixture('badge.png')], { widthMm: 35, depthMm: 2 })).sidecar, 'cli');
   process.env.THICKEN_DATASET = path.join(folder, 'practice');
   await contribute((await box()).sidecar, 'cli');
   delete process.env.THICKEN_DATASET;
+  process.env.THICKEN_PHOTOS = 'third-party';
+  await contribute((await box()).sidecar, 'cli');
   assert.equal(r.asked.length, 0);
+  // The user's own are sent, said so or not.
+  process.env.THICKEN_PHOTOS = 'own';
+  await contribute((await box()).sidecar, 'cli');
+  assert.equal(r.posts().length, 1);
 });
 
 test('contribute: never a user\'s own profile, even one named as a built-in', async (t) => {

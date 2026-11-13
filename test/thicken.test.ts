@@ -91,8 +91,9 @@ test('vision: with nothing else to go on, the models say what it is and roughly 
   const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
   const dataset = path.join(folder, 'dataset');
-  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b,c', THICKEN_VISION_KEY: 'secret-key-456', THICKEN_DATASET: dataset });
-  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS', 'THICKEN_VISION_KEY', 'THICKEN_DATASET']) delete process.env[key]; });
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b,c', THICKEN_VISION_KEY: 'secret-key-456', THICKEN_DATASET: dataset,
+    THICKEN_APP: 'vaultflip', THICKEN_PHOTOS: 'a-sellers' }); // anything but "own" is third-party
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS', 'THICKEN_VISION_KEY', 'THICKEN_DATASET', 'THICKEN_APP', 'THICKEN_PHOTOS']) delete process.env[key]; });
   // A phone face down on a brown table, no codes on it: one photo, 900 x 1200, its front a dark rectangle.
   const photo = path.join(folder, 'IMG_1.png');
   const front = [[300, 200], [600, 200], [600, 800], [300, 800]];
@@ -148,6 +149,8 @@ test('vision: with nothing else to go on, the models say what it is and roughly 
   assert.equal(first.run, second.run);
   assert.deepEqual([second.thicken, second.object, second.source.file, second.used], [VERSION, { profile: 'box', inputs: [`${path.basename(folder)}/${path.basename(photo)}`] }, path.basename(photo), ['front']]);
   assert.deepEqual(Object.keys(second.sent).sort(), ['left', 'scale', 'top']);
+  // And whose its photos are, as the caller said.
+  assert.deepEqual([first.origin, second.origin], Array(2).fill({ app: 'vaultflip', photos: 'third-party' }));
   const original = await sharp(path.join(dataset, 'box', second.original)).metadata();
   assert.deepEqual([original.width, original.height, original.exif], [second.source.width, second.source.height, undefined]);
 });
