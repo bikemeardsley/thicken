@@ -81,7 +81,10 @@ test('slab: with vision, the card and label are found in uncropped photos and se
   const inside = sidecar.inside as Record<string, { widthMm: number; heightMm: number; atMm: number[]; placedBy: string }>;
   assert.deepEqual([inside.card.placedBy, inside.card.widthMm, inside.card.heightMm, inside.label.placedBy], ['vision', 63.5, 88.9, 'vision']);
   assert.ok(Math.abs(inside.card.atMm[0]) <= 0.2 && Math.abs(inside.card.atMm[1] - (68 - 77.8)) <= 0.2, `card at ${inside.card.atMm}`);
-  assert.ok(Math.abs(inside.label.widthMm - 72.5) <= 0.3 && Math.abs(inside.label.heightMm - 21.8) <= 0.3, `label ${inside.label.widthMm} × ${inside.label.heightMm}`);
+  // The card is the ruler: it measured 1% big, so the holder outlined round it is taken as 1% smaller than on file, and
+  // the label found with it too (72.5 × 21.8 as drawn).
+  assert.deepEqual([sidecar.widthMm, sidecar.heightMm, sidecar.measuredBy], [79.7, 134.6, 'card']);
+  assert.ok(Math.abs(inside.label.widthMm - 71.8) <= 0.3 && Math.abs(inside.label.heightMm - 21.6) <= 0.3, `label ${inside.label.widthMm} × ${inside.label.heightMm}`);
   assert.ok(sidecar.review.every((item) => !item.includes('didn\'t find')), 'nothing laid out by guess');
   // Each picture is its part alone: no table, no clear border.
   const doc = await read(glb);
@@ -131,6 +134,70 @@ test('slab: the card and label are placed from the sides whose outline two model
   const { sidecar } = await thicken([front, back], { profile: 'slab' });
   const inside = sidecar.inside as Record<string, { widthMm: number; heightMm: number; atMm: number[] }>;
   assert.deepEqual([inside.card.widthMm, inside.card.heightMm, inside.card.atMm[0]], [63.5, 88.9, 0]);
+});
+
+test('slab: the card is the ruler for what\'s found with it, the front photo places it, and answers that settle ask the bench once', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  process.env.THICKEN_BENCH_URL = 'http://bench.test';
+  t.after(() => { process.env.THICKEN_BENCH_URL = ''; });
+  // A PSA slab as a seller's tight photo gave it (2026-11-12): the models outline the holder 2 mm inside its edge all
+  // round, so a standard card measures 5% wide and 3% tall against it, and the 6.7 mm between label and card 8.3.
+  const [slab, label, card] = [[0, 0, 80.5, 136], [4, 4.5, 76.5, 26.3], [8.5, 33, 72, 121.9]];
+  const [outline, lower] = [[2, 2, 78.5, 134], [8.5, 36, 72, 124.9]];
+  const [front, back] = [path.join(folder, 'IMG_1.png'), path.join(folder, 'IMG_2.png')];
+  await slabPhoto(front, [[slab, '#c8ccd0'], [label, '#f8f8f8'], [card, '#2e7d32']]);
+  await slabPhoto(back, [[slab, '#c8ccd0'], [label, '#f8f8f8'], [card, '#1d4f9e']]);
+  const fetch = catalog({}, {
+    bench: ['a', 'b', 'c', 'd', 'e'],
+    vision: async ({ model, photo }) => {
+      const { data, info } = await sharp(photo).raw().toBuffer({ resolveWithObject: true });
+      const middle = (500 * info.width + 500) * info.channels;
+      const green = data[middle + 1] > data[middle + 2];
+      // On the back, d calls it the front, and e's front runs far past the photo: one seat's word against three, which
+      // is no dispute. The back's card is put 3 mm low by all of them: the front's place for it stands, not their mean.
+      // One seat in five differs on a question: decided, not asked again.
+      const side = green || model === 'd' || model === 'e' ? 'front' : 'back';
+      const holder = !green && model === 'e' ? [-60, 0, 140, 136] : outline;
+      return { faces: [{ face: side, corners: letterboxed(holder) }, { face: 'card', corners: letterboxed(green ? card : lower) }, { face: 'label', corners: letterboxed(label) }], corners: model === 'c' ? 'round' : 'square' };
+    },
+  });
+  t.after(() => fetch.mock.restore());
+  const { sidecar } = await thicken([front, back], { profile: 'slab', holder: 'psa' });
+  const asks = fetch.mock.calls.filter((call) => String(call.arguments[0]) === 'http://bench.test/v1/chat/completions').length;
+  assert.deepEqual([asks, sidecar.review.filter((item) => item.includes('disagree'))], [2, []], 'each photo asked about once, nothing in dispute');
+  const inside = sidecar.inside as Record<string, { widthMm: number; heightMm: number; atMm: number[]; ruler?: number }>;
+  const gap = inside.label.atMm[1] - inside.label.heightMm / 2 - (inside.card.atMm[1] + inside.card.heightMm / 2);
+  assert.ok(Math.abs(inside.card.ruler! - 0.96) <= 0.005 && Math.abs(gap - 6.7) <= 0.7 && Math.abs(inside.label.widthMm - 72.5) <= 1,
+    `ruler ${inside.card.ruler}, gap ${gap}, label ${inside.label.widthMm} wide`);
+  assert.ok(Math.abs(inside.card.atMm[1] - (68 - 77.45)) <= 0.3, `card at ${inside.card.atMm}`);
+});
+
+test('slab: a photo cropped to the holder is its own outline, and the holder is measured against the card inside it', async (t) => {
+  const folder = await mkdtemp(path.join(tmpdir(), 'thicken-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  Object.assign(process.env, { THICKEN_VISION_URL: 'http://vision.test/api', THICKEN_VISION_MODELS: 'a,b' });
+  t.after(() => { for (const key of ['THICKEN_VISION_URL', 'THICKEN_VISION_MODELS']) delete process.env[key]; });
+  // A seller's scan at 10 px a mm (2026-11-12): a PSA holder 79.4 × 133.4 mm, on file as 80.5 × 136, filling the photo
+  // but for 5 px of the scanner's white down its right; its label 1 mm left of the middle, 11.5 mm above a standard
+  // card. The models outline the holder 1 mm inside its edge.
+  const [label, card, outline] = [[4.5, 3.7, 73, 23.2], [7.95, 34.7, 71.45, 123.6], [1, 1, 78.4, 132.4]];
+  const photo = path.join(folder, 'IMG_1.png');
+  const drawn = ([[[0, 0, 79.4, 133.4], '#8a8f96'], [label, '#f8f8f8'], [card, '#2e7d32']] as [number[], string][]).map(([[x0, y0, x1, y1], fill]) => `<rect x="${x0 * 10}" y="${y0 * 10}" width="${(x1 - x0) * 10}" height="${(y1 - y0) * 10}" fill="${fill}"/>`);
+  await sharp({ create: { width: 799, height: 1334, channels: 3, background: '#ffffff' } }).composite([{ input: Buffer.from(`<svg width="799" height="1334">${drawn.join('')}</svg>`) }]).png().toFile(photo);
+  const sent = ([x0, y0, x1, y1]: number[]) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => [(x * 10000) / 1334 + (1000 - 799000 / 1334) / 2, (y * 10000) / 1334]);
+  const fetch = catalog({}, { vision: async () => ({ faces: [{ face: 'front', corners: sent(outline) }, { face: 'card', corners: sent(card) }, { face: 'label', corners: sent(label) }], grade: '10' }) });
+  t.after(() => fetch.mock.restore());
+  const { sidecar } = await thicken([photo], { profile: 'slab', holder: 'psa' });
+  // The holder's edge is the photo's own, and on the right where the white gives way to it, to a pixel.
+  const [tl, , br] = (sidecar.outline as { front: number[][] }).front;
+  assert.ok(tl[0] === 0 && tl[1] === 0 && br[1] === 1334 && Math.abs(br[0] - 794) <= 1, `outline ${JSON.stringify(sidecar.outline)}`);
+  assert.ok(Math.abs(sidecar.widthMm - 79.4) <= 0.1 && sidecar.heightMm === 133.4 && sidecar.measuredBy === 'card', `${sidecar.widthMm} × ${sidecar.heightMm}, by ${sidecar.measuredBy}`);
+  // Each where the photo has it: the label left of the middle, not centered by assumption, and the gap as drawn.
+  const inside = sidecar.inside as Record<string, { widthMm: number; heightMm: number; atMm: number[] }>;
+  const gap = inside.label.atMm[1] - inside.label.heightMm / 2 - (inside.card.atMm[1] + inside.card.heightMm / 2);
+  assert.ok(Math.abs(inside.label.atMm[0] + 0.95) <= 0.2 && Math.abs(inside.card.atMm[0]) <= 0.1 && Math.abs(gap - 11.5) <= 0.3 && Math.abs(inside.label.widthMm - 68.5) <= 0.3,
+    `label at ${inside.label.atMm}, ${inside.label.widthMm} wide; card at ${inside.card.atMm}; gap ${gap}`);
 });
 
 test('slab: a label the models see as foil shines, and the grader\'s logo on the clear insert is cut from the photos, the table behind it left out', async (t) => {

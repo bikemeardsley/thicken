@@ -177,8 +177,12 @@ async function look(picture: Picture, kind: Kind): Promise<Sight> {
     bounds: [sent.left, sent.top, SIZE - sent.left, SIZE - sent.top], shapes: kind.shapes, shows: kind.shows, outlined,
     ...(outline && { outline: outline.map(toSent) }), ...(edges && { support: (corners: number[][]) => edges.support(corners.map(toPicture)) }),
   };
-  // A face left unsettled, or an answer disagreed on, asks for more.
-  const clash = (asked: Answer[]) => settle(asked, evidence).disputed.length > 0 || keys.some((key) => new Set(asked.flatMap((a) => a.asked?.[key] ?? [])).size > 1);
+  // A face left unsettled, or a question the answers leave undecided (a tie: decide), asks for more. One the most
+  // models answered alike is decided, whatever the rest said: six seats nearly always differ on one of a slab's ten.
+  const clash = (asked: Answer[]) => settle(asked, evidence).disputed.length > 0 || keys.some((key) => {
+    const votes = votesOn(asked, (a) => a.asked?.[key]);
+    return votes.length > 0 && decide(votes) === undefined;
+  });
   const answers = await consult(jpeg, prompt, (json) => parseFaces(json, Object.keys(kind.faces), keys, Object.keys(kind.reads ?? {})), clash);
   const settled = settle(answers, evidence);
   // A seat agreed when one of its faces lies within AGREE of a face two seats settled, not only when it was one of the two.
@@ -391,7 +395,8 @@ const apartAnyway = (a: number[][], b: number[][]) => Math.min(...orders(b).map(
  *   edges seat does: the one answer giving a turn there gives its turn. Two such places go to the one more answers
  *   put it at, then to the one clearly nearer its shape and its edges; else to neither;
  * - else where the edges seat outlines it, when the answers near it agree on its turn;
- * - else it's unsettled: disputed and left out, so more models are asked, and failing that a person looks.
+ * - else it's unsettled: disputed and left out, so more models are asked, and failing that a person looks; but one
+ *   model's word for a place where three or more agreed on another side of the object is just left out.
  * An answer that can't be right places nothing: corners well past the photo, or a shape its face can't have. A face
  * the only model that answered placed stands on its word, which the review says.
  */
@@ -412,6 +417,7 @@ export function settle(answers: Answer[], evidence: Evidence = {}): { faces: See
   const faces: Seen[] = [];
   const disputed: string[] = [];
   const singles: { face: string; model: string; corners: number[][] }[] = [];
+  const open: { face: string; fits: Placing[] }[] = []; // nothing settled them, below
   for (const name of names) {
     const all: Placing[] = usable.flatMap((a) => a.faces!.filter((f) => f.face === name).slice(0, 1).map((f) => ({ model: a.model, corners: f.corners })));
     const fits = all.filter(({ corners }) => possible(name, corners));
@@ -478,7 +484,16 @@ export function settle(answers: Answer[], evidence: Evidence = {}): { faces: See
       place(turn(edges!, turns[0]), [...models(near), 'edges'], true);
       continue;
     }
-    disputed.push(name);
+    open.push({ face: name, fits });
+  }
+  // Unsettled, and disputed, unless it's one model's word (the others' can't be right) for a place where three or
+  // more agreed on another of the object's sides (a slab's back, called its front by one seat, and by another whose
+  // corners ran past the photo): their name stands, and this face isn't there to find. Sides only, the faces with a
+  // shape of their own: a card's frame lies on its card by nature, and is no rival name for it.
+  const side = (face: string) => Boolean(shapes[face]?.length);
+  for (const { face, fits } of open) {
+    const taken = ({ corners }: Placing) => faces.some((f) => f.face !== face && side(f.face) && f.by.length >= 3 && apartAnyway(f.corners, corners) < AGREE);
+    if (!side(face) || models(fits).length !== 1 || !fits.every(taken)) disputed.push(face);
   }
 
   // Named by one model while others answered without it: left out, unless another put a face of another name in the

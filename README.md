@@ -244,7 +244,7 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `measuredBy` | where its width and depth came from: given, the default, or round in section |
 
 </details>
-<details><summary><code>slab</code>: grader, cert, verifyUrl, holder, inside, measuredBy</summary>
+<details><summary><code>slab</code>: grader, cert, verifyUrl, holder, inside, measuredBy, outline</summary>
 
 | Field | What it holds |
 | --- | --- |
@@ -252,8 +252,9 @@ pictures, its codes, what the vision models read and how sure, what's worth a se
 | `cert` | its certification number: from its QR code or barcode, else as read off its label (identifiedBy.cert says which, and whether both agreed) |
 | `verifyUrl` | the grader's page for this cert: its QR code's link, else built from the grader and the cert (PSA, CGC, BGS) |
 | `holder` | the holder it was built as (psa, cgc-tall…) |
-| `inside` | the card and the label inside: each one's size, middle and what placed it; the card's corners, foil and its pattern, border and texture; the label's finish (foil or paper) and where its hologram is; and the grader's logo on the insert, where it was found |
-| `measuredBy` | where its size came from: the holder table, or measured |
+| `inside` | the card and the label inside: each one's size, middle and what placed it; the card's ruler (how much what was found inside was scaled so the card is its real size, when it was), corners, foil and its pattern, border and texture; the label's finish (foil or paper) and where its hologram is; and the grader's logo on the insert, where it was found |
+| `measuredBy` | where its width and height came from: table (the size on file for its holder), card (its outline in the front photo, against the card inside it, whose size is known), or measured (given) |
+| `outline` | the holder's edge in each side's photo, in that photo's pixels: what the card and label were placed against |
 
 </details>
 <details><summary><code>box</code>: barcode, measuredBy, rounding, roundingBy, finish, finishBy</summary>

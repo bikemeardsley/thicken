@@ -53,8 +53,9 @@ export const slab: Profile = {
     cert: 'its certification number: from its QR code or barcode, else as read off its label (identifiedBy.cert says which, and whether both agreed)',
     verifyUrl: 'the grader\'s page for this cert: its QR code\'s link, else built from the grader and the cert (PSA, CGC, BGS)',
     holder: 'the holder it was built as (psa, cgc-tall…)',
-    inside: 'the card and the label inside: each one\'s size, middle and what placed it; the card\'s corners, foil and its pattern, border and texture; the label\'s finish (foil or paper) and where its hologram is; and the grader\'s logo on the insert, where it was found',
-    measuredBy: 'where its size came from: the holder table, or measured',
+    inside: 'the card and the label inside: each one\'s size, middle and what placed it; the card\'s ruler (how much what was found inside was scaled so the card is its real size, when it was), corners, foil and its pattern, border and texture; the label\'s finish (foil or paper) and where its hologram is; and the grader\'s logo on the insert, where it was found',
+    measuredBy: 'where its width and height came from: table (the size on file for its holder), card (its outline in the front photo, against the card inside it, whose size is known), or measured (given)',
+    outline: 'the holder\'s edge in each side\'s photo, in that photo\'s pixels: what the card and label were placed against',
   },
   faces: {
     front: 'the side showing the grade: the label that names the card and gives its grade, and the card\'s face',
@@ -178,8 +179,14 @@ const SEAM_MM = 0.1; // between pieces that would otherwise share a surface
 const EDGE_OPACITY = 0.2; // the rim, denser than the window's plastic, as its edges catch the light (0.3 looked milky)
 const HOLDER_CORNER_MM: Record<string, number> = { psa: 2, 'psa-thick': 2, 'psa-tall': 2, cgc: 4, 'cgc-tall': 4 }; // others 3
 // A card shaped like a standard one (cards are cut more exactly than holders are measured) and near its size is one.
-const STANDARD_SHAPE = 0.02;
+const STANDARD_SHAPE = 0.03; // one side's alone measured 2.2% off (a PSA slab, 2026-11-12), the models' slip on its corners
 const STANDARD_SIZE = 0.1;
+const FILLS = 0.02; // of the photo, each way: an outline this near its edges all round is a photo cropped to the holder
+// Of 255: a step in brightness this hard, at a photo's edge, is a plain backdrop meeting the holder; its rim's own
+// lines step less (a seller's two scans, 2026-11-12: 74 to 180 at their white and black backdrops, 57 at most in the rim).
+const BACKDROP = 65;
+const FRONTAL = 0.02; // an outline's opposite sides this near each other in length: seen square on, so it can be measured
+const MEASURED = 0.04; // a holder measured this near its size on file is that holder, measured (sizes on file disagree by 1–5 mm)
 const LABEL_DEPTH_MM = 0.3;
 const GAP_MM = 0.5; // the least space kept between the label and the card
 const CENTERED_MM = 2; // holders center the card and the label across: a middle this near the holder's is the holder's
@@ -220,13 +227,67 @@ function rectOf(points: number[][]): Rect {
   return { x0: (xs[0] + xs[1]) / 2, x1: (xs[2] + xs[3]) / 2, y0: (ys[0] + ys[1]) / 2, y1: (ys[2] + ys[3]) / 2 };
 }
 
-/** A card measured with its format's shape and near its size (`card`: standard, or small), either way up, at exactly that size, where it was. */
-function standardCard(r: Rect, card: number[]): Rect {
+/** The size ([width, height], either way up) of the card `r` measures as: one with its format's shape (`card`: standard, or small) and near its size. */
+function cardOf(r: Rect, card: number[]): number[] | undefined {
   const [w, h] = [r.x1 - r.x0, r.y1 - r.y0];
   const [sw, sh] = w > h ? [card[1], card[0]] : card;
-  if (Math.abs(w / h / (sw / sh) - 1) > STANDARD_SHAPE || Math.abs(w / sw - 1) > STANDARD_SIZE || Math.abs(h / sh - 1) > STANDARD_SIZE) return r;
+  return Math.abs(w / h / (sw / sh) - 1) > STANDARD_SHAPE || Math.abs(w / sw - 1) > STANDARD_SIZE || Math.abs(h / sh - 1) > STANDARD_SIZE ? undefined : [sw, sh];
+}
+/** A card measured as its format's, at exactly that size, where it was. */
+function standardCard(r: Rect, card: number[]): Rect {
+  const size = cardOf(r, card);
+  if (!size) return r;
   const [cx, cy] = [(r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2];
-  return { x0: cx - sw / 2, x1: cx + sw / 2, y0: cy - sh / 2, y1: cy + sh / 2 };
+  return { x0: cx - size[0] / 2, x1: cx + size[0] / 2, y0: cy - size[1] / 2, y1: cy + size[1] / 2 };
+}
+/**
+ * The card as the ruler. However much a card that is its format's measures off its size is how much the holder's
+ * outline in that photo is off the holder's size on file (a rim's highlight taken for its edge, a tight crop, a size
+ * on file a little off): the scale that puts right everything measured against that outline, about the holder's
+ * middle. One scale for both ways: a photo's two differ by less than the models' slip on the card's corners (0.3%
+ * against 1%, a PSA slab, 2026-11-12). 1 for a card that isn't its format's.
+ */
+function rulerOf(r: Rect, card: number[]): number {
+  const size = cardOf(r, card);
+  return size ? (size[0] / (r.x1 - r.x0) + size[1] / (r.y1 - r.y0)) / 2 : 1;
+}
+const scaled = (r: Rect, by: number): Rect => ({ x0: r.x0 * by, x1: r.x1 * by, y0: r.y0 * by, y1: r.y1 * by });
+/**
+ * The holder's edge in a photo: the corners the models gave; or, with none, the photo's own; or, with every one of
+ * them within FILLS of the photo's own (a photo cropped to the holder), found in the photo itself, where the models'
+ * run a little inside it (8 to 14 px in a seller's 847 × 1423 scan, 2026-11-12, which made everything inside 2.6%
+ * big). Each side is looked for from the photo's edge in to just past the models': where the brightness steps
+ * hardest, if by BACKDROP or more, a plain backdrop gives way to the holder (that scan had 2 px of white down its
+ * right and bottom); with no such step it's the holder's own rim there, which runs to the photo's edge.
+ * ponytail: a strip of table as dim as the holder's plastic, under FILLS wide, is taken for the holder's rim (up to 2%
+ * a side); tell them apart by texture if such photos turn up.
+ */
+function edgeOf({ data, width, height }: Picture, corners?: number[][]): number[][] {
+  const frame = [[0, 0], [width, 0], [width, height], [0, height]];
+  if (!corners) return frame;
+  if (!corners.every(([x, y], i) => Math.abs(x - frame[i][0]) <= FILLS * width && Math.abs(y - frame[i][1]) <= FILLS * height)) return corners;
+  // The mean brightness of a column (or row) of the photo, along its middle 60%.
+  const line = (column: boolean, at: number) => {
+    const [from, to] = [0.2, 0.8].map((share) => Math.round(share * (column ? height : width)));
+    let sum = 0;
+    for (let k = from; k < to; k++) { const i = (column ? k * width + at : at * width + k) * 4; sum += data[i] + data[i + 1] + data[i + 2]; }
+    return sum / 3 / (to - from);
+  };
+  // From the photo's edge (`from`) in to `to`: the first line of the holder, past the hardest step if it's a backdrop's.
+  const side = (column: boolean, from: number, to: number) => {
+    const inward = Math.sign(to - from) || 1;
+    let [edge, most] = [from, BACKDROP];
+    for (let at = from; at !== to; at += inward) {
+      const step = Math.abs(line(column, at + 2 * inward) - line(column, at));
+      if (step > most) [edge, most] = [at + 2 * inward, step];
+    }
+    return inward > 0 ? edge : edge + 1; // the far sides as the first pixel past the holder, as the frame's are
+  };
+  const [tl, tr, br, bl] = corners;
+  const past = (a: number, b: number, inward: number) => Math.round((a + b) / 2) + 3 * inward;
+  const [left, top] = [side(true, 0, past(tl[0], bl[0], 1)), side(false, 0, past(tl[1], tr[1], 1))];
+  const [right, bottom] = [side(true, width - 1, past(tr[0], br[0], -1)), side(false, height - 1, past(br[1], bl[1], -1))];
+  return [[left, top], [right, top], [right, bottom], [left, bottom]];
 }
 
 /** What the label's codes said: grader, cert number, and the grader's verification page. */
@@ -298,6 +359,34 @@ async function make(
   if (size.some((mm) => mm === undefined)) {
     throw new Error(`no size on file for a "${holder}" holder (known: ${Object.keys(HOLDERS).join(', ')}): measure one and pass --size WxHxD in mm`);
   }
+  // The holder's own width and height, from the front photo: its outline against the card inside it, whose size is
+  // its format's, at one scale for both ways (rulerOf says why). So the holder, the card and the label keep the
+  // photo's own proportions, where a size on file a little off left the card small in its holder (a PSA holder on
+  // file as 80.5 × 136 measured 79.4 × 133.4 in its front photo and 79.3 × 134.4 in its back, 2026-11-12). Only on an
+  // outline two models agreed on and seen square on (lengths in a photo taken at an angle don't compare), a card of
+  // its format's shape, and a size within MEASURED of the one on file: else the outline isn't the holder's edge, the
+  // size on file stands, and the warnings say so. One given (--size) stands too.
+  // ponytail: the card sits about 3 mm behind the holder's face, so a phone at 25 cm sees the holder 1% big against
+  // it, as its photo shows it; a scan doesn't. Correct for it if a camera's distance is ever known.
+  let measuredBy = sizeMm.length ? 'measured' : 'table';
+  const frontCard = front.corners && inner[front.picture]?.get('card');
+  const outlined = sights?.[front.picture]?.faces.some(({ face, agreed }) => face === 'front' && agreed);
+  if (!sizeMm.length && frontCard && outlined) {
+    const [cw, ch] = widthOf(frontCard) > heightOf(frontCard) ? [card.height, card.width] : [card.width, card.height];
+    const pxMm = (widthOf(frontCard) / cw + heightOf(frontCard) / ch) / 2;
+    const [tl, tr, br, bl] = edgeOf(pictures[front.picture], front.corners);
+    const length = (a: number[], b: number[]) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const frontal = Math.abs(length(tl, tr) / length(bl, br) - 1) <= FRONTAL && Math.abs(length(tl, bl) / length(tr, br) - 1) <= FRONTAL;
+    const seen = [widthOf([tl, tr, br, bl]) / pxMm, heightOf([tl, tr, br, bl]) / pxMm].map((mm) => Math.round(mm * 10) / 10);
+    if (frontal && Math.abs(widthOf(frontCard) / heightOf(frontCard) / (cw / ch) - 1) <= STANDARD_SHAPE) {
+      if (seen.every((mm, i) => Math.abs(mm / size[i] - 1) <= MEASURED)) {
+        [size[0], size[1]] = seen;
+        measuredBy = 'card';
+      } else {
+        warnings.push(`its holder measures ${seen.join(' × ')} mm against the card inside, too far from the ${holder} holder's size on file (${size[0]} × ${size[1]}) to be its edges: the size on file stands (--size WxHxD for its real one)`);
+      }
+    }
+  }
   const [w, h] = size;
   // Each side's photo, and the ways between the holder and its pixels: through the slab's corners where the models
   // found them, else across the whole photo, cropped to the slab. Seen from behind, the holder's left is on the right.
@@ -309,8 +398,7 @@ async function make(
       warnings.push(`the ${side} photo isn't the shape of a ${holder} holder: crop it to the slab's edges, or name the right --holder`);
     }
     const { picture, corners } = from[k];
-    const { width, height } = pictures[picture];
-    const quad = corners ?? [[0, 0], [width, 0], [width, height], [0, height]];
+    const quad = edgeOf(pictures[picture], corners);
     const mirror = side === 'back' ? -1 : 1;
     const holderQuad = [[-w / 2, h / 2], [w / 2, h / 2], [w / 2, -h / 2], [-w / 2, -h / 2]].map(([x, y]) => [mirror * x, y]);
     const found = corners ? new Map(inner[picture] ?? []) : new Map<string, number[][]>();
@@ -334,29 +422,41 @@ async function make(
       // An edge that would have to move further than a loose corner does: said, never shipped quietly.
       if (off.length) review.push(`the label in the ${side} photo (its ${off.join(' and ')} edge${off.length > 1 ? 's' : ''} looked like what's behind the slab well inside the corners given: check them)`);
     }
-    return [{ side, picture, mirror, found, agreed, background, toPhoto: mapping(holderQuad, quad), toHolder: mapping(quad, holderQuad) }];
+    // This side's ruler: its own card against its own outline (the two sides' outlines are off by different amounts).
+    const toHolder = mapping(quad, holderQuad);
+    const ruler = found.has('card') ? rulerOf(rectOf(found.get('card')!.map(toHolder)), [card.width, card.height]) : 1;
+    // framed: the models found the holder, and its edge is the photo's own.
+    return [{ side, picture, mirror, found, agreed, background, quad, framed: Boolean(corners) && quad !== corners, toPhoto: mapping(holderQuad, quad), toHolder, ruler }];
   });
 
-  // Where the card and label are: where the models put them, averaged over the sides whose outline two models agreed
-  // on (one model's alone can be well off, and everything inside is measured against it), or over every side if
-  // none; else where a holder usually has them.
+  // Where the card and label are: where the models put them in the front photo, the side looked at, else in the
+  // back's (a card doesn't move between the two, so where the sides differ it's their outlines that do, and a mean
+  // of them is off on both); of the sides whose outline two models agreed on (one model's alone can be well off, and
+  // everything inside is measured against it), or of every side if none; else where a holder usually has them.
   const layout = defaultLayout(size);
   const placedBy = {} as Record<Inside, 'vision' | 'layout'>;
   const rects = {} as Record<Inside, Rect>;
   const placing = sides.some(({ agreed }) => agreed) ? sides.filter(({ agreed }) => agreed) : sides;
+  // Each part as measured against its side's outline, at that side's ruler (rulerOf): the label and the gap under it
+  // come out at the card's scale, not the outline's (a PSA slab's card measured 4% big, 2026-11-12, its gap 2 mm wide).
+  const sideOf = (part: string) => placing.find(({ found }) => found.has(part));
+  const seen = (part: string): Rect | undefined => {
+    const side = sideOf(part);
+    return side && scaled(rectOf(side.found.get(part)!.map(side.toHolder)), side.ruler);
+  };
   for (const part of ['card', 'label'] as const) {
-    const seen = placing.filter(({ found }) => found.has(part)).map(({ found, toHolder }) => rectOf(found.get(part)!.map(toHolder)));
-    placedBy[part] = seen.length ? 'vision' : 'layout';
-    rects[part] = seen.length
-      ? { x0: mean(seen.map((r) => r.x0)), x1: mean(seen.map((r) => r.x1)), y0: mean(seen.map((r) => r.y0)), y1: mean(seen.map((r) => r.y1)) }
-      : layout[part];
+    placedBy[part] = seen(part) ? 'vision' : 'layout';
+    rects[part] = seen(part) ?? { ...layout[part] };
   }
   rects.card = standardCard(rects.card, [card.width, card.height]);
   rects.label.y0 = Math.min(Math.max(rects.label.y0, rects.card.y1 + GAP_MM), rects.label.y1 - 1); // above the card, never over it
+  // Centered across, as holders have them, when found near it against the models' outline, which is off by more
+  // than a card sits off its holder's middle. Against a photo's own frame, where it was found is where it is (a PSA
+  // label 1 mm left of the middle, its margins 4.4 and 6.5 mm in the photo, 2026-11-12).
   for (const part of ['card', 'label'] as const) {
     const r = rects[part];
     const middle = (r.x0 + r.x1) / 2;
-    if (Math.abs(middle) <= CENTERED_MM) rects[part] = { ...r, x0: r.x0 - middle, x1: r.x1 - middle };
+    if (Math.abs(middle) <= CENTERED_MM && !sideOf(part)?.framed) rects[part] = { ...r, x0: r.x0 - middle, x1: r.x1 - middle };
   }
   for (const part of ['card', 'label'] as const) {
     const r = rects[part];
@@ -364,8 +464,8 @@ async function make(
   }
   // The grader's logo on the clear insert (a BGS insert's Beckett "B"), where the models found it. It's printed once
   // and seen through the plastic from behind, so it's one rectangle for both sides, each pictured from its own photo.
-  const logos = placing.filter(({ found }) => found.has('logo')).map(({ found, toHolder }) => rectOf(found.get('logo')!.map(toHolder)));
-  const logo = logos.length ? { x0: mean(logos.map((r) => r.x0)), x1: mean(logos.map((r) => r.x1)), y0: mean(logos.map((r) => r.y0)), y1: mean(logos.map((r) => r.y1)) } : undefined;
+  const logo = seen('logo');
+  const ruler = sideOf('card')?.ruler ?? 1; // the placed card's
   const missed = (['card', 'label'] as const).filter((part) => placedBy[part] === 'layout');
   if (missed.length && sights) review.push(`${missed.join(' and ')} (the vision models didn't find ${missed.length > 1 ? 'them' : 'it'}: placed where a ${holder} holder usually has ${missed.length > 1 ? 'them' : 'it'})`);
   else if (missed.length) warnings.push(`the card and label are placed where a ${holder} holder usually has them: with a vision roster they're found in the photos`);
@@ -379,8 +479,10 @@ async function make(
   const logoPictures: Partial<Record<'front' | 'back', Buffer>> = {};
   const logoPrint = pooled(sights, 'logoPrint', ['light', 'dark']); // light unless the models see it dark
   let labelEdge: string | undefined;
-  for (const { side, picture, mirror, found, background, toPhoto } of sides) {
-    const quad = (r: Rect) => {
+  for (const { side, picture, mirror, found, background, toPhoto, ruler } of sides) {
+    // A rectangle placed in the holder, in this side's photo: back through its ruler, against its outline.
+    const quad = (placed: Rect) => {
+      const r = scaled(placed, 1 / ruler);
       const [left, right] = mirror > 0 ? [r.x0, r.x1] : [r.x1, r.x0];
       return [[left, r.y1], [right, r.y1], [right, r.y0], [left, r.y0]].map(toPhoto);
     };
@@ -463,13 +565,17 @@ async function make(
     glb: await toGlb(doc, mesh),
     sidecar: {
       holder, ...label,
-      widthMm: w, heightMm: h, depthMm: size[2], measuredBy: sizeMm.length ? 'measured' : 'table',
+      widthMm: w, heightMm: h, depthMm: size[2], measuredBy,
+      // The holder's edge in each side's photo, in its pixels, as the build took it: what everything inside was placed against.
+      outline: Object.fromEntries(sides.map(({ side, quad }) => [side, quad.map((point) => point.map(Math.round))])),
       faces: { front: 'photo', back: pictured.back ? 'photo' : 'color' } satisfies Faces,
       // The card and label inside: their size, where their middles are (mm from the holder's middle, y up), and what placed them.
       inside: { ...Object.fromEntries((['card', 'label'] as const).map((part) => {
         const r = rects[part];
         return [part, {
           widthMm: round(r.x1 - r.x0), heightMm: round(r.y1 - r.y0), atMm: [round((r.x0 + r.x1) / 2), round((r.y0 + r.y1) / 2)], placedBy: placedBy[part],
+          // The card as the ruler: how much what was found with it was scaled so the card is its format's size.
+          ...(part === 'card' && ruler !== 1 && { ruler: Math.round(ruler * 1000) / 1000 }),
           ...(part === 'card' && { corners, cornersBy, ...shine.fields }),
           // Its finish, by grader; and where its hologram is, on each side it was found, in fractions of that side's label picture.
           ...(part === 'label' && { finish: finish ?? 'paper', finishBy: finish ? 'vision' : 'assumed' }),
@@ -482,8 +588,6 @@ async function make(
     },
   };
 }
-
-const mean = (values: number[]) => values.reduce((sum, v) => sum + v, 0) / values.length;
 
 /**
  * A logo printed on clear plastic, cut from a photo: its bright, colorless strokes kept, and everything behind it (the
