@@ -6,7 +6,14 @@ thicken from the shell instead (`npx -y thicken ...`); vision settings go in
 your environment or a `.env` file where it runs (see
 [USAGE.md](../USAGE.md)).
 
-The full plugin, with the MCP server and a settings form, is in
+To give Claude thicken's tools as well, and skip a permission prompt per run,
+add its MCP server:
+
+```
+claude mcp add thicken -- npx -y thicken mcp
+```
+
+Or install the full plugin, with the MCP server and a settings form, from
 [`plugin/`](../plugin): `/plugin marketplace add bikemeardsley/thicken`, then
 `/plugin install thicken@thicken`.
 
