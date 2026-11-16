@@ -30,8 +30,13 @@ test('mcp: every manifest launches the version package.json says, and the plugin
   // Line endings aside: the plugin's files check out as git would leave them (CRLF on Windows, by its default).
   const lf = (text: string) => text.replace(/\r\n/g, '\n');
   const skills = (folder: string) => readdirSync(new URL(`../${folder}`, import.meta.url)).sort();
-  assert.deepEqual(skills('plugin/skills'), skills('skills'), 'the plugin has every skill');
-  for (const skill of skills('skills')) assert.equal(lf(repo(`plugin/skills/${skill}/SKILL.md`)), lf(repo(`skills/${skill}/SKILL.md`)), `the plugin's copy of ${skill} matches`);
+  // skill-plugin/ is the skills-only plugin for Anthropic's directory, which takes no local MCP server from us.
+  const listed = JSON.parse(repo('skill-plugin/.claude-plugin/plugin.json'));
+  assert.deepEqual([listed.version, listed.mcpServers, listed.userConfig], [version, undefined, undefined]);
+  for (const folder of ['plugin', 'skill-plugin']) {
+    assert.deepEqual(skills(`${folder}/skills`), skills('skills'), `${folder} has every skill`);
+    for (const skill of skills('skills')) assert.equal(lf(repo(`${folder}/skills/${skill}/SKILL.md`)), lf(repo(`skills/${skill}/SKILL.md`)), `${folder}'s copy of ${skill} matches`);
+  }
 });
 const text = (result: Awaited<ReturnType<Client['callTool']>>) => (result.content as { type: string; text: string }[])[0].text;
 
