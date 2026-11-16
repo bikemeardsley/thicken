@@ -29,8 +29,8 @@ boxes, badges, lettering. **Start with [README.md](../README.md)**, then
   fork's pull request that touches anything else.
 - **Agents:** `thicken mcp` (src/mcp.ts, stdio only) and the skill in
   `skills/` (`thicken`, and `thicken-profile` for making profiles), copied
-  to `plugin/skills/` and `plugin-directory/skills/` (a test keeps them
-  equal). The Claude plugin lives in `plugin/`. `plugin-directory/` is the
+  to `plugin/skills/` and `skill-plugin/skills/` (a test keeps them
+  equal). The Claude plugin lives in `plugin/`. `skill-plugin/` is the
   skills-only copy submitted to Anthropic's directory, which takes no local
   MCP server or lockfile from an unverified organization (refused
   2026-11-16); point the listing at `plugin/` if that changes.
@@ -47,7 +47,7 @@ boxes, badges, lettering. **Start with [README.md](../README.md)**, then
 
 Bump the version in `package.json`, `server.json` (twice),
 `plugin/.claude-plugin/plugin.json` (`version` and the pin),
-`plugin-directory/.claude-plugin/plugin.json`, `plugin/plugin.json`
+`skill-plugin/.claude-plugin/plugin.json`, `plugin/plugin.json`
 and `plugin/mcp.json` (the Agent Plugin, for Copilot), `plugin/mcp_config.json`
 (the same servers, for Antigravity), `mcp.json`,
 `gemini-extension.json` and `plugin/package.json` (test/mcp.test.ts fails
