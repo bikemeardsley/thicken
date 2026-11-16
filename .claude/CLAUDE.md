@@ -29,11 +29,15 @@ boxes, badges, lettering. **Start with [README.md](../README.md)**, then
   fork's pull request that touches anything else.
 - **Agents:** `thicken mcp` (src/mcp.ts, stdio only) and the skill in
   `skills/` (`thicken`, and `thicken-profile` for making profiles), copied
-  to `plugin/skills/` and `skill-plugin/skills/` (a test keeps them
-  equal). The Claude plugin lives in `plugin/`. `skill-plugin/` is the
-  skills-only copy submitted to Anthropic's directory, which takes no local
-  MCP server or lockfile from an unverified organization (refused
-  2026-11-16); point the listing at `plugin/` if that changes.
+  to `plugin/skills/` (a test keeps them
+  equal). The Claude plugin lives in `plugin/`. `skill-plugin/` is what's
+  submitted to Anthropic's directory, which takes no local MCP server or
+  lockfile from an unverified organization (refused 2026-11-16) and whose
+  submission confirms the plugin runs no code outside a declared MCP server.
+  So it holds only its own `thicken` skill, which uses the MCP tools and tells
+  the user to add the server (`claude mcp add`), never running thicken
+  itself; keep it in step with `skills/thicken` by hand (the test checks its
+  name and description). Point the listing at `plugin/` if that changes.
 - **Contributing photos:** `thicken contribute` (src/contribute.ts) sends
   to the relay in `relay/`, a Cloudflare Worker with its own package and
   lock like `plugin/`, never in the npm package, deployed from main by

@@ -1,25 +1,23 @@
-# thicken, skills only
+# thicken, the skill
 
-thicken's skills (making a model, and making a profile) for Anthropic's
-plugin directory, which takes no MCP server from this plugin. Claude runs
-thicken from the shell instead (`npx -y thicken ...`); vision settings go in
-your environment or a `.env` file where it runs (see
-[USAGE.md](../USAGE.md)).
-
-To give Claude thicken's tools as well, and skip a permission prompt per run,
-add its MCP server:
+thicken's skill for making a model, for Anthropic's plugin directory. The
+plugin runs nothing itself: the skill works through the tools of thicken's
+MCP server, which you add once yourself:
 
 ```
 claude mcp add thicken -- npx -y thicken mcp
 ```
 
-Or install the full plugin, with the MCP server and a settings form, from
-[`plugin/`](../plugin): `/plugin marketplace add bikemeardsley/thicken`, then
+Vision settings go on the same command, as `-e THICKEN_VISION_URL=...` and
+the rest (see [USAGE.md](../USAGE.md)). Making your own profiles, and the
+plugin's settings form, come with the full plugin in [`plugin/`](../plugin):
+`/plugin marketplace add bikemeardsley/thicken`, then
 `/plugin install thicken@thicken`.
 
-**What leaves your machine:** a book's lookups, to openlibrary.org,
-covers.openlibrary.org, lx2.loc.gov and www.googleapis.com (an ISBN, or the
-title and author read off the cover); with a vision endpoint set, each photo,
-without its EXIF, to that endpoint; photos you agree to contribute, to
-thicken's relay ([PRIVACY.md](../PRIVACY.md#contributing-photos)); and the
-package itself, from registry.npmjs.org. Nothing else.
+**What leaves your machine, once the server is added:** a book's lookups, to
+openlibrary.org, covers.openlibrary.org, lx2.loc.gov and www.googleapis.com
+(an ISBN, or the title and author read off the cover); with a vision endpoint
+set, each photo, without its EXIF, to that endpoint; photos you agree to
+contribute, to thicken's relay
+([PRIVACY.md](../PRIVACY.md#contributing-photos)); and the package itself,
+from registry.npmjs.org. Nothing else.

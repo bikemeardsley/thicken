@@ -30,13 +30,16 @@ test('mcp: every manifest launches the version package.json says, and the plugin
   // Line endings aside: the plugin's files check out as git would leave them (CRLF on Windows, by its default).
   const lf = (text: string) => text.replace(/\r\n/g, '\n');
   const skills = (folder: string) => readdirSync(new URL(`../${folder}`, import.meta.url)).sort();
-  // skill-plugin/ is the skills-only plugin for Anthropic's directory, which takes no local MCP server from us.
+  assert.deepEqual(skills('plugin/skills'), skills('skills'), 'the plugin has every skill');
+  for (const skill of skills('skills')) assert.equal(lf(repo(`plugin/skills/${skill}/SKILL.md`)), lf(repo(`skills/${skill}/SKILL.md`)), `the plugin's copy of ${skill} matches`);
+  // skill-plugin/ is for Anthropic's directory, which takes no local MCP server from us and no plugin that runs
+  // code outside one: its own thicken skill uses the server's tools only, and tells the user how to add it.
   const listed = JSON.parse(repo('skill-plugin/.claude-plugin/plugin.json'));
   assert.deepEqual([listed.version, listed.mcpServers, listed.userConfig], [version, undefined, undefined]);
-  for (const folder of ['plugin', 'skill-plugin']) {
-    assert.deepEqual(skills(`${folder}/skills`), skills('skills'), `${folder} has every skill`);
-    for (const skill of skills('skills')) assert.equal(lf(repo(`${folder}/skills/${skill}/SKILL.md`)), lf(repo(`skills/${skill}/SKILL.md`)), `${folder}'s copy of ${skill} matches`);
-  }
+  assert.deepEqual(skills('skill-plugin/skills'), ['thicken']);
+  const own = lf(repo('skill-plugin/skills/thicken/SKILL.md'));
+  assert.equal(own.split('---')[1], lf(repo('skills/thicken/SKILL.md')).split('---')[1], 'the same name and description');
+  assert.ok(own.includes("don't run thicken\nyourself") && own.includes('claude mcp add thicken -- npx -y thicken mcp'));
 });
 const text = (result: Awaited<ReturnType<Client['callTool']>>) => (result.content as { type: string; text: string }[])[0].text;
 
